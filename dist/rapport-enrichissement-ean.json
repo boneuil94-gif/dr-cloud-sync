@@ -1,0 +1,64 @@
+{
+  "date": "2026-07-27",
+  "perimetre": {
+    "declinaisons": 453,
+    "strategies_par_declinaison": 3,
+    "moteur": "DuckDuckGo HTML",
+    "sources": "Boutiques, distributeurs, marketplaces, comparateurs et pages indexées."
+  },
+  "validation_gtin": "Validation de la clé de contrôle pour GTIN-8, UPC/GTIN-12, EAN-13 et GTIN-14. Aucun code invalide n’est conservé.",
+  "couverture_recherche": {
+    "trois_requetes_reussies": 117,
+    "deux_requetes_reussies": 107,
+    "une_requete_reussie": 201,
+    "aucune_requete_reussie": 28
+  },
+  "resume": {
+    "fort": 2,
+    "probable": 1,
+    "faible": 0,
+    "candidat": 0,
+    "non_trouve": 450,
+    "total": 453
+  },
+  "ean_trouves": [
+    {
+      "ean_gtin": "3700964161409",
+      "produit_prestashop": "Chicha CELESTE ®",
+      "declinaison": "DEEP BLACK",
+      "product_id": 22,
+      "combination_id": 56,
+      "source": "https://www.el-badia.com/en/classic-shisha-hookah/2548-chicha-celeste-full-black-limited-edition-3700964161409.html",
+      "source_nom": "El Badia",
+      "niveau_confiance": "probable",
+      "justification": "La fiche commerciale El Badia correspond à la Chicha CELESTE Full Black; Full Black est une correspondance plausible mais imparfaite avec la déclinaison PrestaShop DEEP BLACK."
+    },
+    {
+      "ean_gtin": "3700964107506",
+      "produit_prestashop": "Tuyau Marrakech Silicone",
+      "declinaison": "Argenté",
+      "product_id": 25,
+      "combination_id": 94,
+      "source": "https://www.cdiscount.com/au-quotidien/articles-fumeur/tuyau-marrakech-silicone-argente/f-12712-elb3700964107506.html",
+      "source_nom": "Cdiscount",
+      "niveau_confiance": "fort",
+      "justification": "La fiche commerciale indexée nomme exactement Tuyau Marrakech Silicone Argenté et contient le GTIN valide dans son URL produit."
+    },
+    {
+      "ean_gtin": "3701599861153",
+      "produit_prestashop": "JNR FALCON X + 28K",
+      "declinaison": "MIXED BERRIES",
+      "product_id": 72,
+      "combination_id": 375,
+      "source": "https://eliquide.com/jnr/38819-mixed-berries-falcon-x-2-28k-puffs-jnr-3701599861153.html",
+      "source_nom": "Eliquide.com",
+      "niveau_confiance": "fort",
+      "justification": "La fiche commerciale nomme exactement JNR Falcon-X 2% 28K puffs et la déclinaison Mixed Berries; le GTIN valide figure dans l’URL produit."
+    }
+  ],
+  "fichiers": {
+    "catalogue": "catalogue-prestashop-ean-enrichi.json",
+    "candidats": "ean-candidats.json",
+    "non_trouves": "ean-non-trouves.json"
+  }
+}
