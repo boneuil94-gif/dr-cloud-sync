@@ -1,0 +1,191 @@
+{
+  "methode": "Inventaire des domaines ayant fourni les 35 EAN V2, recherche inverse des codes exacts dans les sitemaps publics, puis exploration des pages de gamme, de leur productEan13 et de leurs variantes embarquées.",
+  "nombre_domaines": 4,
+  "domaines": [
+    {
+      "domaine": "www.gfc-provap.com",
+      "correspondances_acceptees": 23,
+      "ean_connus": [
+        "8681655703489",
+        "8681655703526",
+        "8681655703533",
+        "8681655703540",
+        "8681655703670",
+        "8681655703700",
+        "8681655703717",
+        "8681655703724",
+        "8681655704240",
+        "8681655704295",
+        "8681655704332",
+        "8681655705667",
+        "8681655711781",
+        "8681655717141",
+        "8681655717165",
+        "8681655717172",
+        "8681655717196",
+        "8681655722336",
+        "8681655722367",
+        "8681655722398",
+        "8681655722473",
+        "8681655722633",
+        "8681655736838"
+      ],
+      "retrouves_par_recherche_inversee": {
+        "8681655703489": [
+          "GFC Provap"
+        ],
+        "8681655703526": [
+          "GFC Provap"
+        ],
+        "8681655703533": [
+          "GFC Provap"
+        ],
+        "8681655703540": [
+          "GFC Provap"
+        ],
+        "8681655703670": [
+          "GFC Provap"
+        ],
+        "8681655703700": [
+          "GFC Provap"
+        ],
+        "8681655703717": [
+          "GFC Provap"
+        ],
+        "8681655703724": [
+          "GFC Provap"
+        ],
+        "8681655704240": [
+          "GFC Provap"
+        ],
+        "8681655704295": [
+          "GFC Provap"
+        ],
+        "8681655704332": [
+          "GFC Provap"
+        ],
+        "8681655705667": [
+          "GFC Provap"
+        ],
+        "8681655711781": [
+          "GFC Provap"
+        ],
+        "8681655717141": [
+          "GFC Provap"
+        ],
+        "8681655717165": [
+          "GFC Provap"
+        ],
+        "8681655717172": [
+          "GFC Provap"
+        ],
+        "8681655717196": [
+          "GFC Provap"
+        ],
+        "8681655722336": [
+          "GFC Provap"
+        ],
+        "8681655722367": [
+          "GFC Provap"
+        ],
+        "8681655722398": [
+          "GFC Provap"
+        ],
+        "8681655722473": [
+          "GFC Provap"
+        ],
+        "8681655722633": [
+          "GFC Provap"
+        ],
+        "8681655736838": [
+          "GFC Provap"
+        ]
+      }
+    },
+    {
+      "domaine": "eliquide.com",
+      "correspondances_acceptees": 10,
+      "ean_connus": [
+        "3701599861122",
+        "3701599861146",
+        "3701599861153",
+        "6977704950662",
+        "6977704950679",
+        "6977704950686",
+        "6977704950709",
+        "6977704950723",
+        "6977704950730",
+        "6977704950853"
+      ],
+      "retrouves_par_recherche_inversee": {
+        "3701599861122": [
+          "Eliquide.com"
+        ],
+        "3701599861146": [
+          "Eliquide.com"
+        ],
+        "3701599861153": [
+          "Eliquide.com"
+        ],
+        "6977704950662": [
+          "Eliquide.com"
+        ],
+        "6977704950679": [
+          "Eliquide.com"
+        ],
+        "6977704950686": [
+          "Eliquide.com"
+        ],
+        "6977704950709": [
+          "Eliquide.com"
+        ],
+        "6977704950723": [
+          "Eliquide.com"
+        ],
+        "6977704950730": [
+          "Eliquide.com"
+        ],
+        "6977704950853": [
+          "Eliquide.com",
+          "GFC Provap"
+        ]
+      }
+    },
+    {
+      "domaine": "www.cdiscount.com",
+      "correspondances_acceptees": 1,
+      "ean_connus": [
+        "3700964107506"
+      ],
+      "retrouves_par_recherche_inversee": {
+        "3700964107506": []
+      }
+    },
+    {
+      "domaine": "www.el-badia.com",
+      "correspondances_acceptees": 1,
+      "ean_connus": [
+        "3700964161409"
+      ],
+      "retrouves_par_recherche_inversee": {
+        "3700964161409": [
+          "El Badia"
+        ]
+      }
+    }
+  ],
+  "sources_de_gamme_v3": [
+    {
+      "domaine": "www.gfc-provap.com",
+      "familles_explorees": [
+        "JNR Falcon Gem+ 30K",
+        "JNR Falcon Nexus 40K",
+        "JNR Shishasip 35K",
+        "Al Fakher Cubic 30K",
+        "Al Fakher Hyper Max 30K",
+        "Adalya LEVO 30K"
+      ],
+      "pistes_produites": 133
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "nombre": 1,
+  "nouveaux_v3": 0,
+  "resultats": [
+    {
+      "id_product": 22,
+      "id_combination": 56,
+      "produit": "Chicha CELESTE ®",
+      "declinaison": "DEEP BLACK",
+      "ean_gtin": "3700964161409",
+      "source": "El Badia",
+      "url": "https://www.el-badia.com/en/classic-shisha-hookah/2548-chicha-celeste-full-black-limited-edition-3700964161409.html",
+      "niveau_confiance": "PROBABLE",
+      "elements_rapprochement": "La fiche commerciale El Badia correspond à la Chicha CELESTE Full Black; Full Black est une correspondance plausible mais imparfaite avec la déclinaison PrestaShop DEEP BLACK.",
+      "justification": "La fiche commerciale El Badia correspond à la Chicha CELESTE Full Black; Full Black est une correspondance plausible mais imparfaite avec la déclinaison PrestaShop DEEP BLACK."
+    }
+  ]
+}
