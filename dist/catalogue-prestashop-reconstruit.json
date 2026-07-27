@@ -1,0 +1,7826 @@
+{
+  "source": "prestashop",
+  "snapshot_counts": {
+    "products": 72,
+    "combinations": 453,
+    "product_options": 38,
+    "product_option_values": 471,
+    "stock_availables": 525
+  },
+  "catalogue": [
+    {
+      "id": 20,
+      "nom": "320° CUBE 26MM",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 21,
+      "nom": "320° DISC 3B XL",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 22,
+      "nom": "Chicha CELESTE ®",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 54,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 26,
+              "nom": "NARDO GREY",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 76
+        },
+        {
+          "id": 55,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 27,
+              "nom": "IVORY WHITE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 77
+        },
+        {
+          "id": 56,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 28,
+              "nom": "DEEP BLACK",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 78
+        },
+        {
+          "id": 57,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 29,
+              "nom": "ACID PINK",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 79
+        },
+        {
+          "id": 58,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 33,
+              "nom": "CORAL ORANGE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 2,
+          "stock_available_id": 80
+        },
+        {
+          "id": 59,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 32,
+              "nom": "ACID ORANGE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 81
+        },
+        {
+          "id": 60,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 31,
+              "nom": "ACID GREEN",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 82
+        },
+        {
+          "id": 61,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 30,
+              "nom": "PACIFIC BLUE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 83
+        },
+        {
+          "id": 62,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 34,
+              "nom": "MINT GREEN",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 84
+        },
+        {
+          "id": 63,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 35,
+              "nom": "ACID YELLOW",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 85
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "nom": "Chicha EL-BADIA XS",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 64,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 36,
+              "nom": "NARDO GREY",
+              "groupe_id": 7,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 87
+        },
+        {
+          "id": 65,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 37,
+              "nom": "ACID PINK",
+              "groupe_id": 7,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 88
+        },
+        {
+          "id": 66,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 38,
+              "nom": "ACID YELLOW",
+              "groupe_id": 7,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 89
+        },
+        {
+          "id": 67,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 39,
+              "nom": "DEEP BLACK",
+              "groupe_id": 7,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 90
+        },
+        {
+          "id": 68,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 40,
+              "nom": "ACID GREEN",
+              "groupe_id": 7,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 91
+        },
+        {
+          "id": 69,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 41,
+              "nom": "CORAL ORANGE",
+              "groupe_id": 7,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 2,
+          "stock_available_id": 92
+        },
+        {
+          "id": 70,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 42,
+              "nom": "PACIFIC BLUE",
+              "groupe_id": 7,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 93
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "nom": "Tuyau Marrakech XL 3.0",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 71,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 43,
+              "nom": "Noir",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 2,
+          "stock_available_id": 95
+        },
+        {
+          "id": 72,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 44,
+              "nom": "Rouge",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 96
+        },
+        {
+          "id": 73,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 45,
+              "nom": "Vert",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 97
+        },
+        {
+          "id": 74,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 46,
+              "nom": "Bleu",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 98
+        },
+        {
+          "id": 75,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 47,
+              "nom": "Rose",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 99
+        },
+        {
+          "id": 76,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 48,
+              "nom": "Blanc",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 100
+        },
+        {
+          "id": 77,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 49,
+              "nom": "Violet",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 101
+        },
+        {
+          "id": 78,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 50,
+              "nom": "Doree",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 102
+        },
+        {
+          "id": 79,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 51,
+              "nom": "Argenté",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 103
+        },
+        {
+          "id": 80,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 52,
+              "nom": "Aqua",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 104
+        },
+        {
+          "id": 81,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 53,
+              "nom": "Carbon",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 105
+        },
+        {
+          "id": 82,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 54,
+              "nom": "Acid green",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 106
+        },
+        {
+          "id": 83,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 55,
+              "nom": "NARDO GREY",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 107
+        },
+        {
+          "id": 84,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 56,
+              "nom": "ACID YELLOW",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 108
+        },
+        {
+          "id": 85,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 57,
+              "nom": "ACID PINK",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 109
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "nom": "Tuyau Marrakech Silicone",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 86,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 44,
+              "nom": "Rouge",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 111
+        },
+        {
+          "id": 87,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 43,
+              "nom": "Noir",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 112
+        },
+        {
+          "id": 88,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 45,
+              "nom": "Vert",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 113
+        },
+        {
+          "id": 89,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 46,
+              "nom": "Bleu",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 114
+        },
+        {
+          "id": 90,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 47,
+              "nom": "Rose",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 2,
+          "stock_available_id": 115
+        },
+        {
+          "id": 91,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 48,
+              "nom": "Blanc",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 116
+        },
+        {
+          "id": 92,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 49,
+              "nom": "Violet",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 117
+        },
+        {
+          "id": 93,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 50,
+              "nom": "Doree",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 118
+        },
+        {
+          "id": 94,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 51,
+              "nom": "Argenté",
+              "groupe_id": 8,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 119
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "nom": "Quasar Raas 2",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 27,
+      "nom": "Pince Crocodile",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 28,
+      "nom": "320° CUBES 27mm 2Kg",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 29,
+      "nom": "Allume Charbons Rapide 1000w",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 30,
+      "nom": "Allume Charbons Compact 500w",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 31,
+      "nom": "Charbons THREE KINGS 33mm boîte de 100",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 32,
+      "nom": "THREE KINGS 33mm rouleau de 10",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 33,
+      "nom": "Charbons NEO 72 cubes by Three Kings",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 34,
+      "nom": "Mallette M",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 35,
+      "nom": "Mallette L",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 36,
+      "nom": "Mallette XL",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 37,
+      "nom": "Chicha portable EL-BADIA P1",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 97,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 28,
+              "nom": "DEEP BLACK",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 134
+        },
+        {
+          "id": 98,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 58,
+              "nom": "SCARLET RED",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 135
+        },
+        {
+          "id": 99,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 30,
+              "nom": "PACIFIC BLUE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 136
+        },
+        {
+          "id": 100,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 35,
+              "nom": "ACID YELLOW",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 137
+        }
+      ]
+    },
+    {
+      "id": 38,
+      "nom": "EL-BADIA P1 HMD",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 39,
+      "nom": "Aluminium perforé pour chicha",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 40,
+      "nom": "50 Aluminiums épaisseur EXTRA",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 41,
+      "nom": "EL-BADIA SHISHA CLEANER",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 42,
+      "nom": "Allume charbons à gaz",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 43,
+      "nom": "Recharge gaz pour allume charbon",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 45,
+      "nom": "MS BB",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 101,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 59,
+              "nom": "ROSE",
+              "groupe_id": 9,
+              "groupe": "MS BB"
+            }
+          ],
+          "stock": 2,
+          "stock_available_id": 146
+        },
+        {
+          "id": 102,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 60,
+              "nom": "NOIR",
+              "groupe_id": 9,
+              "groupe": "MS BB"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 147
+        },
+        {
+          "id": 103,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 61,
+              "nom": "BLEU",
+              "groupe_id": 9,
+              "groupe": "MS BB"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 148
+        },
+        {
+          "id": 104,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 62,
+              "nom": "AQUA",
+              "groupe_id": 9,
+              "groupe": "MS BB"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 149
+        },
+        {
+          "id": 105,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 63,
+              "nom": "GOLD",
+              "groupe_id": 9,
+              "groupe": "MS BB"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 150
+        },
+        {
+          "id": 106,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 64,
+              "nom": "VERT",
+              "groupe_id": 9,
+              "groupe": "MS BB"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 151
+        },
+        {
+          "id": 107,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 65,
+              "nom": "ROUGE",
+              "groupe_id": 9,
+              "groupe": "MS BB"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 152
+        }
+      ]
+    },
+    {
+      "id": 46,
+      "nom": "MS SKY BLUE",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 108,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 66,
+              "nom": "CIEL",
+              "groupe_id": 10,
+              "groupe": "MS SKY"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 154
+        },
+        {
+          "id": 109,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 67,
+              "nom": "PURPLE",
+              "groupe_id": 10,
+              "groupe": "MS SKY"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 155
+        },
+        {
+          "id": 110,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 68,
+              "nom": "GALAXY",
+              "groupe_id": 10,
+              "groupe": "MS SKY"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 156
+        },
+        {
+          "id": 111,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 69,
+              "nom": "MARBRE",
+              "groupe_id": 10,
+              "groupe": "MS SKY"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 157
+        },
+        {
+          "id": 112,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 70,
+              "nom": "AQUA",
+              "groupe_id": 10,
+              "groupe": "MS SKY"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 158
+        }
+      ]
+    },
+    {
+      "id": 47,
+      "nom": "MS SMOG",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 113,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 71,
+              "nom": "MATT GREY",
+              "groupe_id": 11,
+              "groupe": "MS SMOG"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 160
+        },
+        {
+          "id": 114,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 72,
+              "nom": "KLEIN BLUE",
+              "groupe_id": 11,
+              "groupe": "MS SMOG"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 161
+        },
+        {
+          "id": 115,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 73,
+              "nom": "SKY BLUE",
+              "groupe_id": 11,
+              "groupe": "MS SMOG"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 162
+        },
+        {
+          "id": 116,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 74,
+              "nom": "AMBER",
+              "groupe_id": 11,
+              "groupe": "MS SMOG"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 163
+        },
+        {
+          "id": 117,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 75,
+              "nom": "ROSY",
+              "groupe_id": 11,
+              "groupe": "MS SMOG"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 164
+        },
+        {
+          "id": 118,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 76,
+              "nom": "AQUAMARINE",
+              "groupe_id": 11,
+              "groupe": "MS SMOG"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 165
+        },
+        {
+          "id": 119,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 77,
+              "nom": "SHINY BLACK",
+              "groupe_id": 11,
+              "groupe": "MS SMOG"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 166
+        }
+      ]
+    },
+    {
+      "id": 48,
+      "nom": "EL-BADIA FANTOM",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 120,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 78,
+              "nom": "BLACK",
+              "groupe_id": 12,
+              "groupe": "FANTOM"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 168
+        },
+        {
+          "id": 121,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 79,
+              "nom": "GOLD",
+              "groupe_id": 12,
+              "groupe": "FANTOM"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 169
+        },
+        {
+          "id": 122,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 80,
+              "nom": "BLUE",
+              "groupe_id": 12,
+              "groupe": "FANTOM"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 170
+        },
+        {
+          "id": 123,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 81,
+              "nom": "RED",
+              "groupe_id": 12,
+              "groupe": "FANTOM"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 171
+        },
+        {
+          "id": 124,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 82,
+              "nom": "SILVER",
+              "groupe_id": 12,
+              "groupe": "FANTOM"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 172
+        },
+        {
+          "id": 125,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 83,
+              "nom": "BROWN",
+              "groupe_id": 12,
+              "groupe": "FANTOM"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 173
+        }
+      ]
+    },
+    {
+      "id": 49,
+      "nom": "MS MIDDLE DAZ",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 126,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 84,
+              "nom": "BLEU",
+              "groupe_id": 13,
+              "groupe": "MIDDLE DAZ"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 175
+        },
+        {
+          "id": 127,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 85,
+              "nom": "DORE",
+              "groupe_id": 13,
+              "groupe": "MIDDLE DAZ"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 176
+        },
+        {
+          "id": 128,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 86,
+              "nom": "GRIS",
+              "groupe_id": 13,
+              "groupe": "MIDDLE DAZ"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 177
+        },
+        {
+          "id": 129,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 87,
+              "nom": "NOIR",
+              "groupe_id": 13,
+              "groupe": "MIDDLE DAZ"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 178
+        },
+        {
+          "id": 130,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 88,
+              "nom": "ROUGE",
+              "groupe_id": 13,
+              "groupe": "MIDDLE DAZ"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 179
+        }
+      ]
+    },
+    {
+      "id": 50,
+      "nom": "TSAR MOLOTOV X",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 131,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 89,
+              "nom": "GRIS NARDO",
+              "groupe_id": 14,
+              "groupe": "MOLOTOV X"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 181
+        },
+        {
+          "id": 132,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 90,
+              "nom": "PURPLE RAIN",
+              "groupe_id": 14,
+              "groupe": "MOLOTOV X"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 182
+        },
+        {
+          "id": 133,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 91,
+              "nom": "SPACE BLUE",
+              "groupe_id": 14,
+              "groupe": "MOLOTOV X"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 183
+        },
+        {
+          "id": 134,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 92,
+              "nom": "VERTIGO",
+              "groupe_id": 14,
+              "groupe": "MOLOTOV X"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 184
+        },
+        {
+          "id": 135,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 93,
+              "nom": "GOLD DIGGER",
+              "groupe_id": 14,
+              "groupe": "MOLOTOV X"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 185
+        },
+        {
+          "id": 136,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 94,
+              "nom": "ORANGE MECANIQUE",
+              "groupe_id": 14,
+              "groupe": "MOLOTOV X"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 186
+        }
+      ]
+    },
+    {
+      "id": 51,
+      "nom": "Foyer Flexibowl Phunnel",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 137,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 95,
+              "nom": "VERT",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 188
+        },
+        {
+          "id": 138,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 96,
+              "nom": "ROSE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 189
+        },
+        {
+          "id": 139,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 97,
+              "nom": "ROUGE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 190
+        },
+        {
+          "id": 140,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 98,
+              "nom": "NOIR",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 191
+        },
+        {
+          "id": 141,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 99,
+              "nom": "VIOLET",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 192
+        },
+        {
+          "id": 142,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 100,
+              "nom": "BLEU",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 193
+        },
+        {
+          "id": 143,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 101,
+              "nom": "BLEU CIEL",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": -1,
+          "stock_available_id": 194
+        },
+        {
+          "id": 144,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 102,
+              "nom": "BLANC",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 195
+        }
+      ]
+    },
+    {
+      "id": 52,
+      "nom": "Foyer GLASSBOWL FIX 24.4",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 53,
+      "nom": "Système de chauffe One",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 56,
+      "nom": "DUM VICTORIA M SS39",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 165,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 102,
+              "nom": "BLANC",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 221
+        },
+        {
+          "id": 166,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 98,
+              "nom": "NOIR",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 222
+        },
+        {
+          "id": 167,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 124,
+              "nom": "SILVER",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 223
+        },
+        {
+          "id": 168,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 125,
+              "nom": "TRANSPARENT",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 224
+        },
+        {
+          "id": 169,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 126,
+              "nom": "GOLD",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 225
+        }
+      ]
+    },
+    {
+      "id": 57,
+      "nom": "H16 FRECH CARBON",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 170,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 124,
+              "nom": "SILVER",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 227
+        },
+        {
+          "id": 171,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 100,
+              "nom": "BLEU",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 228
+        },
+        {
+          "id": 172,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 98,
+              "nom": "NOIR",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 229
+        },
+        {
+          "id": 173,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 96,
+              "nom": "ROSE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 230
+        },
+        {
+          "id": 174,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 97,
+              "nom": "ROUGE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 231
+        },
+        {
+          "id": 175,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 126,
+              "nom": "GOLD",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 232
+        }
+      ]
+    },
+    {
+      "id": 58,
+      "nom": "H2 H85 SAGA MEDIUM",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 176,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 125,
+              "nom": "TRANSPARENT",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 234
+        },
+        {
+          "id": 177,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 124,
+              "nom": "SILVER",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 235
+        },
+        {
+          "id": 178,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 97,
+              "nom": "ROUGE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 236
+        },
+        {
+          "id": 179,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 100,
+              "nom": "BLEU",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 237
+        },
+        {
+          "id": 180,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 96,
+              "nom": "ROSE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 238
+        },
+        {
+          "id": 181,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 98,
+              "nom": "NOIR",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 239
+        }
+      ]
+    },
+    {
+      "id": 59,
+      "nom": "DUM CAR PACK",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 182,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 126,
+              "nom": "GOLD",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 241
+        },
+        {
+          "id": 183,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 124,
+              "nom": "SILVER",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 242
+        },
+        {
+          "id": 184,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 100,
+              "nom": "BLEU",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 243
+        },
+        {
+          "id": 185,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 98,
+              "nom": "NOIR",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 244
+        },
+        {
+          "id": 186,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 96,
+              "nom": "ROSE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 245
+        },
+        {
+          "id": 187,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 97,
+              "nom": "ROUGE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 246
+        }
+      ]
+    },
+    {
+      "id": 60,
+      "nom": "CLOUD ONE 200GR",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 188,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 127,
+              "nom": "PEAR CHILL",
+              "groupe_id": 18,
+              "groupe": "Parfums"
+            }
+          ],
+          "stock": -1,
+          "stock_available_id": 248
+        },
+        {
+          "id": 189,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 128,
+              "nom": "CUCUMBER",
+              "groupe_id": 18,
+              "groupe": "Parfums"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 249
+        },
+        {
+          "id": 190,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 129,
+              "nom": "TANGLE TINGLE",
+              "groupe_id": 18,
+              "groupe": "Parfums"
+            }
+          ],
+          "stock": -2,
+          "stock_available_id": 250
+        },
+        {
+          "id": 191,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 130,
+              "nom": "ORANGE MINT",
+              "groupe_id": 18,
+              "groupe": "Parfums"
+            }
+          ],
+          "stock": -2,
+          "stock_available_id": 251
+        },
+        {
+          "id": 192,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 131,
+              "nom": "LE PASSION EXOTIQ",
+              "groupe_id": 18,
+              "groupe": "Parfums"
+            }
+          ],
+          "stock": -2,
+          "stock_available_id": 252
+        },
+        {
+          "id": 193,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 132,
+              "nom": "GRENADINE",
+              "groupe_id": 18,
+              "groupe": "Parfums"
+            }
+          ],
+          "stock": -3,
+          "stock_available_id": 253
+        },
+        {
+          "id": 194,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 133,
+              "nom": "HOODBERRIES BONBON",
+              "groupe_id": 18,
+              "groupe": "Parfums"
+            }
+          ],
+          "stock": -1,
+          "stock_available_id": 254
+        },
+        {
+          "id": 195,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 134,
+              "nom": "LEMON CHILL",
+              "groupe_id": 18,
+              "groupe": "Parfums"
+            }
+          ],
+          "stock": -2,
+          "stock_available_id": 255
+        },
+        {
+          "id": 196,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 135,
+              "nom": "GOLD PEACH",
+              "groupe_id": 18,
+              "groupe": "Parfums"
+            }
+          ],
+          "stock": -2,
+          "stock_available_id": 256
+        },
+        {
+          "id": 197,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 136,
+              "nom": "400 VOLT",
+              "groupe_id": 18,
+              "groupe": "Parfums"
+            }
+          ],
+          "stock": -2,
+          "stock_available_id": 257
+        },
+        {
+          "id": 198,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 137,
+              "nom": "MANGANA",
+              "groupe_id": 18,
+              "groupe": "Parfums"
+            }
+          ],
+          "stock": -2,
+          "stock_available_id": 258
+        },
+        {
+          "id": 199,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 138,
+              "nom": "PISTACHIO BREEZE",
+              "groupe_id": 18,
+              "groupe": "Parfums"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 259
+        },
+        {
+          "id": 200,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 139,
+              "nom": "WATERMELON CHILL",
+              "groupe_id": 18,
+              "groupe": "Parfums"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 260
+        },
+        {
+          "id": 201,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 140,
+              "nom": "L66",
+              "groupe_id": 18,
+              "groupe": "Parfums"
+            }
+          ],
+          "stock": -2,
+          "stock_available_id": 261
+        },
+        {
+          "id": 202,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 141,
+              "nom": "GREEN NANA",
+              "groupe_id": 18,
+              "groupe": "Parfums"
+            }
+          ],
+          "stock": -2,
+          "stock_available_id": 262
+        }
+      ]
+    },
+    {
+      "id": 61,
+      "nom": "GunShot 200g",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 203,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 142,
+              "nom": "ABSOLUT(menthe sucree)",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 264
+        },
+        {
+          "id": 204,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 143,
+              "nom": "ENDLESS LOVE(pasteque passion)",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 265
+        },
+        {
+          "id": 205,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 144,
+              "nom": "HAWAII(ananas mangue menthe)",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 266
+        },
+        {
+          "id": 206,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 145,
+              "nom": "STRAWBERRY BANANA(fraise banane)",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 267
+        },
+        {
+          "id": 207,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 146,
+              "nom": "SWEET MINT",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 268
+        },
+        {
+          "id": 208,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 147,
+              "nom": "WATERMELON CHILL",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 269
+        },
+        {
+          "id": 209,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 148,
+              "nom": "LADY ONE(baies melon)",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 270
+        },
+        {
+          "id": 210,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 149,
+              "nom": "MANGARINO(passion mangue)",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 271
+        },
+        {
+          "id": 211,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 150,
+              "nom": "FLASH CUCUMBER",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 272
+        },
+        {
+          "id": 212,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 151,
+              "nom": "ME ROMA(ananas banane)",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 273
+        },
+        {
+          "id": 213,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 152,
+              "nom": "CYNGUM(canelle gum)",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 274
+        },
+        {
+          "id": 214,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 153,
+              "nom": "FRENCH QUEEN(fruits rouges)",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 275
+        },
+        {
+          "id": 215,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 154,
+              "nom": "LA PIRATERIE(dragon passion)",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 276
+        },
+        {
+          "id": 216,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 155,
+              "nom": "K MARO(cactus figue)",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 277
+        },
+        {
+          "id": 217,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 156,
+              "nom": "LEMON FLASH",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 278
+        },
+        {
+          "id": 218,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 157,
+              "nom": "JAMAICA(orange pamplemousse citron)",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 279
+        },
+        {
+          "id": 219,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 158,
+              "nom": "ICE BONBON",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 280
+        },
+        {
+          "id": 220,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 159,
+              "nom": "BERRY NICE",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 281
+        },
+        {
+          "id": 221,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 160,
+              "nom": "BLUE LYCHEE",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 282
+        },
+        {
+          "id": 222,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 161,
+              "nom": "PINEAPPLE BOOM",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 283
+        },
+        {
+          "id": 223,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 162,
+              "nom": "FLASH PECHE",
+              "groupe_id": 19,
+              "groupe": "GUN SHOT"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 284
+        }
+      ]
+    },
+    {
+      "id": 62,
+      "nom": "MS SKULL",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 224,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 163,
+              "nom": "ROUGE",
+              "groupe_id": 20,
+              "groupe": "MS SKULL"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 286
+        },
+        {
+          "id": 225,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 164,
+              "nom": "ARGENT",
+              "groupe_id": 20,
+              "groupe": "MS SKULL"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 287
+        },
+        {
+          "id": 226,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 165,
+              "nom": "DOREE",
+              "groupe_id": 20,
+              "groupe": "MS SKULL"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 288
+        },
+        {
+          "id": 227,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 166,
+              "nom": "TRANSPARENT",
+              "groupe_id": 20,
+              "groupe": "MS SKULL"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 289
+        },
+        {
+          "id": 228,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 167,
+              "nom": "BLEU",
+              "groupe_id": 20,
+              "groupe": "MS SKULL"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 290
+        },
+        {
+          "id": 229,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 168,
+              "nom": "RAINBOW",
+              "groupe_id": 20,
+              "groupe": "MS SKULL"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 291
+        }
+      ]
+    },
+    {
+      "id": 65,
+      "nom": "CELESTE 2.0 BLACK EDITION",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 279,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 31,
+              "nom": "ACID GREEN",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 344
+        },
+        {
+          "id": 280,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 30,
+              "nom": "PACIFIC BLUE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 345
+        },
+        {
+          "id": 281,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 35,
+              "nom": "ACID YELLOW",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 346
+        },
+        {
+          "id": 282,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 32,
+              "nom": "ACID ORANGE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 347
+        },
+        {
+          "id": 283,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 29,
+              "nom": "ACID PINK",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 348
+        }
+      ]
+    },
+    {
+      "id": 66,
+      "nom": "CHICHA TSAR PROTON",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 284,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 98,
+              "nom": "NOIR",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 350
+        },
+        {
+          "id": 285,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 100,
+              "nom": "BLEU",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 351
+        },
+        {
+          "id": 286,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 102,
+              "nom": "BLANC",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 352
+        },
+        {
+          "id": 287,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 126,
+              "nom": "GOLD",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 353
+        },
+        {
+          "id": 288,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 97,
+              "nom": "ROUGE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 354
+        },
+        {
+          "id": 289,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 95,
+              "nom": "VERT",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 355
+        }
+      ]
+    },
+    {
+      "id": 67,
+      "nom": "Chicha WOOKAH WHITE BLACK CLICK",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 68,
+      "nom": "Chicha WOOKAH BLACK PINK Click",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 69,
+      "nom": "Chicha EL-BADIA Z6",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 70,
+      "nom": "Chicha EL-BADIA Z6 BLACK",
+      "ean": null,
+      "reference": null,
+      "declinaisons": []
+    },
+    {
+      "id": 72,
+      "nom": "JNR FALCON X + 28K",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 374,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 237,
+              "nom": "WATERMELON MANGO PEACH",
+              "groupe_id": 24,
+              "groupe": "PUFF 28K"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 446
+        },
+        {
+          "id": 375,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 238,
+              "nom": "MIXED BERRIES",
+              "groupe_id": 24,
+              "groupe": "PUFF 28K"
+            }
+          ],
+          "stock": 2,
+          "stock_available_id": 447
+        },
+        {
+          "id": 376,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 239,
+              "nom": "BLUEBERRY RASPERRY CHERRY",
+              "groupe_id": 24,
+              "groupe": "PUFF 28K"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 448
+        },
+        {
+          "id": 377,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 240,
+              "nom": "MANGO PASSION FRUIT",
+              "groupe_id": 24,
+              "groupe": "PUFF 28K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 449
+        },
+        {
+          "id": 378,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 241,
+              "nom": "BLACKBERRY RED RASBERRY",
+              "groupe_id": 24,
+              "groupe": "PUFF 28K"
+            }
+          ],
+          "stock": 4,
+          "stock_available_id": 450
+        },
+        {
+          "id": 379,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 242,
+              "nom": "BLUEBERRY POMEGRANATE ICE",
+              "groupe_id": 24,
+              "groupe": "PUFF 28K"
+            }
+          ],
+          "stock": 2,
+          "stock_available_id": 451
+        },
+        {
+          "id": 380,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 243,
+              "nom": "PEACH BERRY",
+              "groupe_id": 24,
+              "groupe": "PUFF 28K"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 452
+        },
+        {
+          "id": 381,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 244,
+              "nom": "BLACK DRAGON ICE",
+              "groupe_id": 24,
+              "groupe": "PUFF 28K"
+            }
+          ],
+          "stock": 4,
+          "stock_available_id": 453
+        },
+        {
+          "id": 382,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 245,
+              "nom": "STRAWBERRY WATERMELON",
+              "groupe_id": 24,
+              "groupe": "PUFF 28K"
+            }
+          ],
+          "stock": 4,
+          "stock_available_id": 454
+        },
+        {
+          "id": 383,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 246,
+              "nom": "KIWI STRAWBERRY",
+              "groupe_id": 24,
+              "groupe": "PUFF 28K"
+            }
+          ],
+          "stock": 4,
+          "stock_available_id": 455
+        }
+      ]
+    },
+    {
+      "id": 73,
+      "nom": "PUFF 18K SUPREME VAP REMPLISSABLE",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 384,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 247,
+              "nom": "STRAWBERRY WATERMELON",
+              "groupe_id": 25,
+              "groupe": "PUFF Tornado 18k"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 457
+        },
+        {
+          "id": 385,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 248,
+              "nom": "WATERMELON CHILL",
+              "groupe_id": 25,
+              "groupe": "PUFF Tornado 18k"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 458
+        },
+        {
+          "id": 386,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 249,
+              "nom": "BLUEBERRY RASPERRY",
+              "groupe_id": 25,
+              "groupe": "PUFF Tornado 18k"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 459
+        },
+        {
+          "id": 387,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 250,
+              "nom": "APPLE PEACH PEAR",
+              "groupe_id": 25,
+              "groupe": "PUFF Tornado 18k"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 460
+        },
+        {
+          "id": 388,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 251,
+              "nom": "TRIPLE BERRY",
+              "groupe_id": 25,
+              "groupe": "PUFF Tornado 18k"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 461
+        },
+        {
+          "id": 389,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 252,
+              "nom": "DRAGON FRUIT ICE",
+              "groupe_id": 25,
+              "groupe": "PUFF Tornado 18k"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 462
+        },
+        {
+          "id": 390,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 253,
+              "nom": "SNAKE FRUIT ICE",
+              "groupe_id": 25,
+              "groupe": "PUFF Tornado 18k"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 463
+        },
+        {
+          "id": 391,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 254,
+              "nom": "ICE MANGO",
+              "groupe_id": 25,
+              "groupe": "PUFF Tornado 18k"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 464
+        },
+        {
+          "id": 392,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 255,
+              "nom": "PEACH ICE",
+              "groupe_id": 25,
+              "groupe": "PUFF Tornado 18k"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 465
+        },
+        {
+          "id": 393,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 256,
+              "nom": "PEACH MANGO",
+              "groupe_id": 25,
+              "groupe": "PUFF Tornado 18k"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 466
+        },
+        {
+          "id": 394,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 257,
+              "nom": "STRAWBERRY ICE",
+              "groupe_id": 25,
+              "groupe": "PUFF Tornado 18k"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 467
+        },
+        {
+          "id": 395,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 258,
+              "nom": "STRAWBERRY KIWI",
+              "groupe_id": 25,
+              "groupe": "PUFF Tornado 18k"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 468
+        }
+      ]
+    },
+    {
+      "id": 74,
+      "nom": "CHICHA DUM SS25 Hydraulique",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 398,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 125,
+              "nom": "TRANSPARENT",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 472
+        },
+        {
+          "id": 399,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 124,
+              "nom": "SILVER",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 473
+        },
+        {
+          "id": 400,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 100,
+              "nom": "BLEU",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 474
+        },
+        {
+          "id": 401,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 98,
+              "nom": "NOIR",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 475
+        },
+        {
+          "id": 402,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 97,
+              "nom": "ROUGE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 476
+        }
+      ]
+    },
+    {
+      "id": 75,
+      "nom": "Chicha MS Day&Night",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 403,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 261,
+              "nom": "ORANGE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 478
+        },
+        {
+          "id": 404,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 260,
+              "nom": "JAUNE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 479
+        },
+        {
+          "id": 405,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 100,
+              "nom": "BLEU",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 480
+        },
+        {
+          "id": 406,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 95,
+              "nom": "VERT",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 481
+        },
+        {
+          "id": 408,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 97,
+              "nom": "ROUGE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 483
+        }
+      ]
+    },
+    {
+      "id": 76,
+      "nom": "CHICHA DUM EVA D10",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 418,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 100,
+              "nom": "BLEU",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 494
+        },
+        {
+          "id": 419,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 126,
+              "nom": "GOLD",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 495
+        },
+        {
+          "id": 420,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 98,
+              "nom": "NOIR",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 496
+        },
+        {
+          "id": 421,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 124,
+              "nom": "SILVER",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 497
+        },
+        {
+          "id": 422,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 96,
+              "nom": "ROSE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 498
+        },
+        {
+          "id": 423,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 97,
+              "nom": "ROUGE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 499
+        },
+        {
+          "id": 425,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 95,
+              "nom": "VERT",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 501
+        }
+      ]
+    },
+    {
+      "id": 77,
+      "nom": "Puff Chicha 30K AL FAKHER Cubic",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 426,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 262,
+              "nom": "MAGIC LOVE",
+              "groupe_id": 26,
+              "groupe": "AL FAKHER 30K"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 503
+        },
+        {
+          "id": 427,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 263,
+              "nom": "BERRY ICE",
+              "groupe_id": 26,
+              "groupe": "AL FAKHER 30K"
+            }
+          ],
+          "stock": 6,
+          "stock_available_id": 504
+        },
+        {
+          "id": 428,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 264,
+              "nom": "BLUEBERRY GUM",
+              "groupe_id": 26,
+              "groupe": "AL FAKHER 30K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 505
+        },
+        {
+          "id": 429,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 265,
+              "nom": "TWO APPLE",
+              "groupe_id": 26,
+              "groupe": "AL FAKHER 30K"
+            }
+          ],
+          "stock": 2,
+          "stock_available_id": 506
+        },
+        {
+          "id": 430,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 266,
+              "nom": "SPACE DREAM",
+              "groupe_id": 26,
+              "groupe": "AL FAKHER 30K"
+            }
+          ],
+          "stock": -1,
+          "stock_available_id": 507
+        },
+        {
+          "id": 431,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 267,
+              "nom": "PEACH ICE",
+              "groupe_id": 26,
+              "groupe": "AL FAKHER 30K"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 508
+        },
+        {
+          "id": 432,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 268,
+              "nom": "MIXED BERRY",
+              "groupe_id": 26,
+              "groupe": "AL FAKHER 30K"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 509
+        },
+        {
+          "id": 433,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 269,
+              "nom": "STRAWBERRY PUNCH",
+              "groupe_id": 26,
+              "groupe": "AL FAKHER 30K"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 510
+        },
+        {
+          "id": 434,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 270,
+              "nom": "WATERMELON PINEAPPLE",
+              "groupe_id": 26,
+              "groupe": "AL FAKHER 30K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 511
+        },
+        {
+          "id": 435,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 271,
+              "nom": "GUM MINT",
+              "groupe_id": 26,
+              "groupe": "AL FAKHER 30K"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 512
+        },
+        {
+          "id": 436,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 272,
+              "nom": "CHERRY FIESTA",
+              "groupe_id": 26,
+              "groupe": "AL FAKHER 30K"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 513
+        },
+        {
+          "id": 437,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 273,
+              "nom": "CHERRY ICE",
+              "groupe_id": 26,
+              "groupe": "AL FAKHER 30K"
+            }
+          ],
+          "stock": 2,
+          "stock_available_id": 514
+        }
+      ]
+    },
+    {
+      "id": 78,
+      "nom": "MS Magma Titan",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 438,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 274,
+              "nom": "RAINBOW",
+              "groupe_id": 27,
+              "groupe": "ms magma"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 516
+        },
+        {
+          "id": 439,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 275,
+              "nom": "SKY BLUE",
+              "groupe_id": 27,
+              "groupe": "ms magma"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 517
+        },
+        {
+          "id": 440,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 276,
+              "nom": "GRIS CENDRE",
+              "groupe_id": 27,
+              "groupe": "ms magma"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 518
+        },
+        {
+          "id": 441,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 277,
+              "nom": "NOIR FUME",
+              "groupe_id": 27,
+              "groupe": "ms magma"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 519
+        },
+        {
+          "id": 442,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 278,
+              "nom": "OR VOLCANIQUE",
+              "groupe_id": 27,
+              "groupe": "ms magma"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 520
+        }
+      ]
+    },
+    {
+      "id": 79,
+      "nom": "MS Magma Origin",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 443,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 274,
+              "nom": "RAINBOW",
+              "groupe_id": 27,
+              "groupe": "ms magma"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 522
+        },
+        {
+          "id": 444,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 275,
+              "nom": "SKY BLUE",
+              "groupe_id": 27,
+              "groupe": "ms magma"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 523
+        },
+        {
+          "id": 445,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 276,
+              "nom": "GRIS CENDRE",
+              "groupe_id": 27,
+              "groupe": "ms magma"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 524
+        },
+        {
+          "id": 446,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 277,
+              "nom": "NOIR FUME",
+              "groupe_id": 27,
+              "groupe": "ms magma"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 525
+        },
+        {
+          "id": 447,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 278,
+              "nom": "OR VOLCANIQUE",
+              "groupe_id": 27,
+              "groupe": "ms magma"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 526
+        }
+      ]
+    },
+    {
+      "id": 80,
+      "nom": "MS Magma Fury",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 448,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 274,
+              "nom": "RAINBOW",
+              "groupe_id": 27,
+              "groupe": "ms magma"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 528
+        },
+        {
+          "id": 449,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 275,
+              "nom": "SKY BLUE",
+              "groupe_id": 27,
+              "groupe": "ms magma"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 529
+        },
+        {
+          "id": 450,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 276,
+              "nom": "GRIS CENDRE",
+              "groupe_id": 27,
+              "groupe": "ms magma"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 530
+        },
+        {
+          "id": 451,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 277,
+              "nom": "NOIR FUME",
+              "groupe_id": 27,
+              "groupe": "ms magma"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 531
+        },
+        {
+          "id": 452,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 278,
+              "nom": "OR VOLCANIQUE",
+              "groupe_id": 27,
+              "groupe": "ms magma"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 532
+        }
+      ]
+    },
+    {
+      "id": 83,
+      "nom": "E-liquide Adalya 10ml 20mg/ml",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 475,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 289,
+              "nom": "MI AMOR",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 4,
+          "stock_available_id": 558
+        },
+        {
+          "id": 476,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 290,
+              "nom": "HAWAII",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 4,
+          "stock_available_id": 559
+        },
+        {
+          "id": 477,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 291,
+              "nom": "LADY KILLER",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 8,
+          "stock_available_id": 560
+        },
+        {
+          "id": 478,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 292,
+              "nom": "LOVE 66",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 7,
+          "stock_available_id": 561
+        },
+        {
+          "id": 479,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 293,
+              "nom": "DOUBLE MELON",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 9,
+          "stock_available_id": 562
+        },
+        {
+          "id": 480,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 294,
+              "nom": "ICE BONBON",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 7,
+          "stock_available_id": 563
+        },
+        {
+          "id": 481,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 295,
+              "nom": "MINT POINT",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 6,
+          "stock_available_id": 564
+        },
+        {
+          "id": 482,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 296,
+              "nom": "ABSOLUT ZERO",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 565
+        },
+        {
+          "id": 483,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 297,
+              "nom": "PASSION FRUIT GUAVA KIWI",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 10,
+          "stock_available_id": 566
+        },
+        {
+          "id": 484,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 298,
+              "nom": "STRAWBERRY SPLASH",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 567
+        },
+        {
+          "id": 485,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 299,
+              "nom": "PUNKMAN",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 568
+        },
+        {
+          "id": 486,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 300,
+              "nom": "VERY BERRY",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 9,
+          "stock_available_id": 569
+        },
+        {
+          "id": 487,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 303,
+              "nom": "COLA DRAGON",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 9,
+          "stock_available_id": 570
+        },
+        {
+          "id": 488,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 302,
+              "nom": "AFRICAN CRUSH",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 10,
+          "stock_available_id": 571
+        },
+        {
+          "id": 489,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 301,
+              "nom": "MENTHOL",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 9,
+          "stock_available_id": 572
+        }
+      ]
+    },
+    {
+      "id": 84,
+      "nom": "E-liquide Adalya 60ml 0% Nicotine",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 490,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 289,
+              "nom": "MI AMOR",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 9,
+          "stock_available_id": 574
+        },
+        {
+          "id": 491,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 290,
+              "nom": "HAWAII",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 575
+        },
+        {
+          "id": 492,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 292,
+              "nom": "LOVE 66",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 576
+        },
+        {
+          "id": 493,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 291,
+              "nom": "LADY KILLER",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 7,
+          "stock_available_id": 577
+        },
+        {
+          "id": 494,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 303,
+              "nom": "COLA DRAGON",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 8,
+          "stock_available_id": 578
+        },
+        {
+          "id": 495,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 302,
+              "nom": "AFRICAN CRUSH",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 9,
+          "stock_available_id": 579
+        },
+        {
+          "id": 496,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 297,
+              "nom": "PASSION FRUIT GUAVA KIWI",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 9,
+          "stock_available_id": 580
+        },
+        {
+          "id": 497,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 298,
+              "nom": "STRAWBERRY SPLASH",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 10,
+          "stock_available_id": 581
+        },
+        {
+          "id": 498,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 299,
+              "nom": "PUNKMAN",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 10,
+          "stock_available_id": 582
+        },
+        {
+          "id": 499,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 300,
+              "nom": "VERY BERRY",
+              "groupe_id": 29,
+              "groupe": "E LIQUIDE ADALYA"
+            }
+          ],
+          "stock": 10,
+          "stock_available_id": 583
+        }
+      ]
+    },
+    {
+      "id": 85,
+      "nom": "VAPE MEMERS 15K 2%",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 500,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 304,
+              "nom": "WATERMELON ICE",
+              "groupe_id": 30,
+              "groupe": "MEMERS 15K"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 585
+        },
+        {
+          "id": 501,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 305,
+              "nom": "BLUE RAZZ",
+              "groupe_id": 30,
+              "groupe": "MEMERS 15K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 586
+        },
+        {
+          "id": 502,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 306,
+              "nom": "FIZZY CHERRY",
+              "groupe_id": 30,
+              "groupe": "MEMERS 15K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 587
+        },
+        {
+          "id": 503,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 307,
+              "nom": "MR BLUE",
+              "groupe_id": 30,
+              "groupe": "MEMERS 15K"
+            }
+          ],
+          "stock": 7,
+          "stock_available_id": 588
+        },
+        {
+          "id": 504,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 308,
+              "nom": "BLUEBERRY RASPERRY",
+              "groupe_id": 30,
+              "groupe": "MEMERS 15K"
+            }
+          ],
+          "stock": 4,
+          "stock_available_id": 589
+        },
+        {
+          "id": 505,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 309,
+              "nom": "FRUIT MEDLEY",
+              "groupe_id": 30,
+              "groupe": "MEMERS 15K"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 590
+        },
+        {
+          "id": 506,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 310,
+              "nom": "KIWI PASSION FRUIT",
+              "groupe_id": 30,
+              "groupe": "MEMERS 15K"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 591
+        },
+        {
+          "id": 507,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 311,
+              "nom": "STRAWBERRY ICE",
+              "groupe_id": 30,
+              "groupe": "MEMERS 15K"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 592
+        },
+        {
+          "id": 508,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 312,
+              "nom": "BLUEBERRY SOUR RASPBERRY",
+              "groupe_id": 30,
+              "groupe": "MEMERS 15K"
+            }
+          ],
+          "stock": 4,
+          "stock_available_id": 593
+        },
+        {
+          "id": 509,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 313,
+              "nom": "FRUIT GUM",
+              "groupe_id": 30,
+              "groupe": "MEMERS 15K"
+            }
+          ],
+          "stock": 4,
+          "stock_available_id": 594
+        },
+        {
+          "id": 510,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 314,
+              "nom": "LEMON LIME",
+              "groupe_id": 30,
+              "groupe": "MEMERS 15K"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 595
+        },
+        {
+          "id": 511,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 315,
+              "nom": "BLUEBERRY CHERRY CRANBERRY",
+              "groupe_id": 30,
+              "groupe": "MEMERS 15K"
+            }
+          ],
+          "stock": 4,
+          "stock_available_id": 596
+        }
+      ]
+    },
+    {
+      "id": 86,
+      "nom": "LEVO ADALYA 30K 2%",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 512,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 316,
+              "nom": "ABSOLUT ZERO",
+              "groupe_id": 31,
+              "groupe": "LEVO ADALYA"
+            }
+          ],
+          "stock": 8,
+          "stock_available_id": 598
+        },
+        {
+          "id": 513,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 317,
+              "nom": "AFRICAN CRUSH",
+              "groupe_id": 31,
+              "groupe": "LEVO ADALYA"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 599
+        },
+        {
+          "id": 514,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 318,
+              "nom": "BLUE ICE",
+              "groupe_id": 31,
+              "groupe": "LEVO ADALYA"
+            }
+          ],
+          "stock": 9,
+          "stock_available_id": 600
+        },
+        {
+          "id": 515,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 319,
+              "nom": "COLA DRAGON",
+              "groupe_id": 31,
+              "groupe": "LEVO ADALYA"
+            }
+          ],
+          "stock": 9,
+          "stock_available_id": 601
+        },
+        {
+          "id": 516,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 320,
+              "nom": "HAWAII",
+              "groupe_id": 31,
+              "groupe": "LEVO ADALYA"
+            }
+          ],
+          "stock": 12,
+          "stock_available_id": 602
+        },
+        {
+          "id": 517,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 321,
+              "nom": "ICE BONBON",
+              "groupe_id": 31,
+              "groupe": "LEVO ADALYA"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 603
+        },
+        {
+          "id": 518,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 322,
+              "nom": "LADY KILLER",
+              "groupe_id": 31,
+              "groupe": "LEVO ADALYA"
+            }
+          ],
+          "stock": 7,
+          "stock_available_id": 604
+        },
+        {
+          "id": 519,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 323,
+              "nom": "LOVE 66",
+              "groupe_id": 31,
+              "groupe": "LEVO ADALYA"
+            }
+          ],
+          "stock": 18,
+          "stock_available_id": 605
+        },
+        {
+          "id": 520,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 324,
+              "nom": "MI AMOR",
+              "groupe_id": 31,
+              "groupe": "LEVO ADALYA"
+            }
+          ],
+          "stock": 16,
+          "stock_available_id": 606
+        },
+        {
+          "id": 521,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 325,
+              "nom": "MINT POINT",
+              "groupe_id": 31,
+              "groupe": "LEVO ADALYA"
+            }
+          ],
+          "stock": 8,
+          "stock_available_id": 607
+        },
+        {
+          "id": 522,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 326,
+              "nom": "PASSION FRUIT GUAVA KIWI",
+              "groupe_id": 31,
+              "groupe": "LEVO ADALYA"
+            }
+          ],
+          "stock": 10,
+          "stock_available_id": 608
+        },
+        {
+          "id": 523,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 327,
+              "nom": "PUNKMAN",
+              "groupe_id": 31,
+              "groupe": "LEVO ADALYA"
+            }
+          ],
+          "stock": 8,
+          "stock_available_id": 609
+        },
+        {
+          "id": 524,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 328,
+              "nom": "STRAWBERRY SPLASH",
+              "groupe_id": 31,
+              "groupe": "LEVO ADALYA"
+            }
+          ],
+          "stock": 7,
+          "stock_available_id": 610
+        },
+        {
+          "id": 525,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 329,
+              "nom": "VERY BERRY",
+              "groupe_id": 31,
+              "groupe": "LEVO ADALYA"
+            }
+          ],
+          "stock": 8,
+          "stock_available_id": 611
+        }
+      ]
+    },
+    {
+      "id": 87,
+      "nom": "JNR 30K Falcon Gem+",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 526,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 279,
+              "nom": "CERISE GLACEE",
+              "groupe_id": 28,
+              "groupe": "jnr 30k"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 613
+        },
+        {
+          "id": 527,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 280,
+              "nom": "FRAISE GLACEE",
+              "groupe_id": 28,
+              "groupe": "jnr 30k"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 614
+        },
+        {
+          "id": 528,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 281,
+              "nom": "FRAISE KIWI",
+              "groupe_id": 28,
+              "groupe": "jnr 30k"
+            }
+          ],
+          "stock": 4,
+          "stock_available_id": 615
+        },
+        {
+          "id": 529,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 282,
+              "nom": "VACANCES D'ETE",
+              "groupe_id": 28,
+              "groupe": "jnr 30k"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 616
+        },
+        {
+          "id": 530,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 283,
+              "nom": "FRUITS ROUGE",
+              "groupe_id": 28,
+              "groupe": "jnr 30k"
+            }
+          ],
+          "stock": 2,
+          "stock_available_id": 617
+        },
+        {
+          "id": 531,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 284,
+              "nom": "FRAISE PASTEQUE",
+              "groupe_id": 28,
+              "groupe": "jnr 30k"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 618
+        },
+        {
+          "id": 532,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 285,
+              "nom": "PECHE GLACEE",
+              "groupe_id": 28,
+              "groupe": "jnr 30k"
+            }
+          ],
+          "stock": 4,
+          "stock_available_id": 619
+        },
+        {
+          "id": 533,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 286,
+              "nom": "PASTEQUE GLACEE",
+              "groupe_id": 28,
+              "groupe": "jnr 30k"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 620
+        },
+        {
+          "id": 534,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 287,
+              "nom": "CERISE BLEUE CANNEBERGE",
+              "groupe_id": 28,
+              "groupe": "jnr 30k"
+            }
+          ],
+          "stock": 4,
+          "stock_available_id": 621
+        },
+        {
+          "id": 535,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 288,
+              "nom": "MYRTILLE ACIDULE FRAMBOISE",
+              "groupe_id": 28,
+              "groupe": "jnr 30k"
+            }
+          ],
+          "stock": 4,
+          "stock_available_id": 622
+        }
+      ]
+    },
+    {
+      "id": 88,
+      "nom": "E LIQUIDE JNR 10ML 2%",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 536,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 330,
+              "nom": "ANANAS MANGUE PASTEQUE PASSION",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 624
+        },
+        {
+          "id": 537,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 331,
+              "nom": "CERISE GLACEE",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 625
+        },
+        {
+          "id": 538,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 332,
+              "nom": "CERISE PASTEQUE GLACEE",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 626
+        },
+        {
+          "id": 539,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 333,
+              "nom": "COLA CERISE",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 4,
+          "stock_available_id": 627
+        },
+        {
+          "id": 540,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 334,
+              "nom": "FRAISE GLACEE",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 6,
+          "stock_available_id": 628
+        },
+        {
+          "id": 541,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 335,
+              "nom": "FRAISE KIWI",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 6,
+          "stock_available_id": 629
+        },
+        {
+          "id": 542,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 336,
+              "nom": "FRUIT DE LA PASSION KIWI",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 8,
+          "stock_available_id": 630
+        },
+        {
+          "id": 543,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 337,
+              "nom": "FRUIT DU DRAGON",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 631
+        },
+        {
+          "id": 544,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 338,
+              "nom": "FRUITS ROUGES",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 4,
+          "stock_available_id": 632
+        },
+        {
+          "id": 545,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 339,
+              "nom": "MANGUE FRUIT DE LA PASSION",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 633
+        },
+        {
+          "id": 546,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 340,
+              "nom": "MURE FRAMBOISE",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 634
+        },
+        {
+          "id": 547,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 341,
+              "nom": "MYRTILLE CERISE",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 635
+        },
+        {
+          "id": 548,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 342,
+              "nom": "MYRTILLE FRAMBOISE",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 636
+        },
+        {
+          "id": 549,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 343,
+              "nom": "MYRTILLE FRAMBOISE ACIDULEE",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 637
+        },
+        {
+          "id": 550,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 344,
+              "nom": "MYRTILLE FRAMBOISE CERISE",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 638
+        },
+        {
+          "id": 551,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 345,
+              "nom": "MYRTILLE GRENADE GLACEE",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 639
+        },
+        {
+          "id": 552,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 346,
+              "nom": "PASTEQUE FRAISE",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 3,
+          "stock_available_id": 640
+        },
+        {
+          "id": 553,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 347,
+              "nom": "PASTEQUE GLACEE",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 641
+        },
+        {
+          "id": 554,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 348,
+              "nom": "PASTEQUE GOMME",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 642
+        },
+        {
+          "id": 555,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 349,
+              "nom": "PASTEQUE MANGUE PECHE",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 643
+        },
+        {
+          "id": 556,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 350,
+              "nom": "PECHE FRUIT DES BOIS",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 644
+        },
+        {
+          "id": 557,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 351,
+              "nom": "POMME VERTE PECHE",
+              "groupe_id": 32,
+              "groupe": "liquide jnr"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 645
+        }
+      ]
+    },
+    {
+      "id": 90,
+      "nom": "Chicha El-badia Fancy",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 558,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 96,
+              "nom": "ROSE",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 648
+        },
+        {
+          "id": 559,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 100,
+              "nom": "BLEU",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 649
+        },
+        {
+          "id": 560,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 98,
+              "nom": "NOIR",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 650
+        }
+      ]
+    },
+    {
+      "id": 91,
+      "nom": "Goût Chicha Smoke Island 200g",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 583,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 352,
+              "nom": "Black acai",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 674
+        },
+        {
+          "id": 584,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 353,
+              "nom": "Cinnamon gum",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": -1,
+          "stock_available_id": 675
+        },
+        {
+          "id": 585,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 354,
+              "nom": "Cucumber lime",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 676
+        },
+        {
+          "id": 586,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 355,
+              "nom": "Double apple",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 677
+        },
+        {
+          "id": 587,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 356,
+              "nom": "Fruit mix",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 678
+        },
+        {
+          "id": 588,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 357,
+              "nom": "Holimi",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": -1,
+          "stock_available_id": 679
+        },
+        {
+          "id": 589,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 358,
+              "nom": "Ice blueberry",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 680
+        },
+        {
+          "id": 590,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 359,
+              "nom": "Ice bonbon",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 681
+        },
+        {
+          "id": 591,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 360,
+              "nom": "Ice grappe",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": -1,
+          "stock_available_id": 682
+        },
+        {
+          "id": 592,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 361,
+              "nom": "Ice gum",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 683
+        },
+        {
+          "id": 593,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 362,
+              "nom": "Ice lemon",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": -1,
+          "stock_available_id": 684
+        },
+        {
+          "id": 594,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 363,
+              "nom": "Ice love",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 685
+        },
+        {
+          "id": 595,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 364,
+              "nom": "Mango ice",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 686
+        },
+        {
+          "id": 596,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 365,
+              "nom": "Peach ice",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 687
+        },
+        {
+          "id": 597,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 366,
+              "nom": "Pear ice",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 688
+        },
+        {
+          "id": 598,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 367,
+              "nom": "Pineapple ice",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 689
+        },
+        {
+          "id": 599,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 368,
+              "nom": "Ice pistachio",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 690
+        },
+        {
+          "id": 600,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 369,
+              "nom": "Watermelon ice",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 691
+        },
+        {
+          "id": 601,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 370,
+              "nom": "Wildberry ice",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 692
+        },
+        {
+          "id": 602,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 371,
+              "nom": "Lady",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 693
+        },
+        {
+          "id": 603,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 372,
+              "nom": "Mint",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 694
+        },
+        {
+          "id": 604,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 373,
+              "nom": "Nurnberg",
+              "groupe_id": 33,
+              "groupe": "smoke island"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 695
+        }
+      ]
+    },
+    {
+      "id": 93,
+      "nom": "Chicha El-badia C5 V2",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 611,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 374,
+              "nom": "SILVER CHROME",
+              "groupe_id": 34,
+              "groupe": "c5 v2"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 704
+        },
+        {
+          "id": 612,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 375,
+              "nom": "ROSE GOLD",
+              "groupe_id": 34,
+              "groupe": "c5 v2"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 705
+        },
+        {
+          "id": 613,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 376,
+              "nom": "SHINY GOLD",
+              "groupe_id": 34,
+              "groupe": "c5 v2"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 706
+        },
+        {
+          "id": 614,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 377,
+              "nom": "BLACK FANTOM",
+              "groupe_id": 34,
+              "groupe": "c5 v2"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 707
+        },
+        {
+          "id": 615,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 378,
+              "nom": "COPPER BROWN",
+              "groupe_id": 34,
+              "groupe": "c5 v2"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 708
+        },
+        {
+          "id": 616,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 379,
+              "nom": "SHINY CARBON",
+              "groupe_id": 34,
+              "groupe": "c5 v2"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 709
+        }
+      ]
+    },
+    {
+      "id": 94,
+      "nom": "Chicha HOOKY STEEL",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 617,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 98,
+              "nom": "NOIR",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 711
+        },
+        {
+          "id": 618,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 102,
+              "nom": "BLANC",
+              "groupe_id": 2,
+              "groupe": "Couleurs"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 712
+        }
+      ]
+    },
+    {
+      "id": 95,
+      "nom": "PUFF SHISHA  ALFAKHER HYPER MAX 30K",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 619,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 380,
+              "nom": "BERRY BLUE",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 714
+        },
+        {
+          "id": 620,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 381,
+              "nom": "BLUEBERRY CHERRY",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 715
+        },
+        {
+          "id": 621,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 382,
+              "nom": "BLUEBERRY MINT",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 716
+        },
+        {
+          "id": 622,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 383,
+              "nom": "BLUEBERRY RASPERRY",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 717
+        },
+        {
+          "id": 623,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 384,
+              "nom": "CHERRY FIESTA",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 718
+        },
+        {
+          "id": 624,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 385,
+              "nom": "GUM MINT",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 719
+        },
+        {
+          "id": 625,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 386,
+              "nom": "MAGIC LOVE",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 720
+        },
+        {
+          "id": 626,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 387,
+              "nom": "MANGO PINEAPPLE",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 721
+        },
+        {
+          "id": 627,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 388,
+              "nom": "MENTHOL",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 722
+        },
+        {
+          "id": 628,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 389,
+              "nom": "MINT",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 723
+        },
+        {
+          "id": 629,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 390,
+              "nom": "MIXED BERRY",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 724
+        },
+        {
+          "id": 630,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 391,
+              "nom": "PEACH ICE",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 1,
+          "stock_available_id": 725
+        },
+        {
+          "id": 631,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 392,
+              "nom": "SPEAR MINT",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 726
+        },
+        {
+          "id": 632,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 393,
+              "nom": "STRAWBERRY CHERRY",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 727
+        },
+        {
+          "id": 633,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 394,
+              "nom": "STRAWBERRY PUNCH",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 728
+        },
+        {
+          "id": 634,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 395,
+              "nom": "SUMMER DREAM",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 729
+        },
+        {
+          "id": 635,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 396,
+              "nom": "WATERMELON KIWI",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 730
+        },
+        {
+          "id": 636,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 397,
+              "nom": "BLUEBERRY SOUR RASPBERRY",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 731
+        },
+        {
+          "id": 637,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 398,
+              "nom": "CHERRY ICE",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 732
+        },
+        {
+          "id": 638,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 399,
+              "nom": "CHERRY FIZZ",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 733
+        },
+        {
+          "id": 639,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 400,
+              "nom": "PINEAPPLE ICE",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 734
+        },
+        {
+          "id": 640,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 401,
+              "nom": "WATERMELON PINEAPPLE",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 735
+        },
+        {
+          "id": 641,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 402,
+              "nom": "COOL MANGO",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 736
+        },
+        {
+          "id": 642,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 403,
+              "nom": "SPACE DREAM",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 737
+        },
+        {
+          "id": 643,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 404,
+              "nom": "BLACK CURRANT ICE",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 738
+        },
+        {
+          "id": 644,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 405,
+              "nom": "BLUEBERRY GUM",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 739
+        },
+        {
+          "id": 645,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 406,
+              "nom": "BLUEBERRY LIMONADE",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 740
+        },
+        {
+          "id": 646,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 407,
+              "nom": "BLACK CURRANT MINT",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 741
+        },
+        {
+          "id": 647,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 408,
+              "nom": "LEMON LIME",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 742
+        },
+        {
+          "id": 648,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 409,
+              "nom": "BERRY ICE",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 743
+        },
+        {
+          "id": 649,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 410,
+              "nom": "BLUE RAZZ BLAST",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 744
+        },
+        {
+          "id": 650,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 411,
+              "nom": "WATERMELON CHERRY",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 745
+        },
+        {
+          "id": 651,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 412,
+              "nom": "GRAPE",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 746
+        },
+        {
+          "id": 652,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 413,
+              "nom": "LEMON LIME CHERRY FIZZ",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 747
+        },
+        {
+          "id": 653,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 414,
+              "nom": "BLUE RAZZ LEMONADE",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 748
+        },
+        {
+          "id": 654,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 415,
+              "nom": "GRAPPE BERRY",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 749
+        },
+        {
+          "id": 655,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 416,
+              "nom": "FUSION POP",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 750
+        },
+        {
+          "id": 656,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 417,
+              "nom": "LUSH ICE",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 751
+        },
+        {
+          "id": 657,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 418,
+              "nom": "HUBBA",
+              "groupe_id": 35,
+              "groupe": "HYPER MAX"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 752
+        }
+      ]
+    },
+    {
+      "id": 96,
+      "nom": "PUFF JNR NEXUS 40K",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 658,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 419,
+              "nom": "FRUIT DU DRAGON",
+              "groupe_id": 36,
+              "groupe": "jnr 40k"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 754
+        },
+        {
+          "id": 659,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 420,
+              "nom": "FRAMBOISE CERISE",
+              "groupe_id": 36,
+              "groupe": "jnr 40k"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 755
+        },
+        {
+          "id": 660,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 421,
+              "nom": "CERISE FRUITS DES BOIS",
+              "groupe_id": 36,
+              "groupe": "jnr 40k"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 756
+        },
+        {
+          "id": 661,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 422,
+              "nom": "KIWI PASSION GOYAVE",
+              "groupe_id": 36,
+              "groupe": "jnr 40k"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 757
+        },
+        {
+          "id": 662,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 423,
+              "nom": "LOVE 66",
+              "groupe_id": 36,
+              "groupe": "jnr 40k"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 758
+        },
+        {
+          "id": 663,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 424,
+              "nom": "MANGUE PASSION",
+              "groupe_id": 36,
+              "groupe": "jnr 40k"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 759
+        },
+        {
+          "id": 664,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 425,
+              "nom": "FRUITS DES BOIS",
+              "groupe_id": 36,
+              "groupe": "jnr 40k"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 760
+        },
+        {
+          "id": 665,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 426,
+              "nom": "MR BLUE",
+              "groupe_id": 36,
+              "groupe": "jnr 40k"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 761
+        },
+        {
+          "id": 666,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 427,
+              "nom": "FRAISE FRAMBOISE",
+              "groupe_id": 36,
+              "groupe": "jnr 40k"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 762
+        },
+        {
+          "id": 667,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 428,
+              "nom": "PECHE D'ETE",
+              "groupe_id": 36,
+              "groupe": "jnr 40k"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 763
+        }
+      ]
+    },
+    {
+      "id": 97,
+      "nom": "PUFF JNR STELLARE 50K",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 674,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 429,
+              "nom": "PECHE GLACEE",
+              "groupe_id": 37,
+              "groupe": "JNR 50K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 771
+        },
+        {
+          "id": 675,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 430,
+              "nom": "PASTEQUE GLACEE",
+              "groupe_id": 37,
+              "groupe": "JNR 50K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 772
+        },
+        {
+          "id": 676,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 431,
+              "nom": "CERISE COLA",
+              "groupe_id": 37,
+              "groupe": "JNR 50K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 773
+        },
+        {
+          "id": 677,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 432,
+              "nom": "FRAISE GLACEE",
+              "groupe_id": 37,
+              "groupe": "JNR 50K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 774
+        },
+        {
+          "id": 678,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 433,
+              "nom": "FRUITS ROUGES",
+              "groupe_id": 37,
+              "groupe": "JNR 50K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 775
+        },
+        {
+          "id": 679,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 434,
+              "nom": "MANGUE PASSION",
+              "groupe_id": 37,
+              "groupe": "JNR 50K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 776
+        },
+        {
+          "id": 680,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 435,
+              "nom": "PASTEQUE MANGUE PECHE",
+              "groupe_id": 37,
+              "groupe": "JNR 50K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 777
+        }
+      ]
+    },
+    {
+      "id": 98,
+      "nom": "PUFF Z PULSE JNR 42 K BI GOUT",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 681,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 436,
+              "nom": "STRAWBERRY KIWI/BLACK DRAGON ICE",
+              "groupe_id": 38,
+              "groupe": "JNR 42K BI GOUT"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 779
+        },
+        {
+          "id": 682,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 437,
+              "nom": "BLACK DRAGON ICE / BLACK DRAGON ICE",
+              "groupe_id": 38,
+              "groupe": "JNR 42K BI GOUT"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 780
+        },
+        {
+          "id": 683,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 438,
+              "nom": "Blueberry Raspberry Cherry /Blackberry Red Raspberry",
+              "groupe_id": 38,
+              "groupe": "JNR 42K BI GOUT"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 781
+        },
+        {
+          "id": 684,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 439,
+              "nom": "Mango Passion Fruit /Watermelon Mango Peach",
+              "groupe_id": 38,
+              "groupe": "JNR 42K BI GOUT"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 782
+        },
+        {
+          "id": 685,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 440,
+              "nom": "Blueberry Pomegranate Ice/ Blueberry Sour Raspberry",
+              "groupe_id": 38,
+              "groupe": "JNR 42K BI GOUT"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 783
+        },
+        {
+          "id": 686,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 441,
+              "nom": "Strawberry Watermelon Ice/Strawberry Watermelon Ice",
+              "groupe_id": 38,
+              "groupe": "JNR 42K BI GOUT"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 784
+        },
+        {
+          "id": 687,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 442,
+              "nom": "Mixed Berries /Peach Berry",
+              "groupe_id": 38,
+              "groupe": "JNR 42K BI GOUT"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 785
+        },
+        {
+          "id": 688,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 443,
+              "nom": "Cherry Ice/ Cherry Watermelon Freeze",
+              "groupe_id": 38,
+              "groupe": "JNR 42K BI GOUT"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 786
+        },
+        {
+          "id": 689,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 444,
+              "nom": "Mixed Berries/Mixed Berries",
+              "groupe_id": 38,
+              "groupe": "JNR 42K BI GOUT"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 787
+        },
+        {
+          "id": 690,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 445,
+              "nom": "Mixed Berries / Black Dragon Ice",
+              "groupe_id": 38,
+              "groupe": "JNR 42K BI GOUT"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 788
+        }
+      ]
+    },
+    {
+      "id": 99,
+      "nom": "JNR SHISHASIP 35K",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 691,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 446,
+              "nom": "MIXED BERRIES",
+              "groupe_id": 39,
+              "groupe": "JNR SHISHA SIP"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 790
+        },
+        {
+          "id": 692,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 447,
+              "nom": "MANGO PINEAPPLE",
+              "groupe_id": 39,
+              "groupe": "JNR SHISHA SIP"
+            }
+          ],
+          "stock": 0,
+          "stock_available_id": 791
+        },
+        {
+          "id": 693,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 448,
+              "nom": "LOVE 66",
+              "groupe_id": 39,
+              "groupe": "JNR SHISHA SIP"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 792
+        },
+        {
+          "id": 694,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 449,
+              "nom": "MI AMOR",
+              "groupe_id": 39,
+              "groupe": "JNR SHISHA SIP"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 793
+        },
+        {
+          "id": 695,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 450,
+              "nom": "GUM MINT",
+              "groupe_id": 39,
+              "groupe": "JNR SHISHA SIP"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 794
+        },
+        {
+          "id": 696,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 451,
+              "nom": "LUSH ICE",
+              "groupe_id": 39,
+              "groupe": "JNR SHISHA SIP"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 795
+        },
+        {
+          "id": 697,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 452,
+              "nom": "MINT",
+              "groupe_id": 39,
+              "groupe": "JNR SHISHA SIP"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 796
+        },
+        {
+          "id": 698,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 453,
+              "nom": "STRAWBERRY PUNCH",
+              "groupe_id": 39,
+              "groupe": "JNR SHISHA SIP"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 797
+        },
+        {
+          "id": 699,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 454,
+              "nom": "PEACH ICE",
+              "groupe_id": 39,
+              "groupe": "JNR SHISHA SIP"
+            }
+          ],
+          "stock": 2,
+          "stock_available_id": 798
+        }
+      ]
+    },
+    {
+      "id": 100,
+      "nom": "AL FAKHER CROWN BAR  Hyper Max Prime 50K",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 710,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 455,
+              "nom": "PEACH ICE",
+              "groupe_id": 40,
+              "groupe": "AL FAKHER 50K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 810
+        },
+        {
+          "id": 711,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 456,
+              "nom": "STRAWBERRY PUNCH",
+              "groupe_id": 40,
+              "groupe": "AL FAKHER 50K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 811
+        },
+        {
+          "id": 712,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 457,
+              "nom": "LOVE",
+              "groupe_id": 40,
+              "groupe": "AL FAKHER 50K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 812
+        },
+        {
+          "id": 713,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 458,
+              "nom": "GUM MINT",
+              "groupe_id": 40,
+              "groupe": "AL FAKHER 50K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 813
+        },
+        {
+          "id": 714,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 459,
+              "nom": "MINT",
+              "groupe_id": 40,
+              "groupe": "AL FAKHER 50K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 814
+        },
+        {
+          "id": 715,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 460,
+              "nom": "MAGIC LOVE",
+              "groupe_id": 40,
+              "groupe": "AL FAKHER 50K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 815
+        },
+        {
+          "id": 716,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 461,
+              "nom": "MANGO PINEAPPLE",
+              "groupe_id": 40,
+              "groupe": "AL FAKHER 50K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 816
+        },
+        {
+          "id": 717,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 462,
+              "nom": "COOL MANGO",
+              "groupe_id": 40,
+              "groupe": "AL FAKHER 50K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 817
+        },
+        {
+          "id": 718,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 463,
+              "nom": "WATERMELON KIWI",
+              "groupe_id": 40,
+              "groupe": "AL FAKHER 50K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 818
+        },
+        {
+          "id": 719,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 464,
+              "nom": "CHERRY FIESTA",
+              "groupe_id": 40,
+              "groupe": "AL FAKHER 50K"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 819
+        }
+      ]
+    },
+    {
+      "id": 101,
+      "nom": "Cartouches Hyper Max Prime 50K Crown Bar Al Fakher",
+      "ean": null,
+      "reference": null,
+      "declinaisons": [
+        {
+          "id": 720,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 465,
+              "nom": "BLUE ICE",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 821
+        },
+        {
+          "id": 721,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 466,
+              "nom": "BLACK CURRANT ICE",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 822
+        },
+        {
+          "id": 722,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 467,
+              "nom": "BLACKCURRANT MINT",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 823
+        },
+        {
+          "id": 723,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 468,
+              "nom": "BLUEBERRY GUM",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 824
+        },
+        {
+          "id": 724,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 469,
+              "nom": "BLUEBERRY LIMONADE",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 825
+        },
+        {
+          "id": 725,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 470,
+              "nom": "BLUEBERRY MINT",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 826
+        },
+        {
+          "id": 726,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 471,
+              "nom": "BLUEBERRY SOUR RASPBERRY",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 827
+        },
+        {
+          "id": 727,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 472,
+              "nom": "CHERRY FIESTE",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 828
+        },
+        {
+          "id": 728,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 473,
+              "nom": "CHERRY ICE",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 829
+        },
+        {
+          "id": 729,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 474,
+              "nom": "COOL MANGO",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 830
+        },
+        {
+          "id": 730,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 475,
+              "nom": "FUSION POP",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 831
+        },
+        {
+          "id": 731,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 476,
+              "nom": "GUM MINT",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 832
+        },
+        {
+          "id": 732,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 477,
+              "nom": "HUBBA",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 833
+        },
+        {
+          "id": 733,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 478,
+              "nom": "LUSH ICE",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 834
+        },
+        {
+          "id": 734,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 479,
+              "nom": "MAGIC LOVE",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 835
+        },
+        {
+          "id": 735,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 480,
+              "nom": "MANGO PINAPPLE",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 836
+        },
+        {
+          "id": 736,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 481,
+              "nom": "MINT",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 837
+        },
+        {
+          "id": 737,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 482,
+              "nom": "MIXED BERRY",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 838
+        },
+        {
+          "id": 738,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 483,
+              "nom": "STRAWBERRY PUNCH",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 839
+        },
+        {
+          "id": 739,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 484,
+              "nom": "WATERMELON PINEAPPLE",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 840
+        },
+        {
+          "id": 740,
+          "ean": null,
+          "reference": null,
+          "attributs": [
+            {
+              "id": 485,
+              "nom": "SUMMER DREAM",
+              "groupe_id": 41,
+              "groupe": "recharge AF"
+            }
+          ],
+          "stock": 5,
+          "stock_available_id": 841
+        }
+      ]
+    }
+  ],
+  "anomalies": {
+    "sans_ean": {
+      "nombre": 453,
+      "ids": [
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        97,
+        98,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110,
+        111,
+        112,
+        113,
+        114,
+        115,
+        116,
+        117,
+        118,
+        119,
+        120,
+        121,
+        122,
+        123,
+        124,
+        125,
+        126,
+        127,
+        128,
+        129,
+        130,
+        131,
+        132,
+        133,
+        134,
+        135,
+        136,
+        137,
+        138,
+        139,
+        140,
+        141,
+        142,
+        143,
+        144,
+        165,
+        166,
+        167,
+        168,
+        169,
+        170,
+        171,
+        172,
+        173,
+        174,
+        175,
+        176,
+        177,
+        178,
+        179,
+        180,
+        181,
+        182,
+        183,
+        184,
+        185,
+        186,
+        187,
+        188,
+        189,
+        190,
+        191,
+        192,
+        193,
+        194,
+        195,
+        196,
+        197,
+        198,
+        199,
+        200,
+        201,
+        202,
+        203,
+        204,
+        205,
+        206,
+        207,
+        208,
+        209,
+        210,
+        211,
+        212,
+        213,
+        214,
+        215,
+        216,
+        217,
+        218,
+        219,
+        220,
+        221,
+        222,
+        223,
+        224,
+        225,
+        226,
+        227,
+        228,
+        229,
+        279,
+        280,
+        281,
+        282,
+        283,
+        284,
+        285,
+        286,
+        287,
+        288,
+        289,
+        374,
+        375,
+        376,
+        377,
+        378,
+        379,
+        380,
+        381,
+        382,
+        383,
+        384,
+        385,
+        386,
+        387,
+        388,
+        389,
+        390,
+        391,
+        392,
+        393,
+        394,
+        395,
+        398,
+        399,
+        400,
+        401,
+        402,
+        403,
+        404,
+        405,
+        406,
+        408,
+        418,
+        419,
+        420,
+        421,
+        422,
+        423,
+        425,
+        426,
+        427,
+        428,
+        429,
+        430,
+        431,
+        432,
+        433,
+        434,
+        435,
+        436,
+        437,
+        438,
+        439,
+        440,
+        441,
+        442,
+        443,
+        444,
+        445,
+        446,
+        447,
+        448,
+        449,
+        450,
+        451,
+        452,
+        475,
+        476,
+        477,
+        478,
+        479,
+        480,
+        481,
+        482,
+        483,
+        484,
+        485,
+        486,
+        487,
+        488,
+        489,
+        490,
+        491,
+        492,
+        493,
+        494,
+        495,
+        496,
+        497,
+        498,
+        499,
+        500,
+        501,
+        502,
+        503,
+        504,
+        505,
+        506,
+        507,
+        508,
+        509,
+        510,
+        511,
+        512,
+        513,
+        514,
+        515,
+        516,
+        517,
+        518,
+        519,
+        520,
+        521,
+        522,
+        523,
+        524,
+        525,
+        526,
+        527,
+        528,
+        529,
+        530,
+        531,
+        532,
+        533,
+        534,
+        535,
+        536,
+        537,
+        538,
+        539,
+        540,
+        541,
+        542,
+        543,
+        544,
+        545,
+        546,
+        547,
+        548,
+        549,
+        550,
+        551,
+        552,
+        553,
+        554,
+        555,
+        556,
+        557,
+        558,
+        559,
+        560,
+        583,
+        584,
+        585,
+        586,
+        587,
+        588,
+        589,
+        590,
+        591,
+        592,
+        593,
+        594,
+        595,
+        596,
+        597,
+        598,
+        599,
+        600,
+        601,
+        602,
+        603,
+        604,
+        611,
+        612,
+        613,
+        614,
+        615,
+        616,
+        617,
+        618,
+        619,
+        620,
+        621,
+        622,
+        623,
+        624,
+        625,
+        626,
+        627,
+        628,
+        629,
+        630,
+        631,
+        632,
+        633,
+        634,
+        635,
+        636,
+        637,
+        638,
+        639,
+        640,
+        641,
+        642,
+        643,
+        644,
+        645,
+        646,
+        647,
+        648,
+        649,
+        650,
+        651,
+        652,
+        653,
+        654,
+        655,
+        656,
+        657,
+        658,
+        659,
+        660,
+        661,
+        662,
+        663,
+        664,
+        665,
+        666,
+        667,
+        674,
+        675,
+        676,
+        677,
+        678,
+        679,
+        680,
+        681,
+        682,
+        683,
+        684,
+        685,
+        686,
+        687,
+        688,
+        689,
+        690,
+        691,
+        692,
+        693,
+        694,
+        695,
+        696,
+        697,
+        698,
+        699,
+        710,
+        711,
+        712,
+        713,
+        714,
+        715,
+        716,
+        717,
+        718,
+        719,
+        720,
+        721,
+        722,
+        723,
+        724,
+        725,
+        726,
+        727,
+        728,
+        729,
+        730,
+        731,
+        732,
+        733,
+        734,
+        735,
+        736,
+        737,
+        738,
+        739,
+        740
+      ]
+    },
+    "sans_attribut": {
+      "nombre": 0,
+      "ids": []
+    },
+    "sans_stock": {
+      "nombre": 0,
+      "ids": []
+    }
+  }
+}
