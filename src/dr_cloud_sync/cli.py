@@ -15,11 +15,12 @@ from .pilot import PilotSafetyError, run_pilot
 from .shopcaisse import ShopCaisseError, pull_and_write, run_import_dry_run
 from .store import SnapshotStore
 from .sync import synchronize
+from .mapping import run as run_mapping
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Importe le catalogue maître PrestaShop")
-    parser.add_argument("command", choices=["pull", "shopcaisse-pull", "shopcaisse-import-dry-run", "shopcaisse-import-pilot", "shopcaisse-import-controlled", "shopcaisse-import-all"], help="Récupérer un snapshot complet")
+    parser.add_argument("command", choices=["pull", "shopcaisse-pull", "shopcaisse-import-dry-run", "shopcaisse-import-pilot", "shopcaisse-import-controlled", "shopcaisse-import-all", "build-catalog-mapping"], help="Récupérer un snapshot complet")
     args = parser.parse_args(argv)
     if args.command == "pull":
         try:
@@ -86,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
                          ensure_ascii=False))
         if report["failed"]:
             return 1
-    else:
+    elif args.command == "shopcaisse-import-all":
         try:
             report = run_all_import(
                 os.environ.get("SHOPCAISSE_API_KEY", ""), os.environ.get("PRESTASHOP_API_KEY", ""),
@@ -101,6 +102,16 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "all-import-completed", "report": report}, ensure_ascii=False))
         if report["failed"]:
             return 1
+    else:
+        try:
+            report_paths = [Path("dist") / name for name in (
+                "rapport-import-pilote-shopcaisse.json", "rapport-import-controle-shopcaisse.json",
+                "rapport-import-final-shopcaisse.json")]
+            quality = run_mapping(report_paths=report_paths)
+        except (PrestaShopError, ShopCaisseError, ValueError, OSError, json.JSONDecodeError) as exc:
+            print(f"Erreur: {exc}", file=sys.stderr)
+            return 1
+        print(json.dumps({"status": "mapping-completed", "quality": quality}, ensure_ascii=False))
     return 0
 
 
