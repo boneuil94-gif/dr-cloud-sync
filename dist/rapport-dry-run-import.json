@@ -1,0 +1,238 @@
+{
+  "produits PrestaShop": 72,
+  "déclinaisons PrestaShop": 453,
+  "unités de vente PrestaShop": 478,
+  "articles ShopCaisse actuels": 92,
+  "existantes certaines": 0,
+  "existantes probables": 2,
+  "ambiguës": 12,
+  "à créer": 444,
+  "conflits": 20,
+  "ShopCaisse existants non rattachés": 79,
+  "anomalies": {
+    "sans EAN": 443,
+    "sans référence": 478,
+    "sans prix": 478,
+    "sans stock": 25,
+    "attributs impossibles à traduire": 453,
+    "champs obligatoires ShopCaisse manquants": 444,
+    "doublons potentiels": [
+      {
+        "product_id": 25,
+        "combination_id": 88,
+        "conflits": [
+          {
+            "shopcaisse_id": "e0097e60-39fe-49f8-b21d-d36733e5eca1",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      },
+      {
+        "product_id": 25,
+        "combination_id": 89,
+        "conflits": [
+          {
+            "shopcaisse_id": "e0097e60-39fe-49f8-b21d-d36733e5eca1",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      },
+      {
+        "product_id": 25,
+        "combination_id": 90,
+        "conflits": [
+          {
+            "shopcaisse_id": "e0097e60-39fe-49f8-b21d-d36733e5eca1",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      },
+      {
+        "product_id": 28,
+        "combination_id": null,
+        "conflits": [
+          {
+            "shopcaisse_id": "1ece95ba-1dbb-4c67-9164-292f57ccc43b",
+            "score": 0.857,
+            "raison": "texte_et_attributs_compatibles"
+          },
+          {
+            "shopcaisse_id": "31175a3e-5f6b-4f9b-9a7b-6a7b091b8511",
+            "score": 0.857,
+            "raison": "texte_et_attributs_compatibles"
+          }
+        ]
+      },
+      {
+        "product_id": 49,
+        "combination_id": 127,
+        "conflits": [
+          {
+            "shopcaisse_id": "70f66313-6a73-4369-bd4d-cf985aa09df1",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      },
+      {
+        "product_id": 49,
+        "combination_id": 128,
+        "conflits": [
+          {
+            "shopcaisse_id": "70f66313-6a73-4369-bd4d-cf985aa09df1",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      },
+      {
+        "product_id": 49,
+        "combination_id": 129,
+        "conflits": [
+          {
+            "shopcaisse_id": "70f66313-6a73-4369-bd4d-cf985aa09df1",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      },
+      {
+        "product_id": 49,
+        "combination_id": 130,
+        "conflits": [
+          {
+            "shopcaisse_id": "70f66313-6a73-4369-bd4d-cf985aa09df1",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      },
+      {
+        "product_id": 58,
+        "combination_id": 179,
+        "conflits": [
+          {
+            "shopcaisse_id": "1c345103-47bd-470a-b8cb-8d648609b4a1",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      },
+      {
+        "product_id": 58,
+        "combination_id": 180,
+        "conflits": [
+          {
+            "shopcaisse_id": "1c345103-47bd-470a-b8cb-8d648609b4a1",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      },
+      {
+        "product_id": 58,
+        "combination_id": 181,
+        "conflits": [
+          {
+            "shopcaisse_id": "1c345103-47bd-470a-b8cb-8d648609b4a1",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      },
+      {
+        "product_id": 60,
+        "combination_id": 193,
+        "conflits": [
+          {
+            "shopcaisse_id": "a0bc2938-ae95-43f5-af5f-e612cb27f25d",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      },
+      {
+        "product_id": 60,
+        "combination_id": 197,
+        "conflits": [
+          {
+            "shopcaisse_id": "a0bc2938-ae95-43f5-af5f-e612cb27f25d",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      },
+      {
+        "product_id": 60,
+        "combination_id": 198,
+        "conflits": [
+          {
+            "shopcaisse_id": "a0bc2938-ae95-43f5-af5f-e612cb27f25d",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      },
+      {
+        "product_id": 60,
+        "combination_id": 201,
+        "conflits": [
+          {
+            "shopcaisse_id": "a0bc2938-ae95-43f5-af5f-e612cb27f25d",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      },
+      {
+        "product_id": 62,
+        "combination_id": 226,
+        "conflits": [
+          {
+            "shopcaisse_id": "6af97635-2ed6-498e-a9ff-d364d72dbdb7",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      },
+      {
+        "product_id": 62,
+        "combination_id": 228,
+        "conflits": [
+          {
+            "shopcaisse_id": "6af97635-2ed6-498e-a9ff-d364d72dbdb7",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      },
+      {
+        "product_id": 74,
+        "combination_id": 401,
+        "conflits": [
+          {
+            "shopcaisse_id": "44b6496e-8d2b-47d5-bc38-0a46280b04db",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      },
+      {
+        "product_id": 78,
+        "combination_id": 439,
+        "conflits": [
+          {
+            "shopcaisse_id": "073e6d7c-0632-4fe5-a0dd-d1a3a606d0ea",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      },
+      {
+        "product_id": 79,
+        "combination_id": 444,
+        "conflits": [
+          {
+            "shopcaisse_id": "619840fa-8433-4708-a999-679fac717775",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      },
+      {
+        "product_id": 79,
+        "combination_id": 446,
+        "conflits": [
+          {
+            "shopcaisse_id": "619840fa-8433-4708-a999-679fac717775",
+            "raison": "déjà rattaché à une autre unité PrestaShop"
+          }
+        ]
+      }
+    ]
+  }
+}

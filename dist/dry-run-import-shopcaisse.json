@@ -1,0 +1,4945 @@
+{
+  "mode": "DRY_RUN_SANS_ENVOI",
+  "openapi": {
+    "source": "https://api.shop-caisse.com/v1/docs",
+    "endpoints_ecriture_identifies": [
+      {
+        "method": "POST",
+        "path": "/v1/companies/{company}/items",
+        "schema": "CreateSimpleItemDto",
+        "required": [
+          "name",
+          "price"
+        ],
+        "purpose": "créer un article simple (nom, référence, code-barres et prix)"
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/companies/{company}/items/{item}",
+        "schema": "ItemEditDto",
+        "required": [],
+        "purpose": "modifier nom, libellé, descriptions ou référence"
+      },
+      {
+        "method": "POST",
+        "path": "/v1/companies/{company}/prices",
+        "schema": "CreatePriceListDto",
+        "required": [
+          "store",
+          "name",
+          "prices"
+        ],
+        "purpose": "créer une liste de prix"
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/companies/{company}/prices/{priceList}",
+        "schema": "EditPriceDto[]",
+        "required": [
+          "price",
+          "itemId"
+        ],
+        "purpose": "définir plusieurs prix"
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/companies/{company}/prices/{priceList}/items/{item}",
+        "schema": "PriceDto",
+        "required": [
+          "price"
+        ],
+        "purpose": "définir un prix"
+      }
+    ],
+    "limitations": [
+      "aucun endpoint d'écriture du stock",
+      "aucun schéma de création de variante ou relation parent/enfant"
+    ]
+  },
+  "operations": [
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 21,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 22,
+      "combination_id": 54
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 22,
+      "combination_id": 55
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 22,
+      "combination_id": 56
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 22,
+      "combination_id": 57
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 22,
+      "combination_id": 58
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 22,
+      "combination_id": 59
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 22,
+      "combination_id": 60
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 22,
+      "combination_id": 61
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 22,
+      "combination_id": 62
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 22,
+      "combination_id": 63
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 23,
+      "combination_id": 64
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 23,
+      "combination_id": 65
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 23,
+      "combination_id": 66
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 23,
+      "combination_id": 67
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 23,
+      "combination_id": 68
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 23,
+      "combination_id": 69
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 23,
+      "combination_id": 70
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 24,
+      "combination_id": 71
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 24,
+      "combination_id": 72
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 24,
+      "combination_id": 73
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 24,
+      "combination_id": 74
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 24,
+      "combination_id": 75
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 24,
+      "combination_id": 76
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 24,
+      "combination_id": 77
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 24,
+      "combination_id": 78
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 24,
+      "combination_id": 79
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 24,
+      "combination_id": 80
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 24,
+      "combination_id": 81
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 24,
+      "combination_id": 82
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 24,
+      "combination_id": 83
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 24,
+      "combination_id": 84
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 24,
+      "combination_id": 85
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 25,
+      "combination_id": 86
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 25,
+      "combination_id": 91
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 25,
+      "combination_id": 92
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 25,
+      "combination_id": 93
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 25,
+      "combination_id": 94
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 27,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 29,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 30,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 31,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 33,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 34,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 35,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 36,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 37,
+      "combination_id": 97
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 37,
+      "combination_id": 98
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 37,
+      "combination_id": 99
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 37,
+      "combination_id": 100
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 38,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 39,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 40,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 41,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 42,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 43,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 45,
+      "combination_id": 101
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 45,
+      "combination_id": 102
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 45,
+      "combination_id": 103
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 45,
+      "combination_id": 104
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 45,
+      "combination_id": 105
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 45,
+      "combination_id": 106
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 45,
+      "combination_id": 107
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 46,
+      "combination_id": 108
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 46,
+      "combination_id": 109
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 46,
+      "combination_id": 110
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 46,
+      "combination_id": 111
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 46,
+      "combination_id": 112
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 47,
+      "combination_id": 113
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 47,
+      "combination_id": 114
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 47,
+      "combination_id": 115
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 47,
+      "combination_id": 116
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 47,
+      "combination_id": 118
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 47,
+      "combination_id": 119
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 48,
+      "combination_id": 120
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 48,
+      "combination_id": 121
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 48,
+      "combination_id": 122
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 48,
+      "combination_id": 123
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 48,
+      "combination_id": 124
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 48,
+      "combination_id": 125
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 50,
+      "combination_id": 131
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 50,
+      "combination_id": 132
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 50,
+      "combination_id": 133
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 50,
+      "combination_id": 134
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 50,
+      "combination_id": 135
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 50,
+      "combination_id": 136
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 51,
+      "combination_id": 137
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 51,
+      "combination_id": 138
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 51,
+      "combination_id": 139
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 51,
+      "combination_id": 140
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 51,
+      "combination_id": 141
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 51,
+      "combination_id": 142
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 51,
+      "combination_id": 143
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 51,
+      "combination_id": 144
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 52,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 53,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 56,
+      "combination_id": 165
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 56,
+      "combination_id": 166
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 56,
+      "combination_id": 167
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 56,
+      "combination_id": 168
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 56,
+      "combination_id": 169
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 57,
+      "combination_id": 170
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 57,
+      "combination_id": 171
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 57,
+      "combination_id": 172
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 57,
+      "combination_id": 173
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 57,
+      "combination_id": 174
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 57,
+      "combination_id": 175
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 58,
+      "combination_id": 176
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 58,
+      "combination_id": 177
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 59,
+      "combination_id": 182
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 59,
+      "combination_id": 183
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 59,
+      "combination_id": 184
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 59,
+      "combination_id": 185
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 59,
+      "combination_id": 186
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 59,
+      "combination_id": 187
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 60,
+      "combination_id": 188
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 60,
+      "combination_id": 190
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 60,
+      "combination_id": 191
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 60,
+      "combination_id": 192
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 60,
+      "combination_id": 194
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 60,
+      "combination_id": 195
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 60,
+      "combination_id": 196
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 60,
+      "combination_id": 199
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 60,
+      "combination_id": 200
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 60,
+      "combination_id": 202
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 203
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 204
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 205
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 206
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 207
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 208
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 209
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 210
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 211
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 212
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 213
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 214
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 215
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 216
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 217
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 218
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 219
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 220
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 221
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 222
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 61,
+      "combination_id": 223
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 62,
+      "combination_id": 225
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 62,
+      "combination_id": 227
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 62,
+      "combination_id": 229
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 65,
+      "combination_id": 279
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 65,
+      "combination_id": 280
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 65,
+      "combination_id": 281
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 65,
+      "combination_id": 282
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 65,
+      "combination_id": 283
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 66,
+      "combination_id": 284
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 66,
+      "combination_id": 285
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 66,
+      "combination_id": 286
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 66,
+      "combination_id": 287
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 66,
+      "combination_id": 288
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 66,
+      "combination_id": 289
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 67,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 68,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 69,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 70,
+      "combination_id": null
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 72,
+      "combination_id": 374
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 72,
+      "combination_id": 375
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 72,
+      "combination_id": 376
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 72,
+      "combination_id": 377
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 72,
+      "combination_id": 378
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 72,
+      "combination_id": 379
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 72,
+      "combination_id": 380
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 72,
+      "combination_id": 381
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 72,
+      "combination_id": 382
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 72,
+      "combination_id": 383
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 73,
+      "combination_id": 384
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 73,
+      "combination_id": 385
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 73,
+      "combination_id": 386
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 73,
+      "combination_id": 387
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 73,
+      "combination_id": 388
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 73,
+      "combination_id": 389
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 73,
+      "combination_id": 390
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 73,
+      "combination_id": 391
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 73,
+      "combination_id": 392
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 73,
+      "combination_id": 393
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 73,
+      "combination_id": 394
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 73,
+      "combination_id": 395
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 74,
+      "combination_id": 398
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 74,
+      "combination_id": 399
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 74,
+      "combination_id": 402
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 75,
+      "combination_id": 403
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 75,
+      "combination_id": 404
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 75,
+      "combination_id": 405
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 75,
+      "combination_id": 406
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 75,
+      "combination_id": 408
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 76,
+      "combination_id": 418
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 76,
+      "combination_id": 419
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 76,
+      "combination_id": 420
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 76,
+      "combination_id": 421
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 76,
+      "combination_id": 422
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 76,
+      "combination_id": 423
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 76,
+      "combination_id": 425
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 77,
+      "combination_id": 426
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 77,
+      "combination_id": 427
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 77,
+      "combination_id": 428
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 77,
+      "combination_id": 429
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 77,
+      "combination_id": 430
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 77,
+      "combination_id": 431
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 77,
+      "combination_id": 432
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 77,
+      "combination_id": 433
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 77,
+      "combination_id": 434
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 77,
+      "combination_id": 435
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 77,
+      "combination_id": 436
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 77,
+      "combination_id": 437
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 78,
+      "combination_id": 440
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 78,
+      "combination_id": 441
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 78,
+      "combination_id": 442
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 79,
+      "combination_id": 445
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 79,
+      "combination_id": 447
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 80,
+      "combination_id": 449
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 80,
+      "combination_id": 450
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 80,
+      "combination_id": 451
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 80,
+      "combination_id": 452
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 83,
+      "combination_id": 475
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 83,
+      "combination_id": 476
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 83,
+      "combination_id": 477
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 83,
+      "combination_id": 478
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 83,
+      "combination_id": 479
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 83,
+      "combination_id": 480
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 83,
+      "combination_id": 481
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 83,
+      "combination_id": 482
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 83,
+      "combination_id": 483
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 83,
+      "combination_id": 484
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 83,
+      "combination_id": 485
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 83,
+      "combination_id": 486
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 83,
+      "combination_id": 487
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 83,
+      "combination_id": 488
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 83,
+      "combination_id": 489
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 84,
+      "combination_id": 490
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 84,
+      "combination_id": 491
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 84,
+      "combination_id": 492
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 84,
+      "combination_id": 493
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 84,
+      "combination_id": 494
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 84,
+      "combination_id": 495
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 84,
+      "combination_id": 496
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 84,
+      "combination_id": 497
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 84,
+      "combination_id": 498
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 84,
+      "combination_id": 499
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 85,
+      "combination_id": 500
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 85,
+      "combination_id": 501
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 85,
+      "combination_id": 502
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 85,
+      "combination_id": 503
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 85,
+      "combination_id": 504
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 85,
+      "combination_id": 505
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 85,
+      "combination_id": 506
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 85,
+      "combination_id": 507
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 85,
+      "combination_id": 508
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 85,
+      "combination_id": 509
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 85,
+      "combination_id": 510
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 85,
+      "combination_id": 511
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 86,
+      "combination_id": 512
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 86,
+      "combination_id": 513
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 86,
+      "combination_id": 514
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 86,
+      "combination_id": 515
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 86,
+      "combination_id": 516
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 86,
+      "combination_id": 517
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 86,
+      "combination_id": 518
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 86,
+      "combination_id": 519
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 86,
+      "combination_id": 520
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 86,
+      "combination_id": 521
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 86,
+      "combination_id": 522
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 86,
+      "combination_id": 523
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 86,
+      "combination_id": 524
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 86,
+      "combination_id": 525
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 87,
+      "combination_id": 526
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 87,
+      "combination_id": 527
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 87,
+      "combination_id": 528
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 87,
+      "combination_id": 529
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 87,
+      "combination_id": 530
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 87,
+      "combination_id": 531
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 87,
+      "combination_id": 532
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 87,
+      "combination_id": 533
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 87,
+      "combination_id": 534
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 87,
+      "combination_id": 535
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 536
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 537
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 538
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 539
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 540
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 541
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 542
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 543
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 544
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 545
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 546
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 547
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 548
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 549
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 550
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 551
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 552
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 553
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 554
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 555
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 556
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 88,
+      "combination_id": 557
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 90,
+      "combination_id": 558
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 90,
+      "combination_id": 559
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 90,
+      "combination_id": 560
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 583
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 584
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 585
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 586
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 587
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 588
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 589
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 590
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 591
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 592
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 593
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 594
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 595
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 596
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 597
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 598
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 599
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 600
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 601
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 602
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 603
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 91,
+      "combination_id": 604
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 93,
+      "combination_id": 611
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 93,
+      "combination_id": 612
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 93,
+      "combination_id": 613
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 93,
+      "combination_id": 614
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 93,
+      "combination_id": 615
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 93,
+      "combination_id": 616
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 94,
+      "combination_id": 617
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 94,
+      "combination_id": 618
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 619
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 620
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 621
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 622
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 623
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 624
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 625
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 626
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 627
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 628
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 629
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 630
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 631
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 632
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 633
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 634
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 635
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 636
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 637
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 638
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 639
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 640
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 641
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 642
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 643
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 644
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 645
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 646
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 647
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 648
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 649
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 650
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 651
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 652
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 653
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 654
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 655
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 656
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 95,
+      "combination_id": 657
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 96,
+      "combination_id": 658
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 96,
+      "combination_id": 659
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 96,
+      "combination_id": 660
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 96,
+      "combination_id": 661
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 96,
+      "combination_id": 662
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 96,
+      "combination_id": 663
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 96,
+      "combination_id": 664
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 96,
+      "combination_id": 665
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 96,
+      "combination_id": 666
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 96,
+      "combination_id": 667
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 97,
+      "combination_id": 674
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 97,
+      "combination_id": 675
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 97,
+      "combination_id": 676
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 97,
+      "combination_id": 677
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 97,
+      "combination_id": 678
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 97,
+      "combination_id": 679
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 97,
+      "combination_id": 680
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 98,
+      "combination_id": 681
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 98,
+      "combination_id": 682
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 98,
+      "combination_id": 683
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 98,
+      "combination_id": 684
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 98,
+      "combination_id": 685
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 98,
+      "combination_id": 686
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 98,
+      "combination_id": 687
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 98,
+      "combination_id": 688
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 98,
+      "combination_id": 689
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 98,
+      "combination_id": 690
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 99,
+      "combination_id": 691
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 99,
+      "combination_id": 692
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 99,
+      "combination_id": 693
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 99,
+      "combination_id": 694
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 99,
+      "combination_id": 695
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 99,
+      "combination_id": 696
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 99,
+      "combination_id": 697
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 99,
+      "combination_id": 698
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 99,
+      "combination_id": 699
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 100,
+      "combination_id": 710
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 100,
+      "combination_id": 711
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 100,
+      "combination_id": 712
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 100,
+      "combination_id": 713
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 100,
+      "combination_id": 714
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 100,
+      "combination_id": 715
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 100,
+      "combination_id": 716
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 100,
+      "combination_id": 717
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 100,
+      "combination_id": 718
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 100,
+      "combination_id": 719
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 720
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 721
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 722
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 723
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 724
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 725
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 726
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 727
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 728
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 729
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 730
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 731
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 732
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 733
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 734
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 735
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 736
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 737
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 738
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 739
+    },
+    {
+      "method": "POST",
+      "endpoint": "/v1/companies/{company}/items",
+      "payload": null,
+      "statut": "BLOQUE",
+      "champs_obligatoires_manquants": [
+        "price"
+      ],
+      "product_id": 101,
+      "combination_id": 740
+    }
+  ]
+}

@@ -199,6 +199,7 @@ def extract_prestashop(payload: Any) -> tuple[list[dict[str, Any]], dict[str, in
                 "size": size,
                 "ean": _value(combination or product, "ean", "ean13"),
                 "reference": _value(combination or product, "reference", "sku"),
+                "price": (combination or product).get("price"),
                 "stock": combination.get("stock") if combination else product.get("stock"),
                 "source": combination or product,
                 # Compatibility aliases for existing report consumers.
@@ -209,6 +210,123 @@ def extract_prestashop(payload: Any) -> tuple[list[dict[str, Any]], dict[str, in
             })
     return entries, {"products": len(products), "combinations": combination_count,
                      "comparable_entries": len(entries)}
+
+
+WRITE_ENDPOINTS = [
+    {"method": "POST", "path": "/v1/companies/{company}/items",
+     "schema": "CreateSimpleItemDto", "required": ["name", "price"],
+     "purpose": "créer un article simple (nom, référence, code-barres et prix)"},
+    {"method": "PUT", "path": "/v1/companies/{company}/items/{item}",
+     "schema": "ItemEditDto", "required": [],
+     "purpose": "modifier nom, libellé, descriptions ou référence"},
+    {"method": "POST", "path": "/v1/companies/{company}/prices",
+     "schema": "CreatePriceListDto", "required": ["store", "name", "prices"],
+     "purpose": "créer une liste de prix"},
+    {"method": "PUT", "path": "/v1/companies/{company}/prices/{priceList}",
+     "schema": "EditPriceDto[]", "required": ["price", "itemId"],
+     "purpose": "définir plusieurs prix"},
+    {"method": "PUT", "path": "/v1/companies/{company}/prices/{priceList}/items/{item}",
+     "schema": "PriceDto", "required": ["price"], "purpose": "définir un prix"},
+]
+
+
+def build_import_dry_run(raw: dict[str, Any], presta_payload: Any) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Build the three import simulations without owning any network writer."""
+    shop = normalize(raw["items"], prices=raw["prices"], stocks=raw["stocks"])
+    presta, counts = extract_prestashop(presta_payload)
+    claimed: set[Any] = set()
+    plan = []
+    category_counts = {k: 0 for k in ("EXISTANTE_CERTAINE", "EXISTANTE_PROBABLE", "AMBIGUE", "A_CREER", "CONFLIT")}
+    duplicate_notes = []
+    for entry in presta:
+        ranked = sorted(((_score(s, entry), s) for s in shop), key=lambda x: x[0][0], reverse=True)
+        credible = [(score, method, s) for (score, method), s in ranked if score >= .78]
+        conflicts = []
+        match = None
+        score = 0.0
+        reason = "aucune correspondance ShopCaisse"
+        if credible:
+            score, method, match = credible[0]
+            peers = [x for x in credible if score - x[0] <= .025]
+            if len(peers) > 1:
+                category = "AMBIGUE"
+                conflicts = [{"shopcaisse_id": x[2].get("id"), "score": x[0], "raison": x[1]} for x in peers]
+                reason = "plusieurs articles ShopCaisse ont un score équivalent"
+                match = None
+            elif score >= .99:
+                category, reason = "EXISTANTE_CERTAINE", method
+            else:
+                category = "EXISTANTE_PROBABLE" if score >= .90 else "AMBIGUE"
+                reason = method
+        else:
+            category = "A_CREER"
+        if match and match.get("id") in claimed:
+            category = "CONFLIT"
+            conflicts.append({"shopcaisse_id": match.get("id"), "raison": "déjà rattaché à une autre unité PrestaShop"})
+        if match:
+            claimed.add(match.get("id"))
+        category_counts[category] += 1
+        if conflicts:
+            duplicate_notes.append({"product_id": entry["product_id"], "combination_id": entry["combination_id"], "conflits": conflicts})
+        label = entry["variation_name"]
+        create_fields = {"name": entry["product_name"] + (f" - {label}" if label else ""),
+                         "reference": entry["reference"] or None, "barcode": entry["ean"] or None,
+                         "price": entry["price"]}
+        missing = [name for name in ("name", "price") if create_fields.get(name) in (None, "")]
+        plan.append({
+            "product_id": entry["product_id"], "combination_id": entry["combination_id"],
+            "nom": entry["product_name"], "declinaison": label, "attributs": entry["attributes"],
+            "couleur": entry["color"], "taille": entry["size"], "EAN": entry["ean"] or None,
+            "reference": entry["reference"] or None, "prix": entry["price"], "stock": entry["stock"],
+            "action_prevue": category, "raison": reason,
+            "shopcaisse_id": match.get("id") if match else None, "score_confiance": round(score, 3),
+            "champs_qui_seraient_crees": create_fields if category == "A_CREER" else {},
+            "champs_qui_seraient_modifies": {}, "conflits": conflicts,
+            "champs_obligatoires_manquants": missing if category == "A_CREER" else [],
+        })
+    unmatched = [{"shopcaisse_id": s.get("id"), "nom": s.get("product"),
+                  "classification": "SHOPCAISSE_EXISTANT_NON_RATTACHE"}
+                 for s in shop if s.get("id") not in claimed]
+    operations = []
+    for row in plan:
+        if row["action_prevue"] == "A_CREER":
+            payload = {k: v for k, v in row["champs_qui_seraient_crees"].items() if v is not None}
+            operations.append({"method": "POST", "endpoint": "/v1/companies/{company}/items",
+                               "payload": payload if not row["champs_obligatoires_manquants"] else None,
+                               "statut": "PRET" if not row["champs_obligatoires_manquants"] else "BLOQUE",
+                               "champs_obligatoires_manquants": row["champs_obligatoires_manquants"],
+                               "product_id": row["product_id"], "combination_id": row["combination_id"]})
+    anomalies = {
+        "sans EAN": sum(not p["EAN"] for p in plan), "sans référence": sum(not p["reference"] for p in plan),
+        "sans prix": sum(p["prix"] is None for p in plan), "sans stock": sum(p["stock"] is None for p in plan),
+        "attributs impossibles à traduire": sum(bool(p["attributs"]) for p in plan),
+        "champs obligatoires ShopCaisse manquants": sum(bool(p["champs_obligatoires_manquants"]) for p in plan),
+        "doublons potentiels": duplicate_notes,
+    }
+    report = {"produits PrestaShop": counts["products"], "déclinaisons PrestaShop": counts["combinations"],
+              "unités de vente PrestaShop": counts["comparable_entries"], "articles ShopCaisse actuels": len(shop),
+              "existantes certaines": category_counts["EXISTANTE_CERTAINE"],
+              "existantes probables": category_counts["EXISTANTE_PROBABLE"], "ambiguës": category_counts["AMBIGUE"],
+              "à créer": category_counts["A_CREER"], "conflits": category_counts["CONFLIT"],
+              "ShopCaisse existants non rattachés": len(unmatched), "anomalies": anomalies}
+    plan_doc = {"mode": "DRY_RUN_SANS_ECRITURE", "entrees": plan, "shopcaisse_existants_non_rattaches": unmatched}
+    dry_doc = {"mode": "DRY_RUN_SANS_ENVOI", "openapi": {"source": "https://api.shop-caisse.com/v1/docs",
+               "endpoints_ecriture_identifies": WRITE_ENDPOINTS,
+               "limitations": ["aucun endpoint d'écriture du stock", "aucun schéma de création de variante ou relation parent/enfant"]},
+               "operations": operations}
+    return plan_doc, dry_doc, report
+
+
+def run_import_dry_run(api_key: str, presta_path: Path, dist: Path) -> dict[str, Any]:
+    """GET the catalogue and write local simulation files only."""
+    raw = ShopCaisseClient(api_key).pull_catalogue()
+    payload = json.loads(presta_path.read_text(encoding="utf-8"))
+    documents = build_import_dry_run(raw, payload)
+    dist.mkdir(parents=True, exist_ok=True)
+    names = ("plan-import-prestashop-shopcaisse.json", "dry-run-import-shopcaisse.json", "rapport-dry-run-import.json")
+    for name, document in zip(names, documents):
+        (dist / name).write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return documents[2]
 
 
 def _attribute(attributes: list[dict[str, Any]], groups: tuple[str, ...]) -> str:

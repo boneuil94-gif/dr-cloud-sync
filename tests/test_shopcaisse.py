@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from dr_cloud_sync.shopcaisse import (
-    ShopCaisseClient, ShopCaisseError, extract_prestashop, normalize, reconcile,
+    ShopCaisseClient, ShopCaisseError, build_import_dry_run, extract_prestashop, normalize, reconcile,
 )
 
 
@@ -150,3 +150,25 @@ def test_ambiguity_keeps_all_equivalent_candidates():
     assert len(report["ambigues"]) == 1
     assert len(report["ambigues"][0]["candidats"]) == 2
     assert report["uniquement_prestashop"] == []
+
+
+def test_import_dry_run_generates_no_network_operation_and_blocks_missing_price():
+    raw = {"items": [], "prices": [], "stocks": [], "companies": [{"id": "c"}],
+           "stores": [{"id": "s"}], "priceLists": []}
+    presta = {"catalogue": [{"id": 1, "nom": "Produit", "ean": None,
+                              "reference": None, "declinaisons": []}]}
+    plan, payloads, report = build_import_dry_run(raw, presta)
+    assert plan["entrees"][0]["action_prevue"] == "A_CREER"
+    assert payloads["operations"][0]["statut"] == "BLOQUE"
+    assert payloads["operations"][0]["payload"] is None
+    assert payloads["operations"][0]["champs_obligatoires_manquants"] == ["price"]
+    assert report["à créer"] == 1
+
+
+def test_dry_run_declares_only_documented_write_methods_without_executing_them():
+    _, payloads, _ = build_import_dry_run(
+        {"items": [], "prices": [], "stocks": [], "companies": [], "stores": [], "priceLists": []},
+        {"catalogue": []},
+    )
+    assert {e["method"] for e in payloads["openapi"]["endpoints_ecriture_identifies"]} == {"POST", "PUT"}
+    assert payloads["operations"] == []
