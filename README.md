@@ -8,7 +8,10 @@ La v1 lit le Webservice de `dr-cloudshop.com` et conserve les réponses JSON com
 - `product_options` et `product_option_values` (groupes et valeurs d'attributs) ;
 - `stock_availables` (quantités produit/déclinaison).
 
-Il n'existe volontairement **aucun connecteur Shop Caisse** : il sera ajouté après validation de son API.
+Un connecteur ShopCaisse en lecture seule est également disponible. Le workflow manuel
+`Pull catalogue ShopCaisse` vérifie d'abord le secret GitHub `SHOPCAISSE_API_KEY`, teste
+l'authentification, pagine le catalogue, puis publie les snapshots et le rapport de
+rapprochement comme artefact sans les committer.
 Le programme ne pousse aucune donnée vers PrestaShop et la clé recommandée doit disposer uniquement de droits `GET`.
 
 ## Installation et configuration
@@ -49,3 +52,15 @@ Le client utilise HTTPS, l'authentification Basic prescrite par le Webservice (c
 d'attente, une pagination et de nouvelles tentatives sur les erreurs transitoires. Les erreurs affichées ne contiennent
 jamais la clé.
 
+## Récupération ShopCaisse
+
+Le dépôt doit déjà contenir `dist/catalogue-prestashop-reconstruit.json`. Le pull local se lance avec :
+
+```bash
+SHOPCAISSE_API_KEY="$SHOPCAISSE_API_KEY" dr-cloud-sync shopcaisse-pull
+```
+
+La commande utilise exclusivement `https://api.shop-caisse.com/v1`, n'effectue que des requêtes `GET` et produit
+`catalogue-shopcaisse-brut.json`, `catalogue-shopcaisse-normalise.json` et
+`rapport-shopcaisse-prestashop.json` dans `dist/`. Le rapprochement privilégie l'EAN, puis le SKU, le libellé avec sa
+déclinaison, et enfin une similarité textuelle avec un seuil strict.

@@ -1,0 +1,49 @@
+name: Pull catalogue ShopCaisse
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Vérifier le secret
+        env:
+          SHOPCAISSE_API_KEY: ${{ secrets.SHOPCAISSE_API_KEY }}
+        run: test -n "$SHOPCAISSE_API_KEY" || { echo "SHOPCAISSE_API_KEY est absent" >&2; exit 1; }
+      - name: Tester l'authentification ShopCaisse
+        env:
+          SHOPCAISSE_API_KEY: ${{ secrets.SHOPCAISSE_API_KEY }}
+        shell: bash
+        run: |
+          code=$(curl --silent --show-error --output /tmp/shopcaisse-auth.json --write-out '%{http_code}' \
+            --header "Authorization: Bearer $SHOPCAISSE_API_KEY" \
+            --header 'Accept: application/json' \
+            'https://api.shop-caisse.com/v1/authentication')
+          if [[ "$code" -lt 200 || "$code" -ge 300 ]]; then
+            printf 'ShopCaisse HTTP %s: authentification refusée\n' "$code" >&2
+            exit 1
+          fi
+          echo "Authentification ShopCaisse réussie (HTTP $code)."
+      - name: Installer le projet
+        run: python -m pip install .
+      - name: Récupérer et rapprocher les catalogues
+        env:
+          SHOPCAISSE_API_KEY: ${{ secrets.SHOPCAISSE_API_KEY }}
+        run: dr-cloud-sync shopcaisse-pull
+      - name: Publier les snapshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-shopcaisse
+          if-no-files-found: error
+          path: |
+            dist/catalogue-shopcaisse-brut.json
+            dist/catalogue-shopcaisse-normalise.json
+            dist/rapport-shopcaisse-prestashop.json
