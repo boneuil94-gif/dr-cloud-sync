@@ -138,6 +138,7 @@ def normalize(products: list[dict[str, Any]], *, prices: list[dict[str, Any]] | 
         prices_by_item.setdefault(price.get("item"), []).append(price)
     for stock in stocks or []:
         stocks_by_item.setdefault(stock.get("item"), []).append(stock)
+    by_id = {row.get("id"): row for row in products if row.get("id") is not None}
     result = []
     for row in products:
         barcodes = row.get("barcodes")
@@ -145,13 +146,17 @@ def normalize(products: list[dict[str, Any]], *, prices: list[dict[str, Any]] | 
                _value(row, "ean", "ean13", "barcode", "code_barre"))
         item_prices = prices_by_item.get(row.get("id"), [])
         item_stocks = stocks_by_item.get(row.get("id"), [])
+        parent = by_id.get(row.get("parentItem"), {})
+        is_variation = row.get("type") == "VARIATION" or bool(row.get("parentItem"))
+        own_name = _value(row, "name", "product", "nom", "label")
+        parent_name = _value(parent, "name", "product", "nom", "label")
         result.append({
             "id": row.get("id"),
             "company_id": row.get("companyId"),
             "ean": str(ean).strip(),
             "sku": _value(row, "reference", "sku", "ref"),
-            "product": _value(row, "name", "product", "nom", "label"),
-            "variation": (_value(row, "name") if row.get("type") == "VARIATION" else
+            "product": (parent_name if is_variation and parent_name else own_name),
+            "variation": (own_name if is_variation else
                           _value(row, "variation", "variant", "declinaison", "attribute")),
             "parent_item_id": row.get("parentItem"),
             "type": row.get("type"),
@@ -163,24 +168,102 @@ def normalize(products: list[dict[str, Any]], *, prices: list[dict[str, Any]] | 
     return result
 
 
+def extract_prestashop(payload: Any) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Extract comparable sale units from the reconstructed snapshot.
+
+    A product with combinations is represented by its combinations; a product
+    without one remains a sale unit.  This avoids both dropping the nested
+    catalogue (the former bug) and counting a variation product twice.
+    """
+    products = payload.get("catalogue", []) if isinstance(payload, dict) else payload
+    if not isinstance(products, list):
+        raise ValueError("Structure du snapshot PrestaShop inattendue")
+    entries: list[dict[str, Any]] = []
+    combination_count = 0
+    for product in products:
+        combinations = product.get("declinaisons") or []
+        rows = combinations or [None]
+        combination_count += len(combinations)
+        for combination in rows:
+            attributes = combination.get("attributs", []) if combination else []
+            names = [str(a.get("nom", "")).strip() for a in attributes if a.get("nom")]
+            color = _attribute(attributes, ("couleur", "color"))
+            size = _attribute(attributes, ("taille", "size"))
+            entries.append({
+                "product_id": product.get("id"),
+                "combination_id": combination.get("id") if combination else None,
+                "product_name": _value(product, "nom", "name"),
+                "variation_name": " / ".join(names),
+                "attributes": attributes,
+                "color": color,
+                "size": size,
+                "ean": _value(combination or product, "ean", "ean13"),
+                "reference": _value(combination or product, "reference", "sku"),
+                "stock": combination.get("stock") if combination else product.get("stock"),
+                "source": combination or product,
+                # Compatibility aliases for existing report consumers.
+                "id": combination.get("id") if combination else product.get("id"),
+                "product": _value(product, "nom", "name"),
+                "variation": " / ".join(names),
+                "sku": _value(combination or product, "reference", "sku"),
+            })
+    return entries, {"products": len(products), "combinations": combination_count,
+                     "comparable_entries": len(entries)}
+
+
+def _attribute(attributes: list[dict[str, Any]], groups: tuple[str, ...]) -> str:
+    for attribute in attributes:
+        group = _text(str(attribute.get("groupe", "")))
+        if any(name in group for name in groups):
+            return str(attribute.get("nom", "")).strip()
+    return ""
+
+
 def reconcile(shop: list[dict[str, Any]], presta_payload: Any) -> dict[str, Any]:
-    presta = normalize(_rows(presta_payload)) if not isinstance(presta_payload, list) else normalize(presta_payload)
-    groups: dict[str, list[Any]] = {k: [] for k in ("certaines", "probables", "ambigues")}
+    presta, counts = extract_prestashop(presta_payload)
+    groups: dict[str, list[Any]] = {k: [] for k in
+                                    ("certaines", "probables", "possibles", "ambigues")}
     used: set[int] = set()
-    unmatched_shop = []
+    unmatched_shop: list[dict[str, Any]] = []
     for s in shop:
-        scored = sorted(((_score(s, p), i, p) for i, p in enumerate(presta) if i not in used), reverse=True,
-                        key=lambda item: item[0])
-        if not scored or scored[0][0][0] == 0:
-            unmatched_shop.append(s); continue
-        score, index, p = scored[0]
-        tied = len(scored) > 1 and scored[1][0] == score
-        bucket = "ambigues" if tied else ("certaines" if score[0] >= 3 else "probables")
-        groups[bucket].append({"shopcaisse": s, "prestashop": p, "methode": score[1], "score": score[0]})
-        if not tied:
-            used.add(index)
-    return {**groups, "uniquement_prestashop": [p for i, p in enumerate(presta) if i not in used],
-            "uniquement_shopcaisse": unmatched_shop}
+        candidates = sorted(((*_score(s, p), i, p) for i, p in enumerate(presta)),
+                            reverse=True, key=lambda item: item[0])
+        credible = [candidate for candidate in candidates if candidate[0] >= .78]
+        if not credible:
+            unmatched_shop.append(s)
+            continue
+        best_score, method, index, p = credible[0]
+        # More than one near-equivalent candidate is useful information, not an
+        # arbitrary match. Exact identifiers remain decisive.
+        plausible = [c for c in credible if best_score - c[0] <= .025]
+        if len(plausible) > 1:
+            groups["ambigues"].append({
+                "shopcaisse": s,
+                "candidats": [_match(s, c[3], c[0], c[1]) for c in plausible],
+                "score": best_score,
+                "raison": "plusieurs candidats PrestaShop de scores équivalents",
+            })
+            used.update(c[2] for c in plausible)
+            continue
+        bucket = "certaines" if best_score >= .99 else ("probables" if best_score >= .90 else "possibles")
+        groups[bucket].append(_match(s, p, best_score, method))
+        used.add(index)
+    report = {**groups,
+              "uniquement_shopcaisse": unmatched_shop,
+              "uniquement_prestashop": [p for i, p in enumerate(presta) if i not in used]}
+    report["statistiques"] = {
+        "articles_shopcaisse": len(shop), **counts,
+        **{key: len(report[key]) for key in groups},
+        "uniquement_shopcaisse": len(unmatched_shop),
+        "uniquement_prestashop": len(report["uniquement_prestashop"]),
+    }
+    assert sum(len(report[k]) for k in (*groups, "uniquement_shopcaisse")) == len(shop)
+    return report
+
+
+def _match(shop: dict[str, Any], presta: dict[str, Any], score: float, method: str) -> dict[str, Any]:
+    return {"shopcaisse": shop, "prestashop": presta, "methode": method,
+            "raison": method.replace("_", " "), "score": round(score, 3)}
 
 
 def _value(row: dict[str, Any], *keys: str) -> str:
@@ -193,12 +276,30 @@ def _text(value: str) -> str:
 
 
 def _score(a: dict[str, Any], b: dict[str, Any]) -> tuple[float, str]:
-    if a["ean"] and a["ean"] == b["ean"]: return (4, "ean_exact")
-    if a["sku"] and a["sku"] == b["sku"]: return (3, "sku_exact")
-    names, variants = (_text(a["product"]), _text(b["product"])), (_text(a["variation"]), _text(b["variation"]))
-    if names[0] and names[0] == names[1] and variants[0] == variants[1]: return (3, "produit_declinaison_exacts")
-    ratio = SequenceMatcher(None, " ".join((names[0], variants[0])), " ".join((names[1], variants[1]))).ratio()
-    return (round(ratio, 3), "texte_fiable") if ratio >= .9 else (0, "aucune")
+    ean_a, ean_b = str(a.get("ean") or "").strip(), str(b.get("ean") or "").strip()
+    if ean_a and ean_a == ean_b: return (1.0, "ean_exact")
+    ref_a, ref_b = _text(str(a.get("sku") or "")), _text(str(b.get("reference") or ""))
+    if ref_a and len(ref_a) >= 3 and ref_a == ref_b: return (0.995, "reference_exacte")
+    product_a, product_b = _text(str(a.get("product") or "")), _text(str(b.get("product_name") or ""))
+    variation_a, variation_b = _tokens(a.get("variation")), _tokens(b.get("variation_name"))
+    if product_a and product_a == product_b and variation_a and variation_a == variation_b:
+        typed = b.get("color") or b.get("size")
+        return (.97, "produit_couleur_taille_identiques" if typed else
+                "produit_declinaison_identiques")
+    if product_a and product_a == product_b and not variation_a and not variation_b:
+        return (.97, "produit_declinaison_identiques")
+    joined_a, joined_b = " ".join((product_a, " ".join(variation_a))), " ".join((product_b, " ".join(variation_b)))
+    ratio = SequenceMatcher(None, joined_a, joined_b).ratio() if joined_a and joined_b else 0
+    # A typed colour or size contradiction vetoes fuzzy text matching.
+    for key in ("color", "size"):
+        expected = _text(str(b.get(key) or ""))
+        if expected and variation_a and expected not in " ".join(variation_a) and ratio < .94:
+            return (0, "attribut_contradictoire")
+    return (round(ratio, 3), "texte_et_attributs_compatibles") if ratio >= .78 else (0, "aucune")
+
+
+def _tokens(value: Any) -> tuple[str, ...]:
+    return tuple(sorted(filter(None, _text(str(value or "")).split())))
 
 
 def pull_and_write(api_key: str, presta_path: Path, dist: Path) -> dict[str, int]:
