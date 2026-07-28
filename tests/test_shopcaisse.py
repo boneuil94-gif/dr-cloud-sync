@@ -5,7 +5,9 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from dr_cloud_sync.shopcaisse import ShopCaisseClient, ShopCaisseError, normalize, reconcile
+from dr_cloud_sync.shopcaisse import (
+    ShopCaisseClient, ShopCaisseError, extract_prestashop, normalize, reconcile,
+)
 
 
 class Response:
@@ -94,6 +96,57 @@ def test_reconciliation_priorities_and_categories():
         {"id": "p2", "reference": "REF2", "name": "Y"},
         {"id": "p3", "name": "Sans rapport"},
     ])
-    assert [row["methode"] for row in report["certaines"]] == ["ean_exact", "sku_exact"]
+    assert [row["methode"] for row in report["certaines"]] == ["ean_exact", "reference_exacte"]
     assert [row["id"] for row in report["uniquement_shopcaisse"]] == ["s3"]
     assert [row["id"] for row in report["uniquement_prestashop"]] == ["p3"]
+
+
+def test_real_prestashop_snapshot_extracts_every_combination_and_plain_product():
+    with open("dist/catalogue-prestashop-reconstruit.json", encoding="utf-8") as stream:
+        entries, counts = extract_prestashop(json.load(stream))
+    assert counts == {"products": 72, "combinations": 453, "comparable_entries": 478}
+    assert sum(row["combination_id"] is not None for row in entries) == 453
+    celeste = next(row for row in entries if row["combination_id"] == 54)
+    assert celeste["product_id"] == 22
+    assert celeste["product_name"] == "Chicha CELESTE ®"
+    assert celeste["color"] == "NARDO GREY"
+    assert celeste["stock"] == 1
+
+
+def test_empty_identifiers_are_never_matches_and_leave_prestashop_entries():
+    report = reconcile(normalize([{"id": "s", "name": "sans rapport"}]), {
+        "catalogue": [{"id": 1, "nom": "autre", "ean": None,
+                       "reference": None, "declinaisons": []}]
+    })
+    assert not report["certaines"]
+    assert report["uniquement_shopcaisse"][0]["id"] == "s"
+    assert report["uniquement_prestashop"][0]["product_id"] == 1
+
+
+def test_parent_child_and_product_color_size_match():
+    shop = normalize([
+        {"id": "parent", "name": "Chicha Celeste", "type": "PRODUCT"},
+        {"id": "child", "name": "Nardo Grey", "type": "VARIATION",
+         "parentItem": "parent"},
+    ])
+    assert shop[1]["product"] == "Chicha Celeste"
+    assert shop[1]["variation"] == "Nardo Grey"
+    report = reconcile([shop[1]], {"catalogue": [{
+        "id": 22, "nom": "Chicha Celeste", "declinaisons": [{
+            "id": 54, "attributs": [{"nom": "NARDO GREY", "groupe": "Couleurs"}],
+            "ean": None, "reference": None, "stock": 1,
+        }],
+    }]})
+    assert report["probables"][0]["methode"] == "produit_couleur_taille_identiques"
+
+
+def test_ambiguity_keeps_all_equivalent_candidates():
+    report = reconcile(normalize([{"id": "s", "name": "Même produit"}]), {
+        "catalogue": [
+            {"id": 1, "nom": "Même produit", "declinaisons": []},
+            {"id": 2, "nom": "Même produit", "declinaisons": []},
+        ]
+    })
+    assert len(report["ambigues"]) == 1
+    assert len(report["ambigues"][0]["candidats"]) == 2
+    assert report["uniquement_prestashop"] == []
