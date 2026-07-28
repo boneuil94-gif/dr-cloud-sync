@@ -64,3 +64,14 @@ La commande utilise exclusivement `https://api.shop-caisse.com/v1`, n'effectue q
 `catalogue-shopcaisse-brut.json`, `catalogue-shopcaisse-normalise.json` et
 `rapport-shopcaisse-prestashop.json` dans `dist/`. Le rapprochement privilégie l'EAN, puis le SKU, le libellé avec sa
 déclinaison, et enfin une similarité textuelle avec un seuil strict.
+
+## Simulation d'import PrestaShop vers ShopCaisse
+
+```bash
+SHOPCAISSE_API_KEY="$SHOPCAISSE_API_KEY" dr-cloud-sync shopcaisse-import-dry-run
+```
+
+Cette commande possède uniquement un client réseau `GET`. Elle produit localement le plan,
+les payloads non envoyés et le rapport dans `dist/`. Le schéma public ne propose ni écriture
+de stock, ni création explicite de variante ou de relation parent/enfant : ces limites sont
+signalées dans le dry-run et aucune donnée absente (notamment le prix) n'est inventée.
