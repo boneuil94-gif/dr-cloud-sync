@@ -67,6 +67,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Erreur: {exc}", file=sys.stderr)
             return 1
         print(json.dumps({"status": "pilot-completed", "results": report["resultats"]}, ensure_ascii=False))
+        if any(result.get("statut") == "FAILED" for result in report["resultats"]):
+            return 1
     return 0
 
 
