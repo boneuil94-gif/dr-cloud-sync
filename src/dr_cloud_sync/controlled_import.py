@@ -20,6 +20,12 @@ def _report() -> dict[str, Any]:
             "skipped": 0, "failed": 0, "arret_sur_echec": False, "resultats": []}
 
 
+def _all_report(candidates: int = 0) -> dict[str, Any]:
+    return {"mode": "IMPORT_ALL", "candidats": candidates, "creations_effectuees": 0,
+            "skipped": 0, "failed": 0, "arret_sur_echec": False, "termine": False,
+            "resultats": []}
+
+
 def _write_report(path: Path, report: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -150,4 +156,86 @@ def run_controlled_import(api_key: str, prestashop_api_key: str, confirm: str, c
             _write_report(report_path, report)
             return report
         _write_report(report_path, report)
+    return report
+
+
+def run_all_import(api_key: str, prestashop_api_key: str, confirm: str, company_id: str,
+                   plan_path: Path, report_path: Path, *,
+                   client: ShopCaisseClient | None = None) -> dict[str, Any]:
+    """Run the validated create-only import over every PRET_A_CREER candidate."""
+    report = _all_report()
+    _write_report(report_path, report)
+    if confirm != "IMPORT-ALL":
+        raise PilotSafetyError("Confirmation incorrecte: zéro écriture autorisée")
+    if not api_key:
+        raise PilotSafetyError("SHOPCAISSE_API_KEY est absent: zéro écriture autorisée")
+    if not prestashop_api_key:
+        raise PilotSafetyError("PRESTASHOP_API_KEY est absent: zéro écriture autorisée")
+    if not company_id:
+        raise PilotSafetyError("SHOPCAISSE_COMPANY_ID est absent: zéro écriture autorisée")
+
+    candidates = load_candidates(plan_path)
+    report["candidats"] = len(candidates)
+    _write_report(report_path, report)
+    active_client = client or ShopCaisseClient(api_key)
+    # Mandatory catalogue snapshot before the first possible creation. Newly
+    # created items are appended immediately, keeping the barrier active even
+    # when two plan entries represent the same item.
+    catalogue = active_client.pull_company_items(company_id)
+    for row in candidates:
+        selection = _selection(row)
+        source = {"prestashop_id": row.get("product_id"),
+                  "combination_id": row.get("combination_id"),
+                  "reference": row.get("reference")}
+        result = {"source": source, "statut": "FAILED", "shopcaisse_id": None,
+                  "verification": {"name": False, "price": False, "barcode": False},
+                  "erreur": None}
+        existing = duplicate_candidate(catalogue, selection)
+        if existing is not None:
+            result.update({"statut": "SKIPPED", "shopcaisse_id": str(existing.get("id") or ""),
+                           "erreur": "article ShopCaisse existant détecté; aucune modification"})
+            report["skipped"] += 1
+            report["resultats"].append(result)
+            _write_report(report_path, report)
+            continue
+
+        payload = row.get("champs_qui_seraient_crees")
+        errors = validate_controlled_payload(payload, company_id)
+        if row.get("action_prevue") != ALLOWED_CLASSIFICATION:
+            errors.append("classification PRET_A_CREER")
+        if errors:
+            result["erreur"] = "Payload CreateSimpleItemDto invalide: " + ", ".join(errors)
+        else:
+            try:
+                created = active_client.create_company_item(company_id, dict(payload))
+                report["creations_effectuees"] += 1
+                item_id = str(created["id"])
+                result["shopcaisse_id"] = item_id
+                catalogue.append(created)
+                reread = active_client.get_company_item(company_id, item_id)
+                actual_price = reread.get("defaultPrice", reread.get("price"))
+                expected_barcode = payload.get("barcode")
+                verification = {
+                    "name": _value(reread, "name", "nom", "label") == payload["name"],
+                    "price": actual_price == payload["price"],
+                    "barcode": expected_barcode is None or _barcode(reread) == expected_barcode,
+                }
+                result["verification"] = verification
+                if all(verification.values()):
+                    result["statut"] = "CREATED"
+                else:
+                    result["erreur"] = "Relecture ShopCaisse non conforme: " + ", ".join(
+                        key for key, valid in verification.items() if not valid)
+            except (ShopCaisseError, KeyError, TypeError, ValueError) as exc:
+                result["erreur"] = str(exc)
+
+        report["resultats"].append(result)
+        if result["statut"] == "FAILED":
+            report["failed"] += 1
+            report["arret_sur_echec"] = True
+            _write_report(report_path, report)
+            return report
+        _write_report(report_path, report)
+    report["termine"] = True
+    _write_report(report_path, report)
     return report
