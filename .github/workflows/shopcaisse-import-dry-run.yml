@@ -17,14 +17,19 @@ jobs:
       - name: Vérifier le secret
         env:
           SHOPCAISSE_API_KEY: ${{ secrets.SHOPCAISSE_API_KEY }}
-        run: test -n "$SHOPCAISSE_API_KEY" || { echo "SHOPCAISSE_API_KEY est absent" >&2; exit 1; }
+          PRESTASHOP_API_KEY: ${{ secrets.PRESTASHOP_API_KEY }}
+        run: |
+          test -n "$SHOPCAISSE_API_KEY" || { echo "SHOPCAISSE_API_KEY est absent" >&2; exit 1; }
+          test -n "$PRESTASHOP_API_KEY" || { echo "PRESTASHOP_API_KEY est absent" >&2; exit 1; }
       - name: Installer et vérifier la barrière GET
         run: |
           python -m pip install . pytest
-          python -m pytest -q tests/test_shopcaisse.py -k 'get_only or no_network_operation'
+          python -m pytest -q
       - name: Exécuter uniquement la simulation
         env:
           SHOPCAISSE_API_KEY: ${{ secrets.SHOPCAISSE_API_KEY }}
+          PRESTASHOP_API_KEY: ${{ secrets.PRESTASHOP_API_KEY }}
+          PRESTASHOP_API_URL: ${{ vars.PRESTASHOP_API_URL || 'https://dr-cloudshop.com/api' }}
         run: dr-cloud-sync shopcaisse-import-dry-run
       - name: Publier le dry-run
         uses: actions/upload-artifact@v4
@@ -35,3 +40,4 @@ jobs:
             dist/plan-import-prestashop-shopcaisse.json
             dist/dry-run-import-shopcaisse.json
             dist/rapport-dry-run-import.json
+            dist/catalogue-prestashop-reconstruit.json
