@@ -10,7 +10,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlparse
+from urllib.parse import quote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 
@@ -34,6 +34,42 @@ class ShopCaisseClient:
     def pull_products(self) -> list[dict[str, Any]]:
         """Return the real ShopCaisse items, kept for callers of the old method."""
         return self.pull_catalogue()["items"]
+
+    def pull_company_items(self, company_id: str) -> list[dict[str, Any]]:
+        """GET all items for one company (used by the pilot duplicate barrier)."""
+        return self._get_paginated(f"/companies/{quote(company_id, safe='')}/items")
+
+    def get_company_item(self, company_id: str, item_id: str) -> dict[str, Any]:
+        """GET an item after creation; this method cannot perform a write."""
+        payload = self._get(
+            f"{API_URL}/companies/{quote(company_id, safe='')}/items/{quote(item_id, safe='')}"
+        )
+        if not isinstance(payload, dict):
+            raise ShopCaisseError("Format de l'article ShopCaisse inattendu")
+        return payload
+
+    def create_company_item(self, company_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """POST the sole write endpoint authorized for the explicitly gated pilot."""
+        errors = validate_create_item(payload, company_id)
+        if errors:
+            raise ShopCaisseError("Payload CreateSimpleItemDto invalide: " + ", ".join(errors))
+        url = f"{API_URL}/companies/{quote(company_id, safe='')}/items"
+        request = Request(url, data=json.dumps(payload).encode("utf-8"), method="POST", headers={
+            "Authorization": self._authorization, "Accept": "application/json",
+            "Content-Type": "application/json",
+        })
+        try:
+            with self.opener(request, timeout=self.timeout) as response:
+                result = json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            raise ShopCaisseError(f"ShopCaisse HTTP {exc.code} sur {urlparse(url).path}") from exc
+        except (URLError, TimeoutError) as exc:
+            raise ShopCaisseError(f"ShopCaisse indisponible sur {urlparse(url).path}") from exc
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ShopCaisseError("Réponse JSON ShopCaisse invalide") from exc
+        if not isinstance(result, dict) or not result.get("id"):
+            raise ShopCaisseError("Identifiant de l'article ShopCaisse créé absent")
+        return result
 
     def pull_catalogue(self) -> dict[str, list[dict[str, Any]]]:
         """Fetch catalogue resources declared by the ShopCaisse OpenAPI schema."""

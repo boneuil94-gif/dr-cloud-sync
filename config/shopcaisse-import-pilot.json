@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "source": "dist/plan-import-prestashop-shopcaisse.json (dry-run validé: 478 unités, 444 PRET_A_CREER)",
+  "selection_policy": "Exactement 5 PRET_A_CREER sans shopcaisse_id; diversité simple/déclinaison/EAN/stock/prix",
+  "stock": "Non envoyé: CreateSimpleItemDto validé ne contient aucun champ stock",
+  "selections": [
+    {
+      "prestashop_id": 21, "combination_id": null, "nom_prevu": "320° DISC 3B XL",
+      "prix_prevu": 9.0, "ean_prevu": null, "reference_prevue": null,
+      "classification_dry_run": "PRET_A_CREER", "shopcaisse_id_dry_run": null,
+      "stock_dry_run": null, "raison_selection": "article simple et prix bas distinct",
+      "payload_valide_dry_run": {"name": "320° DISC 3B XL", "price": 9.0}
+    },
+    {
+      "prestashop_id": 22, "combination_id": 54, "nom_prevu": "Chicha CELESTE ® - NARDO GREY",
+      "prix_prevu": 59.0, "ean_prevu": null, "reference_prevue": null,
+      "classification_dry_run": "PRET_A_CREER", "shopcaisse_id_dry_run": null,
+      "stock_dry_run": 1, "raison_selection": "déclinaison traduite, stock présent et prix médian",
+      "payload_valide_dry_run": {"name": "Chicha CELESTE ® - NARDO GREY", "price": 59.0}
+    },
+    {
+      "prestashop_id": 83, "combination_id": 475, "nom_prevu": "E-liquide Adalya 10ml 20mg/ml - MI AMOR",
+      "prix_prevu": 5.9, "ean_prevu": "8681655703540", "reference_prevue": null,
+      "classification_dry_run": "PRET_A_CREER", "shopcaisse_id_dry_run": null,
+      "stock_dry_run": 4, "raison_selection": "EAN disponible, stock présent et prix décimal bas",
+      "payload_valide_dry_run": {"name": "E-liquide Adalya 10ml 20mg/ml - MI AMOR", "barcode": "8681655703540", "price": 5.9}
+    },
+    {
+      "prestashop_id": 56, "combination_id": 165, "nom_prevu": "DUM VICTORIA M SS39 - BLANC",
+      "prix_prevu": 149.0, "ean_prevu": null, "reference_prevue": null,
+      "classification_dry_run": "PRET_A_CREER", "shopcaisse_id_dry_run": null,
+      "stock_dry_run": 0, "raison_selection": "déclinaison, stock zéro explicite et prix élevé",
+      "payload_valide_dry_run": {"name": "DUM VICTORIA M SS39 - BLANC", "price": 149.0}
+    },
+    {
+      "prestashop_id": 72, "combination_id": 374, "nom_prevu": "JNR FALCON X + 28K - WATERMELON MANGO PEACH",
+      "prix_prevu": 18.9, "ean_prevu": "6977704950853", "reference_prevue": null,
+      "classification_dry_run": "PRET_A_CREER", "shopcaisse_id_dry_run": null,
+      "stock_dry_run": 3, "raison_selection": "second EAN, déclinaison, stock et prix décimal distinct",
+      "payload_valide_dry_run": {"name": "JNR FALCON X + 28K - WATERMELON MANGO PEACH", "barcode": "6977704950853", "price": 18.9}
+    }
+  ]
+}
