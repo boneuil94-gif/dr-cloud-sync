@@ -1,0 +1,42 @@
+name: Import pilote PrestaShop vers ShopCaisse
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Saisir exactement IMPORT-5 pour autoriser au maximum cinq créations"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  import-pilot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Barrière de confirmation sans écriture
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: test "$CONFIRM" = "IMPORT-5" || { echo "Confirmation incorrecte; zéro écriture." >&2; exit 1; }
+      - name: Installer et tester les barrières
+        run: |
+          python -m pip install . pytest
+          python -m pytest -q
+      - name: Exécuter le pilote borné à cinq créations
+        env:
+          SHOPCAISSE_API_KEY: ${{ secrets.SHOPCAISSE_API_KEY }}
+          SHOPCAISSE_COMPANY_ID: ${{ vars.SHOPCAISSE_COMPANY_ID }}
+          SHOPCAISSE_IMPORT_CONFIRM: ${{ inputs.confirm }}
+        run: dr-cloud-sync shopcaisse-import-pilot
+      - name: Publier le rapport sans secret
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapport-import-pilote-shopcaisse
+          if-no-files-found: warn
+          path: dist/rapport-import-pilote-shopcaisse.json

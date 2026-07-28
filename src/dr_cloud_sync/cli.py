@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .config import ConfigurationError, Settings
 from .prestashop import PrestaShopClient, PrestaShopError
+from .pilot import PilotSafetyError, run_pilot
 from .shopcaisse import ShopCaisseError, pull_and_write, run_import_dry_run
 from .store import SnapshotStore
 from .sync import synchronize
@@ -17,7 +18,7 @@ from .sync import synchronize
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Importe le catalogue maître PrestaShop")
-    parser.add_argument("command", choices=["pull", "shopcaisse-pull", "shopcaisse-import-dry-run"], help="Récupérer un snapshot complet")
+    parser.add_argument("command", choices=["pull", "shopcaisse-pull", "shopcaisse-import-dry-run", "shopcaisse-import-pilot"], help="Récupérer un snapshot complet")
     args = parser.parse_args(argv)
     if args.command == "pull":
         try:
@@ -43,7 +44,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Erreur: {exc}", file=sys.stderr)
             return 1
         print(json.dumps({"status": "completed", "source": "shopcaisse", "counts": counts}, sort_keys=True))
-    else:
+    elif args.command == "shopcaisse-import-dry-run":
         try:
             counts = run_import_dry_run(os.environ.get("SHOPCAISSE_API_KEY", ""),
                                         Path("dist/catalogue-prestashop-reconstruit.json"), Path("dist"),
@@ -55,6 +56,17 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Erreur: {exc}", file=sys.stderr)
             return 1
         print(json.dumps({"status": "dry-run-completed", "counts": counts}, ensure_ascii=False, sort_keys=True))
+    else:
+        try:
+            report = run_pilot(
+                os.environ.get("SHOPCAISSE_API_KEY", ""), os.environ.get("SHOPCAISSE_IMPORT_CONFIRM", ""),
+                os.environ.get("SHOPCAISSE_COMPANY_ID", ""), Path("config/shopcaisse-import-pilot.json"),
+                Path("dist/rapport-import-pilote-shopcaisse.json"),
+            )
+        except (PilotSafetyError, ShopCaisseError, ValueError, json.JSONDecodeError, OSError) as exc:
+            print(f"Erreur: {exc}", file=sys.stderr)
+            return 1
+        print(json.dumps({"status": "pilot-completed", "results": report["resultats"]}, ensure_ascii=False))
     return 0
 
 
