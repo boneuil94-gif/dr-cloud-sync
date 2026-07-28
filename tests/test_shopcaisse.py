@@ -158,11 +158,11 @@ def test_import_dry_run_generates_no_network_operation_and_blocks_missing_price(
     presta = {"catalogue": [{"id": 1, "nom": "Produit", "ean": None,
                               "reference": None, "declinaisons": []}]}
     plan, payloads, report = build_import_dry_run(raw, presta)
-    assert plan["entrees"][0]["action_prevue"] == "A_CREER"
+    assert plan["entrees"][0]["action_prevue"] == "DONNEES_MANQUANTES"
     assert payloads["operations"][0]["statut"] == "BLOQUE"
     assert payloads["operations"][0]["payload"] is None
     assert payloads["operations"][0]["champs_obligatoires_manquants"] == ["price"]
-    assert report["à créer"] == 1
+    assert report["données manquantes"] == 1
 
 
 def test_dry_run_declares_only_documented_write_methods_without_executing_them():
@@ -170,5 +170,26 @@ def test_dry_run_declares_only_documented_write_methods_without_executing_them()
         {"items": [], "prices": [], "stocks": [], "companies": [], "stores": [], "priceLists": []},
         {"catalogue": []},
     )
-    assert {e["method"] for e in payloads["openapi"]["endpoints_ecriture_identifies"]} == {"POST", "PUT"}
+    assert {e["method"] for e in payloads["openapi"]["endpoints_ecriture_identifies"]} == {"POST", "PUT", "DELETE"}
     assert payloads["operations"] == []
+
+
+def test_valid_price_is_ready_and_attributes_are_flattened_without_invention():
+    raw = {"items": [], "prices": [], "stocks": [], "companies": [{"id": "company-1"}],
+           "stores": [{"id": "store-1"}], "priceLists": []}
+    presta = {"catalogue": [{"id": 22, "nom": "Chicha CELESTE", "declinaisons": [{
+        "id": 54, "attributs": [{"nom": "NARDO GREY", "groupe": "Couleurs"}],
+        "ean": None, "reference": None, "stock": 1,
+    }]}]}
+    fields = {"22:54": {"price_ttc": 149.0, "price_ht": 124.166667,
+                         "product_price_ht": 124.166667,
+                         "combination_price_impact_ht": 0.0,
+                         "price_source": "PrestaShop GET", "currency": None}}
+    plan, payloads, report = build_import_dry_run(raw, presta, fields)
+    assert plan["entrees"][0]["action_prevue"] == "PRET_A_CREER"
+    assert plan["entrees"][0]["attributs_traduits"] is True
+    assert payloads["operations"][0]["payload"] == {
+        "name": "Chicha CELESTE - NARDO GREY", "price": 149.0,
+    }
+    assert payloads["operations"][0]["validation_locale"] == {"valide": True, "erreurs": []}
+    assert report["prêts à créer"] == 1

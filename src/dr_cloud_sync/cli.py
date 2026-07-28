@@ -46,7 +46,11 @@ def main(argv: list[str] | None = None) -> int:
     else:
         try:
             counts = run_import_dry_run(os.environ.get("SHOPCAISSE_API_KEY", ""),
-                                        Path("dist/catalogue-prestashop-reconstruit.json"), Path("dist"))
+                                        Path("dist/catalogue-prestashop-reconstruit.json"), Path("dist"),
+                                        prestashop_client=PrestaShopClient(
+                                            os.environ.get("PRESTASHOP_API_URL", "https://dr-cloudshop.com/api"),
+                                            os.environ.get("PRESTASHOP_API_KEY", ""),
+                                        ))
         except (ShopCaisseError, ValueError, json.JSONDecodeError, OSError) as exc:
             print(f"Erreur: {exc}", file=sys.stderr)
             return 1

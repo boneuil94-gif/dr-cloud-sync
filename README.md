@@ -68,10 +68,14 @@ déclinaison, et enfin une similarité textuelle avec un seuil strict.
 ## Simulation d'import PrestaShop vers ShopCaisse
 
 ```bash
-SHOPCAISSE_API_KEY="$SHOPCAISSE_API_KEY" dr-cloud-sync shopcaisse-import-dry-run
+SHOPCAISSE_API_KEY="$SHOPCAISSE_API_KEY" PRESTASHOP_API_KEY="$PRESTASHOP_API_KEY" \
+  dr-cloud-sync shopcaisse-import-dry-run
 ```
 
-Cette commande possède uniquement un client réseau `GET`. Elle produit localement le plan,
-les payloads non envoyés et le rapport dans `dist/`. Le schéma public ne propose ni écriture
-de stock, ni création explicite de variante ou de relation parent/enfant : ces limites sont
-signalées dans le dry-run et aucune donnée absente (notamment le prix) n'est inventée.
+Cette commande ne possède que des clients réseau `GET`. Elle demande à PrestaShop de calculer
+le prix final TTC avec ses propres règles fiscales et l'impact de chaque déclinaison, conserve
+les références exactes disponibles, puis produit localement le plan, les payloads non envoyés
+et le rapport dans `dist/`. Les payloads sont validés contre `CreateSimpleItemDto`; une création
+incomplète devient `DONNEES_MANQUANTES`, jamais `PRET_A_CREER`. Le schéma ShopCaisse public ne
+propose ni écriture de stock, ni création explicite de variante ou de relation parent/enfant :
+une simulation d'article simple nommé « produit - attributs » est donc préparée par déclinaison.

@@ -227,16 +227,50 @@ WRITE_ENDPOINTS = [
      "purpose": "définir plusieurs prix"},
     {"method": "PUT", "path": "/v1/companies/{company}/prices/{priceList}/items/{item}",
      "schema": "PriceDto", "required": ["price"], "purpose": "définir un prix"},
+    {"method": "DELETE", "path": "/v1/companies/{company}/items/{item}",
+     "schema": None, "required": [], "purpose": "supprimer un article"},
 ]
 
+CREATE_ITEM_SCHEMA = {
+    "schema": "CreateSimpleItemDto",
+    "type": "object",
+    "required": ["name", "price"],
+    "properties": {
+        "name": {"type": "string"}, "textLines": {"type": "array", "items": "string", "length": 2},
+        "reference": {"type": "string"}, "barcode": {"type": "string"},
+        "price": {"type": "number", "description": "prix TTC"},
+        "description": {"type": "string"}, "familyId": {"type": "string"},
+        "vatOnSite": {"type": "number"}, "vatTakeAway": {"type": "number"},
+    },
+}
 
-def build_import_dry_run(raw: dict[str, Any], presta_payload: Any) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+
+def validate_create_item(payload: dict[str, Any], company_id: str | None) -> list[str]:
+    """Validate the locally prepared request against CreateSimpleItemDto."""
+    errors = []
+    if not company_id:
+        errors.append("companyId (paramètre de chemin)")
+    if not isinstance(payload.get("name"), str) or not payload["name"].strip():
+        errors.append("name")
+    price = payload.get("price")
+    if isinstance(price, bool) or not isinstance(price, (int, float)):
+        errors.append("price")
+    for field in ("reference", "barcode"):
+        if field in payload and not isinstance(payload[field], str):
+            errors.append(field)
+    return errors
+
+
+def build_import_dry_run(raw: dict[str, Any], presta_payload: Any,
+                         import_fields: dict[str, dict[str, Any]] | None = None) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     """Build the three import simulations without owning any network writer."""
     shop = normalize(raw["items"], prices=raw["prices"], stocks=raw["stocks"])
     presta, counts = extract_prestashop(presta_payload)
     claimed: set[Any] = set()
     plan = []
-    category_counts = {k: 0 for k in ("EXISTANTE_CERTAINE", "EXISTANTE_PROBABLE", "AMBIGUE", "A_CREER", "CONFLIT")}
+    category_counts = {k: 0 for k in ("PRET_A_CREER", "EXISTANTE_CERTAINE", "EXISTANTE_PROBABLE", "AMBIGUE", "CONFLIT", "DONNEES_MANQUANTES")}
+    company_ids = [c.get("id") for c in raw.get("companies", []) if c.get("id")]
+    company_id = company_ids[0] if len(company_ids) == 1 else None
     duplicate_notes = []
     for entry in presta:
         ranked = sorted(((_score(s, entry), s) for s in shop), key=lambda x: x[0][0], reverse=True)
@@ -259,47 +293,70 @@ def build_import_dry_run(raw: dict[str, Any], presta_payload: Any) -> tuple[dict
                 category = "EXISTANTE_PROBABLE" if score >= .90 else "AMBIGUE"
                 reason = method
         else:
-            category = "A_CREER"
+            category = "CREATION_CANDIDATE"
         if match and match.get("id") in claimed:
             category = "CONFLIT"
             conflicts.append({"shopcaisse_id": match.get("id"), "raison": "déjà rattaché à une autre unité PrestaShop"})
         if match:
             claimed.add(match.get("id"))
-        category_counts[category] += 1
         if conflicts:
             duplicate_notes.append({"product_id": entry["product_id"], "combination_id": entry["combination_id"], "conflits": conflicts})
+        details = (import_fields or {}).get(f'{entry["product_id"]}:{entry["combination_id"] or 0}', {})
+        if details:
+            entry["reference"] = details.get("reference") or ""
+            entry["sku"] = entry["reference"]
+            entry["price"] = details.get("price_ttc")
         label = entry["variation_name"]
-        create_fields = {"name": entry["product_name"] + (f" - {label}" if label else ""),
-                         "reference": entry["reference"] or None, "barcode": entry["ean"] or None,
-                         "price": entry["price"]}
-        missing = [name for name in ("name", "price") if create_fields.get(name) in (None, "")]
+        item_name = entry["product_name"] + (f" - {label}" if label else "")
+        create_fields = {"name": item_name, "price": entry["price"]}
+        if entry["reference"]:
+            create_fields["reference"] = entry["reference"]
+        if entry["ean"]:
+            create_fields["barcode"] = entry["ean"]
+        missing = validate_create_item(create_fields, company_id)
+        if category == "CREATION_CANDIDATE":
+            category = "DONNEES_MANQUANTES" if missing else "PRET_A_CREER"
+        category_counts[category] += 1
         plan.append({
             "product_id": entry["product_id"], "combination_id": entry["combination_id"],
             "nom": entry["product_name"], "declinaison": label, "attributs": entry["attributes"],
             "couleur": entry["color"], "taille": entry["size"], "EAN": entry["ean"] or None,
-            "reference": entry["reference"] or None, "prix": entry["price"], "stock": entry["stock"],
+            "reference": entry["reference"] or None, "prix": entry["price"],
+            "prix_ht": details.get("price_ht"), "prix_ttc": details.get("price_ttc", entry["price"]),
+            "prix_produit_ht": details.get("product_price_ht"),
+            "impact_prix_declinaison_ht": details.get("combination_price_impact_ht"),
+            "devise": details.get("currency"), "source_prix": details.get("price_source"),
+            "stock": entry["stock"],
             "action_prevue": category, "raison": reason,
             "shopcaisse_id": match.get("id") if match else None, "score_confiance": round(score, 3),
-            "champs_qui_seraient_crees": create_fields if category == "A_CREER" else {},
+            "strategie_attributs": ("ARTICLE_SIMPLE_PAR_DECLINAISON" if entry["combination_id"] else "ARTICLE_SIMPLE"),
+            "attributs_traduits": bool(entry["combination_id"] and label),
+            "champs_disponibles": [k for k in ("name", "reference", "barcode", "price") if k in create_fields],
+            "champs_calculables_sans_invention": ["name"] + (["price"] if entry["price"] is not None else []),
+            "champs_reellement_manquants": missing,
+            "champs_qui_seraient_crees": create_fields if category in {"PRET_A_CREER", "DONNEES_MANQUANTES"} else {},
             "champs_qui_seraient_modifies": {}, "conflits": conflicts,
-            "champs_obligatoires_manquants": missing if category == "A_CREER" else [],
+            "champs_obligatoires_manquants": missing if category == "DONNEES_MANQUANTES" else [],
         })
     unmatched = [{"shopcaisse_id": s.get("id"), "nom": s.get("product"),
                   "classification": "SHOPCAISSE_EXISTANT_NON_RATTACHE"}
                  for s in shop if s.get("id") not in claimed]
     operations = []
     for row in plan:
-        if row["action_prevue"] == "A_CREER":
-            payload = {k: v for k, v in row["champs_qui_seraient_crees"].items() if v is not None}
-            operations.append({"method": "POST", "endpoint": "/v1/companies/{company}/items",
-                               "payload": payload if not row["champs_obligatoires_manquants"] else None,
-                               "statut": "PRET" if not row["champs_obligatoires_manquants"] else "BLOQUE",
+        if row["action_prevue"] in {"PRET_A_CREER", "DONNEES_MANQUANTES"}:
+            payload = row["champs_qui_seraient_crees"]
+            errors = validate_create_item(payload, company_id)
+            operations.append({"method": "POST", "endpoint": (f"/v1/companies/{company_id}/items" if company_id else "/v1/companies/{company}/items"),
+                               "companyId": company_id, "schema": "CreateSimpleItemDto",
+                               "payload": payload if not errors else None,
+                               "statut": "PRET" if not errors else "BLOQUE",
                                "champs_obligatoires_manquants": row["champs_obligatoires_manquants"],
+                               "validation_locale": {"valide": not errors, "erreurs": errors},
                                "product_id": row["product_id"], "combination_id": row["combination_id"]})
     anomalies = {
         "sans EAN": sum(not p["EAN"] for p in plan), "sans référence": sum(not p["reference"] for p in plan),
         "sans prix": sum(p["prix"] is None for p in plan), "sans stock": sum(p["stock"] is None for p in plan),
-        "attributs impossibles à traduire": sum(bool(p["attributs"]) for p in plan),
+        "attributs impossibles à traduire": sum(bool(p["combination_id"]) and not p["attributs_traduits"] for p in plan),
         "champs obligatoires ShopCaisse manquants": sum(bool(p["champs_obligatoires_manquants"]) for p in plan),
         "doublons potentiels": duplicate_notes,
     }
@@ -307,21 +364,40 @@ def build_import_dry_run(raw: dict[str, Any], presta_payload: Any) -> tuple[dict
               "unités de vente PrestaShop": counts["comparable_entries"], "articles ShopCaisse actuels": len(shop),
               "existantes certaines": category_counts["EXISTANTE_CERTAINE"],
               "existantes probables": category_counts["EXISTANTE_PROBABLE"], "ambiguës": category_counts["AMBIGUE"],
-              "à créer": category_counts["A_CREER"], "conflits": category_counts["CONFLIT"],
-              "ShopCaisse existants non rattachés": len(unmatched), "anomalies": anomalies}
+              "prêts à créer": category_counts["PRET_A_CREER"], "conflits": category_counts["CONFLIT"],
+              "données manquantes": category_counts["DONNEES_MANQUANTES"],
+              "ShopCaisse existants non rattachés": len(unmatched),
+              "avec prix valide": sum(isinstance(p["prix"], (int, float)) for p in plan),
+              "sans prix": sum(p["prix"] is None for p in plan),
+              "avec référence": sum(bool(p["reference"]) for p in plan), "sans référence": sum(not p["reference"] for p in plan),
+              "avec EAN": sum(bool(p["EAN"]) for p in plan), "sans EAN": sum(not p["EAN"] for p in plan),
+              "avec stock": sum(p["stock"] is not None for p in plan), "sans stock": sum(p["stock"] is None for p in plan),
+              "attributs correctement traduits": sum(p["attributs_traduits"] for p in plan),
+              "attributs réellement impossibles à traduire": anomalies["attributs impossibles à traduire"],
+              "anomalies": anomalies}
     plan_doc = {"mode": "DRY_RUN_SANS_ECRITURE", "entrees": plan, "shopcaisse_existants_non_rattaches": unmatched}
-    dry_doc = {"mode": "DRY_RUN_SANS_ENVOI", "openapi": {"source": "https://api.shop-caisse.com/v1/docs",
+    dry_doc = {"mode": "DRY_RUN_SANS_ENVOI", "openapi": {"source": "https://api.shop-caisse.com/v1/docs-json",
                "endpoints_ecriture_identifies": WRITE_ENDPOINTS,
-               "limitations": ["aucun endpoint d'écriture du stock", "aucun schéma de création de variante ou relation parent/enfant"]},
+               "schema_creation_article": CREATE_ITEM_SCHEMA,
+               "identifiants": {"companyId": company_id, "storeIds": [s.get("id") for s in raw.get("stores", []) if s.get("id")]},
+               "limitations": ["aucun endpoint d'écriture du stock", "aucun schéma de création de variante ou relation parent/enfant; un article simple déterministe est préparé par déclinaison"]},
                "operations": operations}
     return plan_doc, dry_doc, report
 
 
-def run_import_dry_run(api_key: str, presta_path: Path, dist: Path) -> dict[str, Any]:
+def run_import_dry_run(api_key: str, presta_path: Path, dist: Path, *,
+                       prestashop_client: Any | None = None) -> dict[str, Any]:
     """GET the catalogue and write local simulation files only."""
     raw = ShopCaisseClient(api_key).pull_catalogue()
     payload = json.loads(presta_path.read_text(encoding="utf-8"))
-    documents = build_import_dry_run(raw, payload)
+    units, _ = extract_prestashop(payload)
+    import_fields = prestashop_client.pull_import_fields(units) if prestashop_client else None
+    if import_fields:
+        payload["import_fields"] = import_fields
+        presta_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    else:
+        import_fields = payload.get("import_fields") if isinstance(payload, dict) else None
+    documents = build_import_dry_run(raw, payload, import_fields)
     dist.mkdir(parents=True, exist_ok=True)
     names = ("plan-import-prestashop-shopcaisse.json", "dry-run-import-shopcaisse.json", "rapport-dry-run-import.json")
     for name, document in zip(names, documents):

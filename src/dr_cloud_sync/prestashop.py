@@ -97,3 +97,61 @@ class PrestaShopClient:
             time.sleep(0.25 * (2**attempt))
         raise AssertionError("unreachable")
 
+    def pull_import_fields(self, sale_units: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        """Read authoritative SKU and computed prices for snapshot sale units.
+
+        PrestaShop's stored product and combination prices are tax-exclusive.  Its
+        documented ``price[...]`` Webservice query asks the shop itself to compute
+        the final price, including its tax rules and combination impact.  Keeping
+        this method on the read-only client also makes the GET-only boundary
+        explicit and testable.
+        """
+        products = {str(row["id"]): row for row in self.iter_resource("products")}
+        combinations = {str(row["id"]): row for row in self.iter_resource("combinations")}
+        result: dict[str, dict[str, Any]] = {}
+        for unit in sale_units:
+            product_id = str(unit["product_id"])
+            combination_id = unit.get("combination_id")
+            product = products.get(product_id, {})
+            combination = combinations.get(str(combination_id), {}) if combination_id is not None else {}
+            query = {
+                "display": "[id,price,final_price]",
+                "filter[id]": product_id,
+                "price[final_price][use_tax]": "1",
+                "price[final_price_ht][use_tax]": "0",
+            }
+            if combination_id is not None:
+                query["price[final_price][product_attribute]"] = str(combination_id)
+                query["price[final_price_ht][product_attribute]"] = str(combination_id)
+            payload = self._get("products", query)
+            rows = self._extract_rows(payload, "products")
+            computed = rows[0] if rows else {}
+            key = f"{product_id}:{combination_id or 0}"
+            product_price_ht = _decimal(product.get("price"))
+            impact_ht = _decimal(combination.get("price"))
+            final_ht = (round(product_price_ht + (impact_ht or 0), 6)
+                        if product_price_ht is not None else None)
+            result[key] = {
+                "reference": _first(combination, "reference", "supplier_reference")
+                or _first(product, "reference", "supplier_reference"),
+                "product_reference": _first(product, "reference", "supplier_reference"),
+                "combination_reference": _first(combination, "reference", "supplier_reference"),
+                "price_ht": final_ht,
+                "price_ttc": _decimal(computed.get("final_price")),
+                "product_price_ht": product_price_ht,
+                "combination_price_impact_ht": impact_ht,
+                "currency": None,
+                "price_source": "PrestaShop GET products price[final_price]",
+            }
+        return result
+
+
+def _first(row: dict[str, Any], *keys: str) -> str | None:
+    return next((str(row[key]).strip() for key in keys if row.get(key) not in (None, "")), None)
+
+
+def _decimal(value: Any) -> float | None:
+    try:
+        return float(value) if value not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
