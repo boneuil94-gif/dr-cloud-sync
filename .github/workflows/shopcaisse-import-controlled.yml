@@ -1,0 +1,54 @@
+name: Import contrôlé 20 PrestaShop vers ShopCaisse
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Saisir exactement IMPORT-20 pour autoriser au maximum 20 créations"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  import-controlled:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Initialiser le rapport publiable
+        run: |
+          mkdir -p dist
+          printf '%s\n' '{"limite_creations":20,"creations_effectuees":0,"skipped":0,"failed":0,"arret_sur_echec":false,"resultats":[]}' > dist/rapport-import-controle-shopcaisse.json
+      - name: Vérifier la confirmation et la configuration
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+          SHOPCAISSE_API_KEY: ${{ secrets.SHOPCAISSE_API_KEY }}
+          PRESTASHOP_API_KEY: ${{ secrets.PRESTASHOP_API_KEY }}
+          SHOPCAISSE_COMPANY_ID: ${{ vars.SHOPCAISSE_COMPANY_ID }}
+        run: |
+          test "$CONFIRM" = "IMPORT-20" || { echo "Confirmation incorrecte; zéro écriture." >&2; exit 1; }
+          test -n "$SHOPCAISSE_API_KEY" || { echo "SHOPCAISSE_API_KEY est absent" >&2; exit 1; }
+          test -n "$PRESTASHOP_API_KEY" || { echo "PRESTASHOP_API_KEY est absent" >&2; exit 1; }
+          test -n "$SHOPCAISSE_COMPANY_ID" || { echo "SHOPCAISSE_COMPANY_ID est absent" >&2; exit 1; }
+      - name: Installer et tester les barrières
+        run: |
+          python -m pip install . pytest
+          python -m pytest -q
+      - name: Exécuter l'import contrôlé
+        env:
+          SHOPCAISSE_API_KEY: ${{ secrets.SHOPCAISSE_API_KEY }}
+          PRESTASHOP_API_KEY: ${{ secrets.PRESTASHOP_API_KEY }}
+          SHOPCAISSE_COMPANY_ID: ${{ vars.SHOPCAISSE_COMPANY_ID }}
+          SHOPCAISSE_IMPORT_CONFIRM: ${{ inputs.confirm }}
+        run: dr-cloud-sync shopcaisse-import-controlled
+      - name: Publier le rapport sans secret
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapport-import-controle-shopcaisse
+          if-no-files-found: error
+          path: dist/rapport-import-controle-shopcaisse.json
