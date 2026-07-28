@@ -1,0 +1,32 @@
+name: Diagnostic company ShopCaisse
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    env:
+      SHOPCAISSE_API_KEY: ${{ secrets.SHOPCAISSE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Vérifier la restriction en lecture seule
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          source = Path("scripts/shopcaisse_company_diagnostic.py").read_text()
+          assert 'method = "GET"' in source
+          assert 'if method != "GET"' in source
+          PY
+      - name: Interroger les ressources ShopCaisse
+        run: python scripts/shopcaisse_company_diagnostic.py
+      - name: Publier le diagnostic sans secret
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostic-company-shopcaisse
+          path: dist/diagnostic-company-shopcaisse.json
+          if-no-files-found: error

@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from dr_cloud_sync.cli import main
 from dr_cloud_sync.pilot import (
     CreationLimiter, PilotSafetyError, duplicate_candidate, load_manifest, run_pilot,
 )
@@ -118,3 +119,17 @@ def test_duplicate_candidate_compares_available_reference():
     row = selection(1)
     row["reference_prevue"] = "REAL-REF"
     assert duplicate_candidate([{"id": "old", "reference": "REAL-REF"}], row)["id"] == "old"
+
+
+def test_cli_returns_failure_when_any_pilot_result_failed(monkeypatch, tmp_path):
+    report = {"resultats": [{"statut": "CREATED"}, {"statut": "FAILED"}]}
+    monkeypatch.setattr("dr_cloud_sync.cli.run_pilot", lambda *args, **kwargs: report)
+    monkeypatch.chdir(tmp_path)
+    assert main(["shopcaisse-import-pilot"]) == 1
+
+
+def test_cli_accepts_created_and_duplicate_skips(monkeypatch, tmp_path):
+    report = {"resultats": [{"statut": "CREATED"}, {"statut": "SKIPPED"}]}
+    monkeypatch.setattr("dr_cloud_sync.cli.run_pilot", lambda *args, **kwargs: report)
+    monkeypatch.chdir(tmp_path)
+    assert main(["shopcaisse-import-pilot"]) == 0
