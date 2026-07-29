@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .prestashop import PrestaShopClient
+from .config import resolve_prestashop_api_url
 from .shopcaisse import ShopCaisseClient
 
 
@@ -189,7 +190,7 @@ def run(output: Path = Path("dist"), report_paths: Iterable[Path] = ()) -> dict[
     if missing:
         raise ValueError("Configuration absente: " + ", ".join(missing))
     prestashop = pull_prestashop(PrestaShopClient(
-        os.environ.get("PRESTASHOP_API_URL") or "https://dr-cloudshop.com/api",
+        resolve_prestashop_api_url(),
         os.environ["PRESTASHOP_API_KEY"]))
     shopcaisse = pull_shopcaisse(ShopCaisseClient(os.environ["SHOPCAISSE_API_KEY"]),
                                 os.environ["SHOPCAISSE_COMPANY_ID"])

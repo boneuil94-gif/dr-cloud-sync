@@ -54,7 +54,9 @@ jobs:
           PRESTASHOP_API_KEY: ${{ secrets.PRESTASHOP_API_KEY }}
           SHOPCAISSE_API_KEY: ${{ secrets.SHOPCAISSE_API_KEY }}
           SHOPCAISSE_COMPANY_ID: ${{ vars.SHOPCAISSE_COMPANY_ID }}
-          PRESTASHOP_API_URL: ${{ vars.PRESTASHOP_API_URL }}
+          # Une variable absente est volontairement vide : le résolveur partagé
+          # utilise alors l'URL PrestaShop historique du projet et la valide.
+          PRESTASHOP_API_URL: ${{ vars.PRESTASHOP_API_URL || '' }}
           SHOPCAISSE_EXCEPTION_CONFIRM: ${{ inputs.confirm }}
         run: dr-cloud-sync create-mapping-exceptions
       - name: Publier les corrections même après un échec
