@@ -1,0 +1,68 @@
+name: Créer 34 exceptions ShopCaisse
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Saisir CREATE-34 pour autoriser les créations"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Initialiser les artifacts de reprise
+        run: |
+          mkdir -p dist
+          printf '{"attendues":34,"created":0,"skipped_already_created":0,"failed":0,"complete":false,"resultats":[]}\n' > dist/rapport-creation-exceptions.json
+          printf '{"version":1,"corrections":{}}\n' > dist/mapping-corrections-exceptions.json
+      - name: Refuser une confirmation incorrecte
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: test "$CONFIRM" = "CREATE-34"
+      - name: Installer et tester
+        run: |
+          python -m pip install . pytest
+          python -m pytest -q
+          python -m compileall -q src tests
+      - name: Récupérer le rapport validé et les dernières corrections
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          mkdir -p dist /tmp/artifacts
+          url=$(gh api "repos/$REPOSITORY/actions/artifacts?name=analyse-mapping-exceptions&per_page=1" --jq '.artifacts[0].archive_download_url // empty')
+          test -n "$url" || { echo "Artifact d'exceptions absent" >&2; exit 1; }
+          curl --fail --silent --show-error --location --header "Authorization: Bearer $GH_TOKEN" "$url" -o /tmp/artifacts/exceptions.zip
+          unzip -jo /tmp/artifacts/exceptions.zip 'rapport-exceptions-mapping.json' -d dist
+          correction_url=$(gh api "repos/$REPOSITORY/actions/artifacts?name=creation-exceptions-shopcaisse&per_page=1" --jq '.artifacts[0].archive_download_url // empty')
+          if [ -n "$correction_url" ]; then
+            curl --fail --silent --show-error --location --header "Authorization: Bearer $GH_TOKEN" "$correction_url" -o /tmp/artifacts/corrections.zip
+            unzip -jo /tmp/artifacts/corrections.zip 'mapping-corrections-exceptions.json' -d dist
+          fi
+      - name: Créer et relire les exceptions approuvées
+        env:
+          PRESTASHOP_API_KEY: ${{ secrets.PRESTASHOP_API_KEY }}
+          SHOPCAISSE_API_KEY: ${{ secrets.SHOPCAISSE_API_KEY }}
+          SHOPCAISSE_COMPANY_ID: ${{ vars.SHOPCAISSE_COMPANY_ID }}
+          PRESTASHOP_API_URL: ${{ vars.PRESTASHOP_API_URL }}
+          SHOPCAISSE_EXCEPTION_CONFIRM: ${{ inputs.confirm }}
+        run: dr-cloud-sync create-mapping-exceptions
+      - name: Publier les corrections même après un échec
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: creation-exceptions-shopcaisse
+          if-no-files-found: error
+          path: |
+            dist/rapport-creation-exceptions.json
+            dist/mapping-corrections-exceptions.json
