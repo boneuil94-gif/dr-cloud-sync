@@ -1,4 +1,5 @@
 import json
+import subprocess
 from copy import deepcopy
 from pathlib import Path
 
@@ -37,8 +38,8 @@ def test_module_progress_is_calculated_from_milestones():
 def test_global_and_remaining_are_calculated():
     data = RoadmapService(ROADMAP).load()
     expected = round(sum(m["weight"] * m["progress_percent"] / 100 for m in data["modules"]), 2)
-    assert data["global_progress_percent"] == expected == 29.2
-    assert data["remaining_percent"] == 100 - expected == 70.8
+    assert data["global_progress_percent"] == expected == 29.7
+    assert data["remaining_percent"] == 100 - expected == 70.3
 
 
 def test_inconsistent_weights_are_rejected():
@@ -82,3 +83,32 @@ def test_roadmap_page_uses_service_and_has_no_hardcoded_percentage(service):
     assert 'href="/roadmap"' in html
     assert "%" not in html
     assert request(app, "/roadmap")[0] == "200 OK"
+
+
+def test_dashboard_loads_dynamic_roadmap_and_keeps_existing_routes(service):
+    app = InventoryApp(service, roadmap_service=RoadmapService(ROADMAP))
+    status, body = request(app, "/")
+    assert status == "200 OK"
+    assert b'id="progressHero"' in body
+    assert b'id="moduleGrid"' in body
+    assert b"29.7" not in body  # progress must only come from the API
+
+    roadmap_status, roadmap_body = request(app, "/api/roadmap")
+    payload = json.loads(roadmap_body)
+    assert roadmap_status == "200 OK"
+    assert len(payload["modules"]) == len(raw_roadmap()["modules"])
+    assert payload["global_progress_percent"] == 29.7
+    for path in ("/roadmap", "/catalogue", "/inventaire", "/api/dashboard", "/api/state"):
+        assert request(app, path)[0] == "200 OK"
+
+
+def test_dashboard_model_tolerates_missing_data_and_clamps_progress():
+    script = r"""
+const {dashboardModel, clampPercent} = require('./src/dr_cloud_sync/static/dashboard.js');
+const empty = dashboardModel({}, {});
+if (empty.modules.length !== 0 || empty.progress !== 0 || empty.remaining !== 100) process.exit(1);
+const partial = dashboardModel({global_progress_percent: 180, modules: [{name: 'A'}]}, {});
+if (partial.progress !== 100 || partial.modules.length !== 1 || clampPercent(-4) !== 0) process.exit(2);
+"""
+    result = subprocess.run(["node", "-e", script], cwd=ROOT, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr

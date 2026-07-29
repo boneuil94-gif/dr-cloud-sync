@@ -7,8 +7,8 @@
     "TODO": 0,
     "BLOCKED": 0
   },
-  "global_progress_percent": 28.8,
-  "remaining_percent": 71.2,
+  "global_progress_percent": 29.7,
+  "remaining_percent": 70.3,
   "modules": [
     {
       "id": "01-core",
@@ -688,8 +688,8 @@
       "id": "11-dashboard",
       "name": "Dashboard",
       "weight": 5,
-      "progress_percent": 10,
-      "weighted_progress": 0.5,
+      "progress_percent": 20,
+      "weighted_progress": 1.0,
       "status": "IN_PROGRESS",
       "milestones": [
         {
@@ -700,7 +700,7 @@
         {
           "id": "11-dashboard-m02",
           "name": "Vue Roadmap dynamique",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "11-dashboard-m03",
@@ -744,10 +744,11 @@
         }
       ],
       "completed": [
-        "Frontière projection documentée"
+        "Frontière projection documentée",
+        "Vue Roadmap dynamique"
       ],
       "in_progress": [],
-      "next": "Vue Roadmap dynamique",
+      "next": "Projection ventes",
       "blocked": []
     },
     {
