@@ -1,1 +1,65 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#173b57"><meta name="csrf-token" content="{{CSRF}}"><link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/icon.svg"><link rel="stylesheet" href="/inventory.css"><title>DrCloud OS — Tableau de bord</title></head><body>{{SAFE_BANNER}}<header><div class="brand">DrCloud <b>OS</b></div><nav class="osnav"><a href="/">Tableau de bord</a><a href="/roadmap">Roadmap</a><a href="/catalogue">Catalogue</a><a href="/inventaire">Inventaire</a><a href="/modules/stocks">Stocks</a><a href="/modules/achats">Achats</a><a href="/modules/ventes">Ventes</a><a href="/modules/clients">Clients</a><a href="/modules/finance">Finance</a><a href="/modules/reseaux-sociaux">Réseaux sociaux</a><a href="/modules/automatisations">Automatisations</a><a href="/modules/administration">Administration</a></nav><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{CSRF}}"><button>Déconnexion</button></form><h1>Tableau de bord</h1></header><main><section class="cards"><article><span>Progression globale</span><strong id="global">—</strong></article><article><span>Prochaine étape</span><strong id="next">—</strong></article><article><span>Catalogue</span><strong id="catalog">—</strong></article><article><span>Inventaire</span><strong id="inventory">—</strong></article><article><span>Synchronisations</span><strong id="sync">—</strong></article></section></main><script src="/dashboard.js"></script></body></html>
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#103f4b">
+  <meta name="csrf-token" content="{{CSRF}}">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg">
+  <link rel="stylesheet" href="/inventory.css">
+  <title>DrCloud OS — Tableau de bord</title>
+</head>
+<body class="dashboard-body">{{SAFE_BANNER}}
+  <header class="dashboard-header">
+    <div class="header-row">
+      <a class="brand" href="/" aria-label="DrCloud OS, accueil">DrCloud <b>OS</b></a>
+      <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{CSRF}}"><button class="logout">Déconnexion</button></form>
+    </div>
+    <nav class="osnav" aria-label="Navigation principale">
+      <a href="/" aria-current="page">Pilotage</a><a href="/roadmap">Roadmap</a><a href="/catalogue">Catalogue</a><a href="/inventaire">Inventaire</a><a href="/modules/stocks">Stocks</a><a href="/modules/achats">Achats</a><a href="/modules/ventes">Ventes</a><a href="/modules/clients">Clients</a><a href="/modules/finance">Finance</a><a href="/modules/reseaux-sociaux">Marketing</a><a href="/modules/automatisations">Automatisations + IA</a><a href="/modules/administration">Administration</a>
+    </nav>
+  </header>
+
+  <main class="dashboard-shell">
+    <div class="page-heading"><div><p class="eyebrow">Centre de pilotage</p><h1>Bonjour, voici l’état de DrCloud.</h1></div><p class="updated" id="updatedAt">Mise à jour —</p></div>
+
+    <p class="dashboard-alert" id="dashboardError" role="alert" hidden></p>
+
+    <section class="progress-hero loading-card" id="progressHero" aria-labelledby="progressTitle" aria-busy="true">
+      <div class="hero-copy">
+        <p class="eyebrow">Développement produit</p>
+        <h2 id="progressTitle">Avancement de DrCloud OS</h2>
+        <p class="hero-description">Une lecture directe de la roadmap, pondérée selon l’importance de chaque domaine.</p>
+        <div class="status-line"><span class="status-badge status-loading" id="globalStatus">Chargement</span><span id="moduleCount">— modules</span></div>
+      </div>
+      <div class="progress-score"><strong id="globalProgress">—</strong><span>% réalisé</span></div>
+      <div class="progress-track progress-track-large" role="progressbar" aria-label="Avancement global" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="globalBar"></span></div>
+      <div class="progress-meta"><span>Fondations réalisées</span><strong id="remainingProgress">— % restant</strong></div>
+    </section>
+
+    <section class="dashboard-grid">
+      <article class="next-action loading-card" id="nextAction" aria-labelledby="nextTitle" aria-busy="true">
+        <div class="next-icon" aria-hidden="true">→</div><div><p class="eyebrow">Priorité roadmap</p><h2 id="nextTitle">Prochaine étape</h2><p id="nextText">Identification de la prochaine action…</p><span id="nextModule"></span></div>
+      </article>
+      <section class="operations" aria-labelledby="operationsTitle">
+        <div class="section-heading"><div><p class="eyebrow">Activité métier</p><h2 id="operationsTitle">Pilotage DrCloud</h2></div></div>
+        <div class="operation-cards">
+          <a class="operation-card" href="/catalogue"><span class="operation-icon">CA</span><span>Catalogue<small>Référentiel produits</small></span><strong id="catalogueMetric">—</strong></a>
+          <a class="operation-card" href="/inventaire"><span class="operation-icon">IN</span><span>Inventaire<small id="inventoryStatus">État de la session</small></span><strong id="inventoryMetric">—</strong></a>
+          <a class="operation-card" href="/modules/stocks"><span class="operation-icon">SY</span><span>Synchronisations<small>Connecteurs externes</small></span><strong class="metric-text" id="syncMetric">—</strong></a>
+        </div>
+      </section>
+    </section>
+
+    <section class="modules-section" aria-labelledby="modulesTitle">
+      <div class="section-heading"><div><p class="eyebrow">Roadmap pondérée</p><h2 id="modulesTitle">Progression par module</h2></div><a href="/roadmap">Voir la roadmap détaillée →</a></div>
+      <div class="status-legend" aria-label="Légende des statuts"><span class="status-done">Terminé</span><span class="status-in-progress">En cours</span><span class="status-todo">À faire</span><span class="status-blocked">Bloqué</span></div>
+      <div class="module-grid" id="moduleGrid" aria-live="polite" aria-busy="true">
+        <article class="module-card module-skeleton"></article><article class="module-card module-skeleton"></article><article class="module-card module-skeleton"></article>
+      </div>
+    </section>
+  </main>
+  <template id="dashboardModuleTemplate"><article class="module-card"><div class="module-card-head"><span class="module-index"></span><span class="status-badge module-status"></span></div><h3></h3><div class="module-score"><strong class="module-percent"></strong><span class="module-weight"></span></div><div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100"><span></span></div><div class="module-next"><span>Prochaine étape</span><strong></strong></div></article></template>
+  <script src="/dashboard.js"></script>
+</body></html>
