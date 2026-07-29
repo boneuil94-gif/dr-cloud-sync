@@ -38,8 +38,8 @@ def test_module_progress_is_calculated_from_milestones():
 def test_global_and_remaining_are_calculated():
     data = RoadmapService(ROADMAP).load()
     expected = round(sum(m["weight"] * m["progress_percent"] / 100 for m in data["modules"]), 2)
-    assert data["global_progress_percent"] == expected == 29.7
-    assert data["remaining_percent"] == 100 - expected == 70.3
+    assert data["global_progress_percent"] == expected == 29.42
+    assert data["remaining_percent"] == 100 - expected == 70.58
 
 
 def test_inconsistent_weights_are_rejected():
@@ -97,7 +97,7 @@ def test_dashboard_loads_dynamic_roadmap_and_keeps_existing_routes(service):
     payload = json.loads(roadmap_body)
     assert roadmap_status == "200 OK"
     assert len(payload["modules"]) == len(raw_roadmap()["modules"])
-    assert payload["global_progress_percent"] == 29.7
+    assert payload["global_progress_percent"] == 29.42
     for path in ("/roadmap", "/catalogue", "/inventaire", "/api/dashboard", "/api/state"):
         assert request(app, path)[0] == "200 OK"
 

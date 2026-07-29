@@ -5,6 +5,9 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
+      args:
+        DRCLOUD_BUILD_COMMIT: ${DRCLOUD_BUILD_COMMIT:-unknown}
+        DRCLOUD_BUILD_DATE: ${DRCLOUD_BUILD_DATE:-unknown}
     image: drcloud-os:local
     restart: unless-stopped
     env_file:
