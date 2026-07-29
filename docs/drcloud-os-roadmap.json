@@ -7,8 +7,8 @@
     "TODO": 0,
     "BLOCKED": 0
   },
-  "global_progress_percent": 27.0,
-  "remaining_percent": 73.0,
+  "global_progress_percent": 28.8,
+  "remaining_percent": 71.2,
   "modules": [
     {
       "id": "01-core",
@@ -820,8 +820,8 @@
       "id": "13-production",
       "name": "Production + PWA",
       "weight": 3,
-      "progress_percent": 10,
-      "weighted_progress": 0.3,
+      "progress_percent": 70,
+      "weighted_progress": 2.1,
       "status": "IN_PROGRESS",
       "milestones": [
         {
@@ -884,8 +884,10 @@
         "Déploiement reproductible documenté",
         "Tests production"
       ],
-      "in_progress": [],
-      "next": "Déploiement production",
+      "in_progress": [
+        "VPS OVH en cours de provisionnement"
+      ],
+      "next": "Valider le VPS et exécuter la checklist de déploiement contrôlé",
       "blocked": []
     }
   ]

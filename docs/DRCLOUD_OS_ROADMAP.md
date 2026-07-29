@@ -1,6 +1,6 @@
 # Roadmap officielle DrCloud OS
 
-**Version :** 1.0.0 — **mise à jour :** 2026-07-29 — **progression pondérée calculée : 27 %** — **reste : 73 %**.
+**Version :** 1.0.0 — **mise à jour :** 2026-07-29 — **progression pondérée calculée : 28,8 %** — **reste : 71,2 %**.
 
 La mesure est fondée sur des jalons constatables dans le dépôt : `DONE = 100 %`, `IN_PROGRESS = 50 %`, `TODO/BLOCKED = 0 %` du jalon, puis moyenne des jalons et pondération du bloc. La source exécutable est [`drcloud-os-roadmap.json`](drcloud-os-roadmap.json) et `RoadmapService` recalcule les valeurs ; ce document explicite l'état, il ne pilote pas l'interface.
 
@@ -18,8 +18,8 @@ La mesure est fondée sur des jalons constatables dans le dépôt : `DONE = 100 
 | 10 Automatisations + IA | IN_PROGRESS | 5 % | 8 | 0.4 |
 | 11 Dashboard | IN_PROGRESS | 10 % | 5 | 0.5 |
 | 12 Sécurité + utilisateurs | IN_PROGRESS | 10 % | 4 | 0.4 |
-| 13 Production + PWA | IN_PROGRESS | 10 % | 3 | 0.3 |
-| **Total** | **IN_PROGRESS** | **27 %** | **100** | **27.0** |
+| 13 Production + PWA | IN_PROGRESS | 70 % | 3 | 2.1 |
+| **Total** | **IN_PROGRESS** | **28,8 %** | **100** | **28.8** |
 
 ## État opérationnel par bloc
 
@@ -93,9 +93,9 @@ La mesure est fondée sur des jalons constatables dans le dépôt : `DONE = 100 
 - **Bloqué :** aucun.
 
 ### 13 — Production + PWA
-- **Terminé :** application locale exécutable.
-- **En cours :** aucun.
-- **Prochaine étape :** configuration de production, sauvegardes puis PWA.
+- **Terminé :** image Docker, authentification, PWA, sauvegarde/restauration, health check et kit OVH reproductible préparé (Compose local-only, Caddy exemple, bootstrap, firewall et procédures).
+- **En cours :** attente du VPS; aucun déploiement, DNS ou certificat n'a encore été réalisé.
+- **Prochaine étape :** valider le VPS et les accès, exécuter la checklist en SAFE_MODE/dry-run, puis configurer DNS et HTTPS lors d'une intervention contrôlée.
 - **Bloqué :** aucun.
 
 ## Ordre de livraison
