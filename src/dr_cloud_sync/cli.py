@@ -12,15 +12,17 @@ from .config import ConfigurationError, Settings
 from .controlled_import import run_all_import, run_controlled_import
 from .prestashop import PrestaShopClient, PrestaShopError
 from .pilot import PilotSafetyError, run_pilot
-from .shopcaisse import ShopCaisseError, pull_and_write, run_import_dry_run
+from .shopcaisse import ShopCaisseClient, ShopCaisseError, pull_and_write, run_import_dry_run
 from .store import SnapshotStore
 from .sync import synchronize
 from .mapping import run as run_mapping
+from .mapping import pull_prestashop, pull_shopcaisse
+from .exceptions import run as run_exceptions
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Importe le catalogue maître PrestaShop")
-    parser.add_argument("command", choices=["pull", "shopcaisse-pull", "shopcaisse-import-dry-run", "shopcaisse-import-pilot", "shopcaisse-import-controlled", "shopcaisse-import-all", "build-catalog-mapping"], help="Récupérer un snapshot complet")
+    parser.add_argument("command", choices=["pull", "shopcaisse-pull", "shopcaisse-import-dry-run", "shopcaisse-import-pilot", "shopcaisse-import-controlled", "shopcaisse-import-all", "build-catalog-mapping", "analyse-mapping-exceptions"], help="Récupérer un snapshot complet")
     args = parser.parse_args(argv)
     if args.command == "pull":
         try:
@@ -102,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "all-import-completed", "report": report}, ensure_ascii=False))
         if report["failed"]:
             return 1
-    else:
+    elif args.command == "build-catalog-mapping":
         try:
             report_paths = [Path("dist") / name for name in (
                 "rapport-import-pilote-shopcaisse.json", "rapport-import-controle-shopcaisse.json",
@@ -112,6 +114,22 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Erreur: {exc}", file=sys.stderr)
             return 1
         print(json.dumps({"status": "mapping-completed", "quality": quality}, ensure_ascii=False))
+    else:
+        try:
+            ps_client = PrestaShopClient(os.environ.get("PRESTASHOP_API_URL") or "https://dr-cloudshop.com/api",
+                                         os.environ.get("PRESTASHOP_API_KEY", ""))
+            sc_client = ShopCaisseClient(os.environ.get("SHOPCAISSE_API_KEY", ""))
+            current_ps = pull_prestashop(ps_client)
+            current_sc = pull_shopcaisse(sc_client, os.environ.get("SHOPCAISSE_COMPANY_ID", ""))
+            paths = [*Path("dist").glob("rapport-import-*.json"),
+                     Path("dist/plan-import-prestashop-shopcaisse.json")]
+            reports = [json.loads(path.read_text()) for path in paths]
+            report = run_exceptions(Path("dist/mapping-prestashop-shopcaisse.json"), Path("dist"),
+                                    current_sc, reports, current_ps)
+        except (PrestaShopError, ShopCaisseError, ValueError, OSError, json.JSONDecodeError) as exc:
+            print(f"Erreur: {exc}", file=sys.stderr)
+            return 1
+        print(json.dumps({"status": "analysis-completed", "report": report}, ensure_ascii=False))
     return 0
 
 
