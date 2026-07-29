@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DrCloud OS — Roadmap</title><link rel="stylesheet" href="/inventory.css"></head>
+<body><header><div class="brand">DrCloud <b>OS</b></div><nav class="osnav"><a href="#dashboard">Tableau de bord</a><a href="/catalogue">Catalogue</a><a href="/">Inventaire</a><a href="/roadmap" aria-current="page">Roadmap</a><a href="#stocks">Stocks</a><a href="#achats">Achats</a></nav><h1>Roadmap</h1></header>
+<main class="roadmap"><section class="roadmap-summary" aria-live="polite"><div><span>Progression globale</span><strong id="globalProgress">—</strong></div><div><span>Reste</span><strong id="roadmapRemaining">—</strong></div></section><p id="roadmapError" role="alert"></p><section id="roadmapModules" aria-label="Modules"></section></main>
+<template id="moduleTemplate"><article class="roadmap-module"><div class="module-title"><h2></h2><strong class="module-percent"></strong></div><progress max="100"></progress><dl><dt>Terminé</dt><dd class="completed"></dd><dt>En cours</dt><dd class="in-progress"></dd><dt>Prochaine étape</dt><dd class="next"></dd><dt>Bloqué</dt><dd class="blocked"></dd></dl></article></template>
+<script src="/roadmap.js"></script></body></html>

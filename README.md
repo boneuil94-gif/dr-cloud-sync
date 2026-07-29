@@ -101,3 +101,9 @@ une simulation d'article simple nommé « produit - attributs » est donc prépa
 L'inventaire est désormais un module de l'interface unique **DrCloud OS**, avec un catalogue central fondé sur la clé déterministe `drc:<prestashop_key>`. Les types métier sont dans `domain.py`, les ports et l'adaptateur SQLite dans `repositories.py`, les cas d'usage dans `services.py`, et les contrats d'intégration dans `connectors.py`. Le métier ne dépend ainsi ni de SQLite, ni de HTTP, ni d'un fournisseur.
 
 `BARCODE_SYNC_MODE` vaut `dry-run` par défaut : la validation, la confirmation et les payloads sont exécutés localement, sans aucune requête distante. Le mode `live` est structurellement prévu mais ses connecteurs restent explicitement désactivés tant que les méthodes d'écriture ShopCaisse et PrestaShop n'ont pas été validées. Le catalogue et l'inventaire sont accessibles dans la même navigation ; Stocks, Achats (dont les futures réceptions fournisseurs) et Réseaux sociaux restent des emplacements réservés.
+
+Le [plan directeur DrCloud OS](docs/DRCLOUD_OS_ARCHITECTURE.md), la
+[roadmap officielle](docs/DRCLOUD_OS_ROADMAP.md) et ses décisions dans `docs/adr/`
+définissent les frontières du monolithe modulaire. La page **Roadmap** de DrCloud OS
+lit `docs/drcloud-os-roadmap.json` par l'intermédiaire de `RoadmapService` : les
+pourcentages affichés sont recalculés depuis les jalons, et non inscrits dans la vue.
