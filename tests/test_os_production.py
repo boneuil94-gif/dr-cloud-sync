@@ -1,4 +1,5 @@
 import io, json, os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlencode
 from wsgiref.util import setup_testing_defaults
@@ -48,6 +49,15 @@ def test_health_manifest_dashboard_and_no_browser_secrets(configured):
     _,cookie=login(app); html=request(app,'/',cookie=cookie)[2].decode(); assert 'DrCloud OS' in html and 'Mode sécurisé' in html
     assets=''.join(p.read_text() for p in (Path(__file__).parents[1]/'src/dr_cloud_sync/static').iterdir())
     assert 'SHOPCAISSE_API_KEY' not in assets and 'PRESTASHOP_API_KEY' not in assets and 'DRCLOUD_ADMIN_PASSWORD' not in assets and 'very-secret-password' not in html
+
+def test_health_can_query_sqlite_from_a_waitress_worker_thread(configured):
+    app, _ = configured
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        status, _, body = executor.submit(request, app, "/health").result()
+    value = json.loads(body)
+    assert status == "200 OK"
+    assert value["status"] == "ok"
+    assert value["database"] == "ok"
 
 def test_health_exposes_non_secret_build_identity(configured, monkeypatch):
     monkeypatch.setenv("DRCLOUD_BUILD_COMMIT", "a" * 40)

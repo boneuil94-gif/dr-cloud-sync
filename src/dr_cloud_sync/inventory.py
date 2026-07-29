@@ -41,7 +41,10 @@ class InventoryRepository:
     """Repository boundary suitable for replacement by a server database later."""
     def __init__(self, path: Path):
         self.path = path
-        self.db = sqlite3.connect(path)
+        # Waitress dispatches requests on worker threads while the repository is
+        # created once during application startup.  Allow that shared connection
+        # to be used by whichever worker handles the request.
+        self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.executescript("""
