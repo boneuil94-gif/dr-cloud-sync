@@ -9,10 +9,13 @@ description = "Synchronisation PrestaShop maître vers le référentiel Dr Cloud
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "Proprietary"}
-dependencies = []
+dependencies = ["waitress==3.0.2"]
 
 [project.scripts]
 dr-cloud-sync = "dr_cloud_sync.cli:main"
+
+[tool.setuptools.package-data]
+dr_cloud_sync = ["static/*"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -20,4 +23,3 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
-
