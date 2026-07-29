@@ -20,11 +20,12 @@ from .mapping import pull_prestashop, pull_shopcaisse
 from .exceptions import run as run_exceptions
 from .exception_rebuild import run_exception_rebuild
 from .final_mapping import FinalMappingError, finalize_mapping
+from .inventory_web import serve as serve_inventory
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Importe le catalogue maître PrestaShop")
-    parser.add_argument("command", choices=["pull", "shopcaisse-pull", "shopcaisse-import-dry-run", "shopcaisse-import-pilot", "shopcaisse-import-controlled", "shopcaisse-import-all", "build-catalog-mapping", "analyse-mapping-exceptions", "create-mapping-exceptions", "build-final-mapping"], help="Récupérer un snapshot complet")
+    parser.add_argument("command", choices=["pull", "shopcaisse-pull", "shopcaisse-import-dry-run", "shopcaisse-import-pilot", "shopcaisse-import-controlled", "shopcaisse-import-all", "build-catalog-mapping", "analyse-mapping-exceptions", "create-mapping-exceptions", "build-final-mapping", "inventory-serve"], help="Récupérer un snapshot complet")
     args = parser.parse_args(argv)
     if args.command == "pull":
         try:
@@ -149,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "exception-rebuild-completed", "report": report}, ensure_ascii=False))
         if report["failed"] or not report["complete"]:
             return 1
-    else:
+    elif args.command == "build-final-mapping":
         try:
             report = finalize_mapping(
                 Path("dist/mapping-prestashop-shopcaisse.json"),
@@ -164,6 +165,12 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "final-mapping-built", "report": report}, ensure_ascii=False))
         if not report["ready_for_inventory"]:
             return 1
+    else:
+        serve_inventory(
+            Path(os.environ.get("INVENTORY_CATALOGUE", "dist/mapping-prestashop-shopcaisse-final.json")),
+            Path(os.environ.get("INVENTORY_MAPPING_REPORT", "dist/rapport-mapping-final.json")),
+            Path(os.environ.get("INVENTORY_DATABASE", "inventory.sqlite3")),
+            os.environ.get("INVENTORY_HOST", "127.0.0.1"), int(os.environ.get("INVENTORY_PORT", "8080")))
     return 0
 
 

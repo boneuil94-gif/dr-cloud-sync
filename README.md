@@ -14,6 +14,22 @@ l'authentification, pagine le catalogue, puis publie les snapshots et le rapport
 rapprochement comme artefact sans les committer.
 Le programme ne pousse aucune donnée vers PrestaShop et la clé recommandée doit disposer uniquement de droits `GET`.
 
+## Inventaire DRCloud V1 (local et sans écriture distante)
+
+Une interface mobile-first de comptage est disponible à partir des artefacts du mapping final validé. Elle utilise
+SQLite pour sauvegarder immédiatement la session, les quantités (y compris zéro) et le journal d'audit. Aucun client
+PrestaShop ou ShopCaisse n'est instancié par ce serveur : les comparaisons et exports sont exclusivement locaux.
+
+```bash
+dr-cloud-sync inventory-serve
+# ouvrir http://127.0.0.1:8080
+```
+
+Pour un accès depuis le réseau local, définir `INVENTORY_HOST=0.0.0.0` et protéger l'accès au niveau du serveur/réseau.
+Les variables `INVENTORY_CATALOGUE`, `INVENTORY_MAPPING_REPORT`, `INVENTORY_DATABASE` et `INVENTORY_PORT` permettent
+de changer les chemins et le port. L'interface propose douchette/saisie EAN, caméra lorsque `BarcodeDetector` est
+supporté, recherche, modes Quantité et +1, listes de progression, corrections avec historique et exports JSON/CSV.
+
 ## Installation et configuration
 
 Python 3.11 ou plus récent est requis.
