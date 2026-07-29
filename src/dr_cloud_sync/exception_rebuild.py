@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .controlled_import import validate_controlled_payload, _barcode
+from .config import resolve_prestashop_api_url
 from .pilot import PilotSafetyError
 from .shopcaisse import ShopCaisseClient, ShopCaisseError, _value
 
@@ -76,22 +77,24 @@ def _payload(unit: dict[str, Any]) -> dict[str, Any]:
 
 def run_exception_rebuild(api_key: str, prestashop_api_key: str, confirm: str, company_id: str,
                           exceptions_path: Path, corrections_path: Path, report_path: Path, *,
-                          prestashop_loader: Callable[[], list[dict[str, Any]]],
+                          prestashop_loader: Callable[[str], list[dict[str, Any]]],
+                          prestashop_api_url: str | None = None,
                           client: ShopCaisseClient | None = None) -> dict[str, Any]:
     """Create only approved exceptions; persist a correction immediately after verified GET."""
-    report = _empty_report()
-    _write(report_path, report)
-    corrections = _load_corrections(corrections_path)
-    _write(corrections_path, corrections)
-    exceptions = load_exceptions(exceptions_path)  # validate before any remote operation
     if confirm != CONFIRMATION:
         raise PilotSafetyError("Confirmation incorrecte: zéro écriture autorisée")
+    exceptions = load_exceptions(exceptions_path)  # validate before any remote operation
     if not api_key or not prestashop_api_key:
         raise PilotSafetyError("Secret API absent: zéro écriture autorisée")
     if not company_id:
         raise PilotSafetyError("SHOPCAISSE_COMPANY_ID absent: zéro écriture autorisée")
 
-    current = {str(unit.get("key")): unit for unit in prestashop_loader()}
+    resolved_url = resolve_prestashop_api_url(prestashop_api_url)
+    report = _empty_report()
+    _write(report_path, report)
+    corrections = _load_corrections(corrections_path)
+    _write(corrections_path, corrections)
+    current = {str(unit.get("key")): unit for unit in prestashop_loader(resolved_url)}
     active = client or ShopCaisseClient(api_key)
     for exception in exceptions:
         key = str(exception["prestashop_key"])

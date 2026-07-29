@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 
-from .config import ConfigurationError, Settings
+from .config import ConfigurationError, Settings, resolve_prestashop_api_url
 from .controlled_import import run_all_import, run_controlled_import
 from .prestashop import PrestaShopClient, PrestaShopError
 from .pilot import PilotSafetyError, run_pilot
@@ -54,7 +54,7 @@ def main(argv: list[str] | None = None) -> int:
             counts = run_import_dry_run(os.environ.get("SHOPCAISSE_API_KEY", ""),
                                         Path("dist/catalogue-prestashop-reconstruit.json"), Path("dist"),
                                         prestashop_client=PrestaShopClient(
-                                            os.environ.get("PRESTASHOP_API_URL", "https://dr-cloudshop.com/api"),
+                                            resolve_prestashop_api_url(),
                                             os.environ.get("PRESTASHOP_API_KEY", ""),
                                         ))
         except (ShopCaisseError, ValueError, json.JSONDecodeError, OSError) as exc:
@@ -117,7 +117,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "mapping-completed", "quality": quality}, ensure_ascii=False))
     elif args.command == "analyse-mapping-exceptions":
         try:
-            ps_client = PrestaShopClient(os.environ.get("PRESTASHOP_API_URL") or "https://dr-cloudshop.com/api",
+            ps_client = PrestaShopClient(resolve_prestashop_api_url(),
                                          os.environ.get("PRESTASHOP_API_KEY", ""))
             sc_client = ShopCaisseClient(os.environ.get("SHOPCAISSE_API_KEY", ""))
             current_ps = pull_prestashop(ps_client)
@@ -133,14 +133,14 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "analysis-completed", "report": report}, ensure_ascii=False))
     elif args.command == "create-mapping-exceptions":
         try:
-            ps_client = PrestaShopClient(os.environ.get("PRESTASHOP_API_URL", ""),
-                                         os.environ.get("PRESTASHOP_API_KEY", ""))
             report = run_exception_rebuild(
                 os.environ.get("SHOPCAISSE_API_KEY", ""), os.environ.get("PRESTASHOP_API_KEY", ""),
                 os.environ.get("SHOPCAISSE_EXCEPTION_CONFIRM", ""), os.environ.get("SHOPCAISSE_COMPANY_ID", ""),
                 Path("dist/rapport-exceptions-mapping.json"), Path("dist/mapping-corrections-exceptions.json"),
                 Path("dist/rapport-creation-exceptions.json"),
-                prestashop_loader=lambda: pull_prestashop(ps_client),
+                prestashop_api_url=os.environ.get("PRESTASHOP_API_URL"),
+                prestashop_loader=lambda url: pull_prestashop(PrestaShopClient(
+                    url, os.environ.get("PRESTASHOP_API_KEY", ""))),
             )
         except (PilotSafetyError, PrestaShopError, ShopCaisseError, ValueError, OSError, json.JSONDecodeError) as exc:
             print(f"Erreur: {exc}", file=sys.stderr)

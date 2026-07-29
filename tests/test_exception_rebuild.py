@@ -59,7 +59,7 @@ def paths(tmp_path):
 def invoke(paths, client, source=None, **credentials):
     return run_exception_rebuild(credentials.get("api_key", "sc"), credentials.get("ps_key", "ps"),
                                  credentials.get("confirm", "CREATE-34"), credentials.get("company", "company"),
-                                 *paths, prestashop_loader=lambda: units() if source is None else source,
+                                 *paths, prestashop_loader=lambda _url: units() if source is None else source,
                                  client=client)
 
 
@@ -78,6 +78,55 @@ def test_wrong_total_stops_before_post(paths):
     client = FakeClient()
     with pytest.raises(PilotSafetyError):
         invoke(paths, client)
+    assert client.posts == []
+
+
+def test_wrong_confirmation_stops_before_report_loading_or_post(paths):
+    paths[0].write_text("invalid json", encoding="utf-8")
+    client = FakeClient()
+    with pytest.raises(PilotSafetyError, match="Confirmation incorrecte"):
+        invoke(paths, client, confirm="NO")
+    assert client.posts == []
+
+
+@pytest.mark.parametrize("url", ["relative/api", "/api"])
+def test_invalid_url_stops_before_prestashop_network_or_post(paths, url):
+    client = FakeClient()
+    loaded = []
+    with pytest.raises(ValueError, match="URL API absolue requise"):
+        run_exception_rebuild("sc", "ps", "CREATE-34", "company", *paths,
+                              prestashop_api_url=url,
+                              prestashop_loader=lambda resolved: loaded.append(resolved) or [],
+                              client=client)
+    assert loaded == []
+    assert client.posts == []
+
+
+def test_prestashop_failure_stops_before_shopcaisse_post(paths):
+    client = FakeClient()
+
+    def fail(_url):
+        raise RuntimeError("PrestaShop unavailable")
+
+    with pytest.raises(RuntimeError, match="unavailable"):
+        run_exception_rebuild("sc", "ps", "CREATE-34", "company", *paths,
+                              prestashop_loader=fail, client=client)
+    assert client.posts == []
+
+
+def test_explicit_valid_url_is_passed_to_prestashop_loader(paths):
+    client = FakeClient()
+    received = []
+
+    def load(url):
+        received.append(url)
+        raise RuntimeError("stop after URL check")
+
+    with pytest.raises(RuntimeError, match="URL check"):
+        run_exception_rebuild("sc", "ps", "CREATE-34", "company", *paths,
+                              prestashop_api_url="https://example.test/api/",
+                              prestashop_loader=load, client=client)
+    assert received == ["https://example.test/api"]
     assert client.posts == []
 
 
