@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from .domain import drcloud_key
 
 
 def now() -> str:
@@ -103,6 +104,7 @@ class InventoryService:
     def __init__(self, catalogue_path: Path, report_path: Path, repository: InventoryRepository):
         raw = json.loads(catalogue_path.read_text(encoding="utf-8"))
         self.items = raw["mappings"] if isinstance(raw, dict) else raw
+        self.items = [{**item, "drcloud_product_key": item.get("drcloud_product_key") or drcloud_key(item["prestashop_key"])} for item in self.items]
         validation = json.loads(report_path.read_text(encoding="utf-8"))
         if validation.get("ready_for_inventory") is not True or len(self.items) != 478:
             raise InventoryError("Le mapping validé de 478 articles est requis")
@@ -110,6 +112,8 @@ class InventoryService:
         self.by_key = {i["prestashop_key"]: i for i in self.items}
         if len(self.by_key) != len(self.items):
             raise InventoryError("prestashop_key dupliquée")
+        if len({i["drcloud_product_key"] for i in self.items}) != len(self.items):
+            raise InventoryError("drcloud_product_key dupliquée")
 
     def session(self) -> dict[str, Any]: return self.repo.active_session()
 
@@ -129,7 +133,7 @@ class InventoryService:
             counted = item["prestashop_key"] in counts
             if view == "COUNTED" and not counted or view == "REMAINING" and counted: continue
             if without_ean and self._ean(item): continue
-            haystack = " ".join(str(item.get(k) or "") for k in ("name","nom complet","attributes","reference","référence","product_id","combination_id","prestashop_key")).casefold()
+            haystack = " ".join(str(item.get(k) or "") for k in ("name","nom complet","ean","EAN","attributes","reference","référence","product_id","combination_id","prestashop_key","drcloud_product_key")).casefold()
             if q and q not in haystack: continue
             row = dict(item); row["count"] = counts.get(item["prestashop_key"]); result.append(row)
         return result
