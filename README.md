@@ -95,3 +95,9 @@ et le rapport dans `dist/`. Les payloads sont validés contre `CreateSimpleItemD
 incomplète devient `DONNEES_MANQUANTES`, jamais `PRET_A_CREER`. Le schéma ShopCaisse public ne
 propose ni écriture de stock, ni création explicite de variante ou de relation parent/enfant :
 une simulation d'article simple nommé « produit - attributs » est donc préparée par déclinaison.
+
+## DrCloud OS — Catalogue et Inventaire V2
+
+L'inventaire est désormais un module de l'interface unique **DrCloud OS**, avec un catalogue central fondé sur la clé déterministe `drc:<prestashop_key>`. Les types métier sont dans `domain.py`, les ports et l'adaptateur SQLite dans `repositories.py`, les cas d'usage dans `services.py`, et les contrats d'intégration dans `connectors.py`. Le métier ne dépend ainsi ni de SQLite, ni de HTTP, ni d'un fournisseur.
+
+`BARCODE_SYNC_MODE` vaut `dry-run` par défaut : la validation, la confirmation et les payloads sont exécutés localement, sans aucune requête distante. Le mode `live` est structurellement prévu mais ses connecteurs restent explicitement désactivés tant que les méthodes d'écriture ShopCaisse et PrestaShop n'ont pas été validées. Le catalogue et l'inventaire sont accessibles dans la même navigation ; Stocks, Achats (dont les futures réceptions fournisseurs) et Réseaux sociaux restent des emplacements réservés.
