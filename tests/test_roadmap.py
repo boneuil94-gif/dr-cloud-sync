@@ -37,8 +37,8 @@ def test_module_progress_is_calculated_from_milestones():
 def test_global_and_remaining_are_calculated():
     data = RoadmapService(ROADMAP).load()
     expected = round(sum(m["weight"] * m["progress_percent"] / 100 for m in data["modules"]), 2)
-    assert data["global_progress_percent"] == expected == 27
-    assert data["remaining_percent"] == 100 - expected == 73
+    assert data["global_progress_percent"] == expected == 29.2
+    assert data["remaining_percent"] == 100 - expected == 70.8
 
 
 def test_inconsistent_weights_are_rejected():

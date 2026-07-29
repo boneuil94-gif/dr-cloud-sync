@@ -2,6 +2,21 @@
 from __future__ import annotations
 from typing import Protocol, Any
 from .domain import Product
+from .os_config import env_bool
+
+
+class SafeModeViolation(RuntimeError):
+    """Raised before any mutable request can leave the process."""
+
+
+def assert_external_write_allowed(system: str, method: str) -> None:
+    """Global fail-closed guard shared by external connector write paths."""
+    if method.upper() in {"POST", "PUT", "PATCH", "DELETE"} and env_bool("DRCLOUD_SAFE_MODE", True):
+        import logging
+        logging.getLogger("drcloud.audit").warning(
+            "external_write_blocked system=%s method=%s", system, method.upper()
+        )
+        raise SafeModeViolation(f"DRCLOUD_SAFE_MODE bloque {method.upper()} vers {system}")
 
 
 def prestashop_barcode_target(product: Product, ean: str) -> dict[str, Any]:

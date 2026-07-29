@@ -12,6 +12,7 @@ from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlparse
 from urllib.request import Request, urlopen
+from .connectors import assert_external_write_allowed
 
 
 API_URL = "https://api.shop-caisse.com/v1"
@@ -50,6 +51,7 @@ class ShopCaisseClient:
 
     def create_company_item(self, company_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         """POST the sole write endpoint authorized for the explicitly gated pilot."""
+        assert_external_write_allowed("ShopCaisse", "POST")
         errors = validate_create_item(payload, company_id)
         if errors:
             raise ShopCaisseError("Payload CreateSimpleItemDto invalide: " + ", ".join(errors))

@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s);const catalogMode=location.pathname==='/catalogue';let mode='quantity',selected=null,view='ALL',withoutEan=false,timer;
-async function api(url,options){let r=await fetch(url,options),v=await r.json();if(!r.ok)throw Error(v.error);return v}
+async function api(url,options={}){if((options.method||'GET')!=='GET')options.headers={...(options.headers||{}),'X-CSRF-Token':document.querySelector('meta[name=csrf-token]').content};let r=await fetch(url,options),v=await r.json();if(!r.ok)throw Error(v.error);return v}
 function esc(v){return String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 async function state(){let s=await api('/api/state'),p=s.progress;$('#ratio').textContent=`${p.counted} / ${p.total}`;$('#remaining').textContent=`${p.remaining} restants`;$('#percent').textContent=`${p.percent} %`;$('#progress').value=p.counted}
 function message(t,bad=false){$('#message').textContent=t;$('#message').className=bad?'unknown':''}

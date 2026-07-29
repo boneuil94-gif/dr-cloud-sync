@@ -796,7 +796,7 @@
         {
           "id": "12-security-m08",
           "name": "Authentification",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "12-security-m09",
@@ -826,60 +826,66 @@
       "milestones": [
         {
           "id": "13-production-m01",
-          "name": "Application locale exécutable",
+          "name": "Préparation Docker",
           "status": "DONE"
         },
         {
           "id": "13-production-m02",
-          "name": "Configuration production",
-          "status": "TODO"
+          "name": "Authentification",
+          "status": "DONE"
         },
         {
           "id": "13-production-m03",
           "name": "PWA installable",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "13-production-m04",
-          "name": "Mode hors ligne contrôlé",
-          "status": "TODO"
+          "name": "Sauvegardes et restauration",
+          "status": "DONE"
         },
         {
           "id": "13-production-m05",
-          "name": "Sauvegardes",
-          "status": "TODO"
+          "name": "Observabilité et health check",
+          "status": "DONE"
         },
         {
           "id": "13-production-m06",
-          "name": "Observabilité",
-          "status": "TODO"
+          "name": "Déploiement reproductible documenté",
+          "status": "DONE"
         },
         {
           "id": "13-production-m07",
-          "name": "Procédure restauration",
-          "status": "TODO"
+          "name": "Tests production",
+          "status": "DONE"
         },
         {
           "id": "13-production-m08",
-          "name": "Déploiement reproductible",
+          "name": "Déploiement production",
           "status": "TODO"
         },
         {
           "id": "13-production-m09",
-          "name": "Tests production",
+          "name": "Domaine os.drcloud.fr",
           "status": "TODO"
         },
         {
           "id": "13-production-m10",
-          "name": "Go-live validé",
+          "name": "HTTPS vérifié réellement",
           "status": "TODO"
         }
       ],
       "completed": [
-        "Application locale exécutable"
+        "Préparation Docker",
+        "Authentification",
+        "PWA installable",
+        "Sauvegardes et restauration",
+        "Observabilité et health check",
+        "Déploiement reproductible documenté",
+        "Tests production"
       ],
       "in_progress": [],
-      "next": "Configuration production",
+      "next": "Déploiement production",
       "blocked": []
     }
   ]

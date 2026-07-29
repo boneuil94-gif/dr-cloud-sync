@@ -21,11 +21,13 @@ from .exceptions import run as run_exceptions
 from .exception_rebuild import run_exception_rebuild
 from .final_mapping import FinalMappingError, finalize_mapping
 from .inventory_web import serve as serve_inventory
+from .os_admin import backup, init_catalog
+from .os_config import OSSettings
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Importe le catalogue maître PrestaShop")
-    parser.add_argument("command", choices=["pull", "shopcaisse-pull", "shopcaisse-import-dry-run", "shopcaisse-import-pilot", "shopcaisse-import-controlled", "shopcaisse-import-all", "build-catalog-mapping", "analyse-mapping-exceptions", "create-mapping-exceptions", "build-final-mapping", "inventory-serve"], help="Récupérer un snapshot complet")
+    parser.add_argument("command", choices=["pull", "shopcaisse-pull", "shopcaisse-import-dry-run", "shopcaisse-import-pilot", "shopcaisse-import-controlled", "shopcaisse-import-all", "build-catalog-mapping", "analyse-mapping-exceptions", "create-mapping-exceptions", "build-final-mapping", "inventory-serve", "os-serve", "os-init-catalog", "os-backup"], help="Commande DrCloud")
     args = parser.parse_args(argv)
     if args.command == "pull":
         try:
@@ -165,12 +167,27 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "final-mapping-built", "report": report}, ensure_ascii=False))
         if not report["ready_for_inventory"]:
             return 1
-    else:
+    elif args.command == "inventory-serve":
         serve_inventory(
             Path(os.environ.get("INVENTORY_CATALOGUE", "dist/mapping-prestashop-shopcaisse-final.json")),
             Path(os.environ.get("INVENTORY_MAPPING_REPORT", "dist/rapport-mapping-final.json")),
             Path(os.environ.get("INVENTORY_DATABASE", "inventory.sqlite3")),
             os.environ.get("INVENTORY_HOST", "127.0.0.1"), int(os.environ.get("INVENTORY_PORT", "8080")))
+    elif args.command == "os-init-catalog":
+        settings=OSSettings.from_env(require_secrets=False)
+        count=init_catalog(Path(os.environ.get("INVENTORY_CATALOGUE", "dist/mapping-prestashop-shopcaisse-final.json")), Path(os.environ.get("INVENTORY_MAPPING_REPORT", "dist/rapport-mapping-final.json")), settings.database)
+        print(json.dumps({"status":"initialized","products":count,"database":str(settings.database)}))
+    elif args.command == "os-backup":
+        settings=OSSettings.from_env(require_secrets=False); target=backup(settings.database,Path(os.environ.get("DRCLOUD_BACKUP_DIR","backups")),environment=settings.environment,safe_mode=settings.safe_mode)
+        print(json.dumps({"status":"backup-created","path":str(target)}))
+    else:
+        from waitress import serve
+        from .inventory_web import create_app
+        settings=OSSettings.from_env()
+        logging_config = {"version":1,"disable_existing_loggers":False,"formatters":{"default":{"format":"%(asctime)s %(levelname)s %(name)s %(message)s"}},"handlers":{"console":{"class":"logging.StreamHandler","formatter":"default"}},"root":{"handlers":["console"],"level":"INFO"}}
+        import logging.config; logging.config.dictConfig(logging_config)
+        proxy = {"trusted_proxy":"*", "trusted_proxy_headers":"x-forwarded-for x-forwarded-proto x-forwarded-host"} if settings.trust_proxy else {}
+        serve(create_app(settings),host=settings.host,port=settings.port,threads=4,**proxy)
     return 0
 
 
