@@ -1,0 +1,67 @@
+name: Finaliser mapping catalogue
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Installer et tester
+        run: |
+          python -m pip install . pytest
+          python -m pytest -q
+          python -m compileall -q src tests
+      - name: Récupérer les derniers artifacts validés
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist /tmp/final-artifacts
+          for artifact in mapping-prestashop-shopcaisse creation-exceptions-shopcaisse; do
+            url=$(gh api "repos/$REPOSITORY/actions/artifacts?name=$artifact&per_page=1" \
+              --jq '.artifacts | map(select(.expired == false)) | .[0].archive_download_url // empty')
+            test -n "$url" || { echo "Artifact requis absent: $artifact" >&2; exit 1; }
+            curl --fail --silent --show-error --location \
+              --header "Authorization: Bearer $GH_TOKEN" "$url" -o "/tmp/final-artifacts/$artifact.zip"
+            unzip -jo "/tmp/final-artifacts/$artifact.zip" '*.json' -d dist
+          done
+          test -f dist/mapping-prestashop-shopcaisse.json
+          test -f dist/mapping-corrections-exceptions.json
+          test -f dist/rapport-creation-exceptions.json
+      - name: Revalider en GET et finaliser le mapping
+        env:
+          SHOPCAISSE_API_KEY: ${{ secrets.SHOPCAISSE_API_KEY }}
+          SHOPCAISSE_COMPANY_ID: ${{ vars.SHOPCAISSE_COMPANY_ID }}
+        run: dr-cloud-sync build-final-mapping
+      - name: Contrôler les fichiers finaux
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("dist/rapport-mapping-final.json").read_text())
+          mapping = json.loads(Path("dist/mapping-prestashop-shopcaisse-final.json").read_text())
+          inventory = json.loads(Path("dist/inventaire-initial-drcloud.json").read_text())
+          assert report["ready_for_inventory"] is True
+          assert report["mapping_total"] == report["certaine"] == 478
+          assert len(mapping["mappings"]) == len(inventory) == 478
+          PY
+      - name: Publier le mapping final et le rapport
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mapping-final-drcloud
+          if-no-files-found: warn
+          path: |
+            dist/mapping-prestashop-shopcaisse-final.json
+            dist/rapport-mapping-final.json
+            dist/inventaire-initial-drcloud.json
