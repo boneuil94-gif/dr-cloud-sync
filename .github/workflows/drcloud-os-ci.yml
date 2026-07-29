@@ -1,7 +1,13 @@
 name: DrCloud OS CI
 on:
   push:
+    branches: [main]
   pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: drcloud-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -12,5 +18,16 @@ jobs:
       - run: pip install -e . pytest
       - run: python -m pytest -q
       - run: python -m compileall -q src tests
+      - name: Validate frontend JavaScript
+        run: find src/dr_cloud_sync/static -name '*.js' -print0 | xargs -0 -n1 node --check
+      - name: Validate deployment files
+        run: |
+          bash -n deploy/ovh/*.sh
+          cp deploy/ovh/drcloud.env.example deploy/ovh/drcloud.env
+          sed -i 's/CHANGE_ME/generic-ci-value-long-enough-1234567890/g' deploy/ovh/drcloud.env
+          docker compose -f deploy/ovh/docker-compose.yml config --quiet
       - run: git diff --check
-      - run: docker build -t drcloud-os:ci .
+      - name: Build and inspect runtime image
+        run: |
+          docker build --build-arg DRCLOUD_BUILD_COMMIT="$GITHUB_SHA" --build-arg DRCLOUD_BUILD_DATE=ci -t drcloud-os:ci .
+          test "$(docker run --rm --entrypoint sh drcloud-os:ci -c 'test -r "$DRCLOUD_ROADMAP" && printf %s "$DRCLOUD_BUILD_COMMIT"')" = "$GITHUB_SHA"

@@ -1,6 +1,7 @@
 """Idempotent catalogue initialization and secret-free SQLite backups."""
 from __future__ import annotations
 import json
+import os
 import shutil
 import sqlite3
 from datetime import datetime, timezone
@@ -38,7 +39,8 @@ def backup(database: Path, destination: Path, *, environment: str, safe_mode: bo
     source = sqlite3.connect(database); copy = sqlite3.connect(target / "drcloud.db")
     with copy: source.backup(copy)
     source.close(); copy.close()
-    metadata = {"application":"drcloud-os", "version":version("dr-cloud-sync"), "created_at":stamp,
+    metadata = {"application":"drcloud-os", "version":version("dr-cloud-sync"),
+                "commit":os.environ.get("DRCLOUD_BUILD_COMMIT", "unknown"), "created_at":stamp,
                 "configuration":{"DRCLOUD_ENV":environment,"DRCLOUD_SAFE_MODE":safe_mode,"BARCODE_SYNC_MODE":"dry-run"}}
     (target / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     return target

@@ -1,0 +1,40 @@
+name: DrCloud OS Production
+on:
+  workflow_run:
+    workflows: ["DrCloud OS CI"]
+    types: [completed]
+permissions:
+  contents: read
+concurrency:
+  group: drcloud-os-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Configure dedicated SSH identity
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.OVH_SSH_PRIVATE_KEY }}
+          OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
+          OVH_SSH_KNOWN_HOSTS: ${{ secrets.OVH_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/drcloud_deploy
+          chmod 600 ~/.ssh/drcloud_deploy
+          printf '%s\n' "$OVH_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Deploy the exact successful commit
+        env:
+          OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
+          OVH_SSH_PORT: ${{ secrets.OVH_SSH_PORT }}
+          OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" \
+            "$OVH_SSH_USER@$OVH_SSH_HOST" \
+            "/opt/drcloud-os/deploy/ovh/update.sh '$DEPLOY_SHA'"

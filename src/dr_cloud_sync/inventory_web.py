@@ -31,7 +31,7 @@ class InventoryApp:
             if path == "/health":
                 try: self.service.repo.db.execute("SELECT 1"); database="ok"; status="ok"
                 except Exception: database="error"; status="degraded"
-                return self._json(start,{"status":status,"application":"drcloud-os","version":version("dr-cloud-sync"),"database":database}, headers=[("X-Request-ID",request_id)])
+                return self._json(start,{"status":status,"application":"drcloud-os","version":version("dr-cloud-sync"),"commit":os.environ.get("DRCLOUD_BUILD_COMMIT","unknown"),"build_date":os.environ.get("DRCLOUD_BUILD_DATE","unknown"),"database":database}, headers=[("X-Request-ID",request_id)])
             if path in {"/manifest.webmanifest","/icon.svg","/inventory.css","/inventory.js","/roadmap.js","/dashboard.js"}:
                 file={"/manifest.webmanifest":"manifest.webmanifest"}.get(path,path[1:]); kind="application/manifest+json" if path.endswith("webmanifest") else "image/svg+xml" if path.endswith("svg") else "text/css; charset=utf-8" if path.endswith("css") else "text/javascript; charset=utf-8"
                 return self._send(start,(ROOT/file).read_bytes(),kind,headers=[("X-Request-ID",request_id)])

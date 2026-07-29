@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -79,4 +80,7 @@ class RoadmapService:
             raise RoadmapError("Le poids total des modules doit être égal à 100")
 
 
-DEFAULT_ROADMAP = Path(__file__).resolve().parents[2] / "docs" / "drcloud-os-roadmap.json"
+DEFAULT_ROADMAP = Path(os.environ.get(
+    "DRCLOUD_ROADMAP",
+    Path(__file__).resolve().parents[2] / "docs" / "drcloud-os-roadmap.json",
+))

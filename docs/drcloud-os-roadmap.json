@@ -874,6 +874,26 @@
           "id": "13-production-m10",
           "name": "HTTPS vérifié réellement",
           "status": "TODO"
+        },
+        {
+          "id": "13-production-m11",
+          "name": "CI complète sur pull requests",
+          "status": "DONE"
+        },
+        {
+          "id": "13-production-m12",
+          "name": "CD main avec verrou et commit exact",
+          "status": "IN_PROGRESS"
+        },
+        {
+          "id": "13-production-m13",
+          "name": "Rollback applicatif automatique testé en production",
+          "status": "TODO"
+        },
+        {
+          "id": "13-production-m14",
+          "name": "État système Administration",
+          "status": "TODO"
         }
       ],
       "completed": [

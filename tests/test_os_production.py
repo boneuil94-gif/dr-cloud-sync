@@ -43,11 +43,21 @@ def test_auth_login_logout_csrf_and_secure_cookie(configured):
     session=app._session({'HTTP_COOKIE':cookie}); assert request(app,'/logout','POST',urlencode({'csrf_token':session['csrf']}),cookie)[0]=='303 See Other'
 
 def test_health_manifest_dashboard_and_no_browser_secrets(configured):
-    app,_=configured; status,_,body=request(app,'/health'); value=json.loads(body);assert status=='200 OK' and value['database']=='ok' and set(value)=={'status','application','version','database'}
+    app,_=configured; status,_,body=request(app,'/health'); value=json.loads(body);assert status=='200 OK' and value['database']=='ok' and set(value)=={'status','application','version','commit','build_date','database'}
     assert request(app,'/manifest.webmanifest')[0]=='200 OK'
     _,cookie=login(app); html=request(app,'/',cookie=cookie)[2].decode(); assert 'DrCloud OS' in html and 'Mode sécurisé' in html
     assets=''.join(p.read_text() for p in (Path(__file__).parents[1]/'src/dr_cloud_sync/static').iterdir())
     assert 'SHOPCAISSE_API_KEY' not in assets and 'PRESTASHOP_API_KEY' not in assets and 'DRCLOUD_ADMIN_PASSWORD' not in assets and 'very-secret-password' not in html
+
+def test_health_exposes_non_secret_build_identity(configured, monkeypatch):
+    monkeypatch.setenv("DRCLOUD_BUILD_COMMIT", "a" * 40)
+    monkeypatch.setenv("DRCLOUD_BUILD_DATE", "2026-07-29T00:00:00Z")
+    app, _ = configured
+    status, _, body = request(app, "/health")
+    value = json.loads(body)
+    assert status == "200 OK"
+    assert value["commit"] == "a" * 40
+    assert value["build_date"] == "2026-07-29T00:00:00Z"
 
 def test_data_dir_catalog_idempotence_and_secret_free_backup(tmp_path):
     source,report=mapping(tmp_path);db=tmp_path/'volume'/'drcloud.db';assert init_catalog(source,report,db)==478;assert init_catalog(source,report,db)==478

@@ -5,10 +5,14 @@ COPY src ./src
 RUN python -m pip wheel --no-cache-dir --wheel-dir /wheels .
 
 FROM python:3.12-slim
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DRCLOUD_ENV=production DRCLOUD_DATA_DIR=/data BARCODE_SYNC_MODE=dry-run DRCLOUD_SAFE_MODE=true HOST=0.0.0.0 PORT=8080
+ARG DRCLOUD_BUILD_COMMIT=unknown
+ARG DRCLOUD_BUILD_DATE=unknown
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DRCLOUD_ENV=production DRCLOUD_DATA_DIR=/data BARCODE_SYNC_MODE=dry-run DRCLOUD_SAFE_MODE=true HOST=0.0.0.0 PORT=8080 \
+    DRCLOUD_ROADMAP=/app/docs/drcloud-os-roadmap.json DRCLOUD_BUILD_COMMIT=${DRCLOUD_BUILD_COMMIT} DRCLOUD_BUILD_DATE=${DRCLOUD_BUILD_DATE}
 RUN addgroup --system drcloud && adduser --system --ingroup drcloud --home /app drcloud && mkdir /data && chown drcloud:drcloud /data
 COPY --from=builder /wheels /wheels
 RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
+COPY --chown=drcloud:drcloud docs/drcloud-os-roadmap.json /app/docs/drcloud-os-roadmap.json
 USER drcloud
 WORKDIR /app
 VOLUME ["/data"]
