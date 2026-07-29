@@ -1,0 +1,84 @@
+import json
+from copy import deepcopy
+from pathlib import Path
+
+import pytest
+
+from dr_cloud_sync.inventory_web import InventoryApp
+from dr_cloud_sync.roadmap import RoadmapError, RoadmapService
+from test_inventory import request, service
+
+ROOT = Path(__file__).parents[1]
+ROADMAP = ROOT / "docs" / "drcloud-os-roadmap.json"
+
+
+def raw_roadmap():
+    return json.loads(ROADMAP.read_text(encoding="utf-8"))
+
+
+def test_roadmap_json_is_readable_and_weights_total_100():
+    data = RoadmapService(ROADMAP).load()
+    assert sum(module["weight"] for module in data["modules"]) == 100
+    assert len(data["modules"]) == 13
+
+
+def test_module_progress_is_calculated_from_milestones():
+    service = RoadmapService(ROADMAP)
+    module = {"milestones": [
+        {"id": "a", "name": "A", "status": "DONE"},
+        {"id": "b", "name": "B", "status": "IN_PROGRESS"},
+        {"id": "c", "name": "C", "status": "TODO"},
+        {"id": "d", "name": "D", "status": "BLOCKED"},
+    ]}
+    assert service.module_progress(module) == 37.5
+    assert 0 <= service.module_progress(module) <= 100
+
+
+def test_global_and_remaining_are_calculated():
+    data = RoadmapService(ROADMAP).load()
+    expected = round(sum(m["weight"] * m["progress_percent"] / 100 for m in data["modules"]), 2)
+    assert data["global_progress_percent"] == expected == 27
+    assert data["remaining_percent"] == 100 - expected == 73
+
+
+def test_inconsistent_weights_are_rejected():
+    data = raw_roadmap()
+    data["modules"][0]["weight"] -= 1
+    with pytest.raises(RoadmapError, match="100"):
+        RoadmapService(ROADMAP).validate(data)
+
+
+@pytest.mark.parametrize("target", ["module", "milestone"])
+def test_invalid_status_is_rejected(target):
+    data = raw_roadmap()
+    if target == "module":
+        data["modules"][0]["status"] = "UNKNOWN"
+    else:
+        data["modules"][0]["milestones"][0]["status"] = "UNKNOWN"
+    with pytest.raises(RoadmapError, match="Statut"):
+        RoadmapService(ROADMAP).validate(data)
+
+
+def test_invalid_milestone_is_rejected():
+    data = raw_roadmap()
+    data["modules"][0]["milestones"] = [{"id": "missing-fields"}]
+    with pytest.raises(RoadmapError, match="Jalon"):
+        RoadmapService(ROADMAP).validate(data)
+
+
+def test_roadmap_page_uses_service_and_has_no_hardcoded_percentage(service):
+    class StubRoadmapService:
+        def __init__(self): self.called = 0
+        def load(self):
+            self.called += 1
+            return {"global_progress_percent": 12, "remaining_percent": 88, "modules": []}
+
+    stub = StubRoadmapService()
+    app = InventoryApp(service, roadmap_service=stub)
+    status, body = request(app, "/api/roadmap")
+    assert status == "200 OK" and json.loads(body)["global_progress_percent"] == 12
+    assert stub.called == 1
+    html = (ROOT / "src/dr_cloud_sync/static/roadmap.html").read_text(encoding="utf-8")
+    assert 'href="/roadmap"' in html
+    assert "%" not in html
+    assert request(app, "/roadmap")[0] == "200 OK"

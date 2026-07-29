@@ -1,0 +1,886 @@
+{
+  "version": "1.0.0",
+  "updated_at": "2026-07-29",
+  "calculation": {
+    "DONE": 1,
+    "IN_PROGRESS": 0.5,
+    "TODO": 0,
+    "BLOCKED": 0
+  },
+  "global_progress_percent": 27.0,
+  "remaining_percent": 73.0,
+  "modules": [
+    {
+      "id": "01-core",
+      "name": "Core + architecture",
+      "weight": 10,
+      "progress_percent": 60,
+      "weighted_progress": 6.0,
+      "status": "IN_PROGRESS",
+      "milestones": [
+        {
+          "id": "01-core-m01",
+          "name": "Fondations domaine séparées",
+          "status": "DONE"
+        },
+        {
+          "id": "01-core-m02",
+          "name": "ActivityLog local",
+          "status": "DONE"
+        },
+        {
+          "id": "01-core-m03",
+          "name": "Ports repositories",
+          "status": "DONE"
+        },
+        {
+          "id": "01-core-m04",
+          "name": "Services métier",
+          "status": "DONE"
+        },
+        {
+          "id": "01-core-m05",
+          "name": "Événements métier contractuels",
+          "status": "DONE"
+        },
+        {
+          "id": "01-core-m06",
+          "name": "Idempotence commune",
+          "status": "DONE"
+        },
+        {
+          "id": "01-core-m07",
+          "name": "Jobs reprenables",
+          "status": "TODO"
+        },
+        {
+          "id": "01-core-m08",
+          "name": "Notifications",
+          "status": "TODO"
+        },
+        {
+          "id": "01-core-m09",
+          "name": "Permissions et audit complets",
+          "status": "TODO"
+        },
+        {
+          "id": "01-core-m10",
+          "name": "Configuration centralisée",
+          "status": "TODO"
+        }
+      ],
+      "completed": [
+        "Fondations domaine séparées",
+        "ActivityLog local",
+        "Ports repositories",
+        "Services métier",
+        "Événements métier contractuels",
+        "Idempotence commune"
+      ],
+      "in_progress": [],
+      "next": "Jobs reprenables",
+      "blocked": []
+    },
+    {
+      "id": "02-catalog",
+      "name": "Catalogue + mapping",
+      "weight": 10,
+      "progress_percent": 80,
+      "weighted_progress": 8.0,
+      "status": "IN_PROGRESS",
+      "milestones": [
+        {
+          "id": "02-catalog-m01",
+          "name": "Mapping 478/478 certain",
+          "status": "DONE"
+        },
+        {
+          "id": "02-catalog-m02",
+          "name": "Clé produit DrCloud stable",
+          "status": "DONE"
+        },
+        {
+          "id": "02-catalog-m03",
+          "name": "Catalogue central initial",
+          "status": "DONE"
+        },
+        {
+          "id": "02-catalog-m04",
+          "name": "Modèle Product",
+          "status": "DONE"
+        },
+        {
+          "id": "02-catalog-m05",
+          "name": "Recherche catalogue",
+          "status": "DONE"
+        },
+        {
+          "id": "02-catalog-m06",
+          "name": "EAN référencé",
+          "status": "DONE"
+        },
+        {
+          "id": "02-catalog-m07",
+          "name": "BarcodeAssignment dry-run",
+          "status": "DONE"
+        },
+        {
+          "id": "02-catalog-m08",
+          "name": "Tests catalogue",
+          "status": "DONE"
+        },
+        {
+          "id": "02-catalog-m09",
+          "name": "Cycle de vie produit complet",
+          "status": "TODO"
+        },
+        {
+          "id": "02-catalog-m10",
+          "name": "Repository PostgreSQL prêt",
+          "status": "TODO"
+        }
+      ],
+      "completed": [
+        "Mapping 478/478 certain",
+        "Clé produit DrCloud stable",
+        "Catalogue central initial",
+        "Modèle Product",
+        "Recherche catalogue",
+        "EAN référencé",
+        "BarcodeAssignment dry-run",
+        "Tests catalogue"
+      ],
+      "in_progress": [],
+      "next": "Cycle de vie produit complet",
+      "blocked": []
+    },
+    {
+      "id": "03-inventory",
+      "name": "Inventaire + EAN",
+      "weight": 10,
+      "progress_percent": 70,
+      "weighted_progress": 7.0,
+      "status": "IN_PROGRESS",
+      "milestones": [
+        {
+          "id": "03-inventory-m01",
+          "name": "Inventaire V1 fonctionnel",
+          "status": "DONE"
+        },
+        {
+          "id": "03-inventory-m02",
+          "name": "Interface OS V2",
+          "status": "DONE"
+        },
+        {
+          "id": "03-inventory-m03",
+          "name": "Sessions persistées",
+          "status": "DONE"
+        },
+        {
+          "id": "03-inventory-m04",
+          "name": "Comptage et scan",
+          "status": "DONE"
+        },
+        {
+          "id": "03-inventory-m05",
+          "name": "Progression et exports",
+          "status": "DONE"
+        },
+        {
+          "id": "03-inventory-m06",
+          "name": "EAN pendant inventaire préparé",
+          "status": "DONE"
+        },
+        {
+          "id": "03-inventory-m07",
+          "name": "Rapprochement proposé",
+          "status": "DONE"
+        },
+        {
+          "id": "03-inventory-m08",
+          "name": "Workflow validation stock",
+          "status": "TODO"
+        },
+        {
+          "id": "03-inventory-m09",
+          "name": "Tests terrain EAN",
+          "status": "TODO"
+        },
+        {
+          "id": "03-inventory-m10",
+          "name": "Activation live validée",
+          "status": "TODO"
+        }
+      ],
+      "completed": [
+        "Inventaire V1 fonctionnel",
+        "Interface OS V2",
+        "Sessions persistées",
+        "Comptage et scan",
+        "Progression et exports",
+        "EAN pendant inventaire préparé",
+        "Rapprochement proposé"
+      ],
+      "in_progress": [],
+      "next": "Workflow validation stock",
+      "blocked": []
+    },
+    {
+      "id": "04-stock",
+      "name": "Stock + synchronisation",
+      "weight": 10,
+      "progress_percent": 30,
+      "weighted_progress": 3.0,
+      "status": "IN_PROGRESS",
+      "milestones": [
+        {
+          "id": "04-stock-m01",
+          "name": "StockMovement défini",
+          "status": "DONE"
+        },
+        {
+          "id": "04-stock-m02",
+          "name": "Types de mouvements",
+          "status": "DONE"
+        },
+        {
+          "id": "04-stock-m03",
+          "name": "Proposition inventaire",
+          "status": "DONE"
+        },
+        {
+          "id": "04-stock-m04",
+          "name": "Idempotency key persistée",
+          "status": "TODO"
+        },
+        {
+          "id": "04-stock-m05",
+          "name": "Validation mouvements",
+          "status": "TODO"
+        },
+        {
+          "id": "04-stock-m06",
+          "name": "Ledger permanent",
+          "status": "TODO"
+        },
+        {
+          "id": "04-stock-m07",
+          "name": "Projection stock",
+          "status": "TODO"
+        },
+        {
+          "id": "04-stock-m08",
+          "name": "Synchronisation contrôlée",
+          "status": "TODO"
+        },
+        {
+          "id": "04-stock-m09",
+          "name": "Alertes stock faible",
+          "status": "TODO"
+        },
+        {
+          "id": "04-stock-m10",
+          "name": "Tests bout en bout",
+          "status": "TODO"
+        }
+      ],
+      "completed": [
+        "StockMovement défini",
+        "Types de mouvements",
+        "Proposition inventaire"
+      ],
+      "in_progress": [],
+      "next": "Idempotency key persistée",
+      "blocked": []
+    },
+    {
+      "id": "05-purchasing",
+      "name": "Achats + fournisseurs",
+      "weight": 10,
+      "progress_percent": 10,
+      "weighted_progress": 1.0,
+      "status": "IN_PROGRESS",
+      "milestones": [
+        {
+          "id": "05-purchasing-m01",
+          "name": "Frontière domaine documentée",
+          "status": "DONE"
+        },
+        {
+          "id": "05-purchasing-m02",
+          "name": "Modèles fournisseurs et achats",
+          "status": "TODO"
+        },
+        {
+          "id": "05-purchasing-m03",
+          "name": "Import document local",
+          "status": "TODO"
+        },
+        {
+          "id": "05-purchasing-m04",
+          "name": "Rapprochement catalogue",
+          "status": "TODO"
+        },
+        {
+          "id": "05-purchasing-m05",
+          "name": "Contrôle humain",
+          "status": "TODO"
+        },
+        {
+          "id": "05-purchasing-m06",
+          "name": "Réception marchandises",
+          "status": "TODO"
+        },
+        {
+          "id": "05-purchasing-m07",
+          "name": "Validation réception",
+          "status": "TODO"
+        },
+        {
+          "id": "05-purchasing-m08",
+          "name": "Proposition mouvement stock",
+          "status": "TODO"
+        },
+        {
+          "id": "05-purchasing-m09",
+          "name": "Analyse prix et TVA",
+          "status": "TODO"
+        },
+        {
+          "id": "05-purchasing-m10",
+          "name": "Tests bout en bout",
+          "status": "TODO"
+        }
+      ],
+      "completed": [
+        "Frontière domaine documentée"
+      ],
+      "in_progress": [],
+      "next": "Modèles fournisseurs et achats",
+      "blocked": []
+    },
+    {
+      "id": "06-sales",
+      "name": "Ventes",
+      "weight": 8,
+      "progress_percent": 5,
+      "weighted_progress": 0.4,
+      "status": "IN_PROGRESS",
+      "milestones": [
+        {
+          "id": "06-sales-m01",
+          "name": "Frontière domaine documentée",
+          "status": "IN_PROGRESS"
+        },
+        {
+          "id": "06-sales-m02",
+          "name": "Modèles vente unifiés",
+          "status": "TODO"
+        },
+        {
+          "id": "06-sales-m03",
+          "name": "Import ShopCaisse",
+          "status": "TODO"
+        },
+        {
+          "id": "06-sales-m04",
+          "name": "Import PrestaShop",
+          "status": "TODO"
+        },
+        {
+          "id": "06-sales-m05",
+          "name": "Paiements",
+          "status": "TODO"
+        },
+        {
+          "id": "06-sales-m06",
+          "name": "Remboursements",
+          "status": "TODO"
+        },
+        {
+          "id": "06-sales-m07",
+          "name": "Retours",
+          "status": "TODO"
+        },
+        {
+          "id": "06-sales-m08",
+          "name": "Mouvements idempotents",
+          "status": "TODO"
+        },
+        {
+          "id": "06-sales-m09",
+          "name": "Rapprochement catalogue",
+          "status": "TODO"
+        },
+        {
+          "id": "06-sales-m10",
+          "name": "Tests bout en bout",
+          "status": "TODO"
+        }
+      ],
+      "completed": [],
+      "in_progress": [
+        "Frontière domaine documentée"
+      ],
+      "next": "Modèles vente unifiés",
+      "blocked": []
+    },
+    {
+      "id": "07-finance",
+      "name": "Finance + pilotage",
+      "weight": 8,
+      "progress_percent": 0,
+      "weighted_progress": 0.0,
+      "status": "TODO",
+      "milestones": [
+        {
+          "id": "07-finance-m01",
+          "name": "Frontière analytique",
+          "status": "TODO"
+        },
+        {
+          "id": "07-finance-m02",
+          "name": "Projection chiffre d’affaires",
+          "status": "TODO"
+        },
+        {
+          "id": "07-finance-m03",
+          "name": "Coûts achat",
+          "status": "TODO"
+        },
+        {
+          "id": "07-finance-m04",
+          "name": "Marge brute",
+          "status": "TODO"
+        },
+        {
+          "id": "07-finance-m05",
+          "name": "TVA disponible",
+          "status": "TODO"
+        },
+        {
+          "id": "07-finance-m06",
+          "name": "Valeur du stock",
+          "status": "TODO"
+        },
+        {
+          "id": "07-finance-m07",
+          "name": "Achats et remboursements",
+          "status": "TODO"
+        },
+        {
+          "id": "07-finance-m08",
+          "name": "Rentabilité produit",
+          "status": "TODO"
+        },
+        {
+          "id": "07-finance-m09",
+          "name": "Rentabilité catégorie",
+          "status": "TODO"
+        },
+        {
+          "id": "07-finance-m10",
+          "name": "Contrôles de cohérence",
+          "status": "TODO"
+        }
+      ],
+      "completed": [],
+      "in_progress": [],
+      "next": "Frontière analytique",
+      "blocked": []
+    },
+    {
+      "id": "08-customers",
+      "name": "Clients + fidélité",
+      "weight": 6,
+      "progress_percent": 0,
+      "weighted_progress": 0.0,
+      "status": "TODO",
+      "milestones": [
+        {
+          "id": "08-customers-m01",
+          "name": "Frontière domaine",
+          "status": "TODO"
+        },
+        {
+          "id": "08-customers-m02",
+          "name": "Customer",
+          "status": "TODO"
+        },
+        {
+          "id": "08-customers-m03",
+          "name": "CustomerIdentity",
+          "status": "TODO"
+        },
+        {
+          "id": "08-customers-m04",
+          "name": "CustomerConsent",
+          "status": "TODO"
+        },
+        {
+          "id": "08-customers-m05",
+          "name": "Import identités",
+          "status": "TODO"
+        },
+        {
+          "id": "08-customers-m06",
+          "name": "Rapprochement prudent",
+          "status": "TODO"
+        },
+        {
+          "id": "08-customers-m07",
+          "name": "Revue humaine fusion",
+          "status": "TODO"
+        },
+        {
+          "id": "08-customers-m08",
+          "name": "Permissions marketing",
+          "status": "TODO"
+        },
+        {
+          "id": "08-customers-m09",
+          "name": "Fidélité",
+          "status": "TODO"
+        },
+        {
+          "id": "08-customers-m10",
+          "name": "Tests confidentialité",
+          "status": "TODO"
+        }
+      ],
+      "completed": [],
+      "in_progress": [],
+      "next": "Frontière domaine",
+      "blocked": []
+    },
+    {
+      "id": "09-marketing",
+      "name": "Marketing + réseaux sociaux",
+      "weight": 8,
+      "progress_percent": 0,
+      "weighted_progress": 0.0,
+      "status": "TODO",
+      "milestones": [
+        {
+          "id": "09-marketing-m01",
+          "name": "Frontière domaine",
+          "status": "TODO"
+        },
+        {
+          "id": "09-marketing-m02",
+          "name": "Content et Campaign",
+          "status": "TODO"
+        },
+        {
+          "id": "09-marketing-m03",
+          "name": "SocialPost",
+          "status": "TODO"
+        },
+        {
+          "id": "09-marketing-m04",
+          "name": "SocialAccount",
+          "status": "TODO"
+        },
+        {
+          "id": "09-marketing-m05",
+          "name": "ContentCalendar",
+          "status": "TODO"
+        },
+        {
+          "id": "09-marketing-m06",
+          "name": "Validation humaine",
+          "status": "TODO"
+        },
+        {
+          "id": "09-marketing-m07",
+          "name": "Connecteurs plateformes",
+          "status": "TODO"
+        },
+        {
+          "id": "09-marketing-m08",
+          "name": "Publication idempotente",
+          "status": "TODO"
+        },
+        {
+          "id": "09-marketing-m09",
+          "name": "PerformanceMetric",
+          "status": "TODO"
+        },
+        {
+          "id": "09-marketing-m10",
+          "name": "Tests bout en bout",
+          "status": "TODO"
+        }
+      ],
+      "completed": [],
+      "in_progress": [],
+      "next": "Frontière domaine",
+      "blocked": []
+    },
+    {
+      "id": "10-automation-ai",
+      "name": "Automatisations + IA",
+      "weight": 8,
+      "progress_percent": 5,
+      "weighted_progress": 0.4,
+      "status": "IN_PROGRESS",
+      "milestones": [
+        {
+          "id": "10-automation-ai-m01",
+          "name": "Règles et permissions documentées",
+          "status": "IN_PROGRESS"
+        },
+        {
+          "id": "10-automation-ai-m02",
+          "name": "Moteur événementiel local",
+          "status": "TODO"
+        },
+        {
+          "id": "10-automation-ai-m03",
+          "name": "Déclencheurs",
+          "status": "TODO"
+        },
+        {
+          "id": "10-automation-ai-m04",
+          "name": "Actions reprenables",
+          "status": "TODO"
+        },
+        {
+          "id": "10-automation-ai-m05",
+          "name": "Validation humaine",
+          "status": "TODO"
+        },
+        {
+          "id": "10-automation-ai-m06",
+          "name": "Assistant READ",
+          "status": "TODO"
+        },
+        {
+          "id": "10-automation-ai-m07",
+          "name": "Assistant PROPOSE",
+          "status": "TODO"
+        },
+        {
+          "id": "10-automation-ai-m08",
+          "name": "Assistant EXECUTE contrôlé",
+          "status": "TODO"
+        },
+        {
+          "id": "10-automation-ai-m09",
+          "name": "Journalisation",
+          "status": "TODO"
+        },
+        {
+          "id": "10-automation-ai-m10",
+          "name": "Tests sécurité",
+          "status": "TODO"
+        }
+      ],
+      "completed": [],
+      "in_progress": [
+        "Règles et permissions documentées"
+      ],
+      "next": "Moteur événementiel local",
+      "blocked": []
+    },
+    {
+      "id": "11-dashboard",
+      "name": "Dashboard",
+      "weight": 5,
+      "progress_percent": 10,
+      "weighted_progress": 0.5,
+      "status": "IN_PROGRESS",
+      "milestones": [
+        {
+          "id": "11-dashboard-m01",
+          "name": "Frontière projection documentée",
+          "status": "DONE"
+        },
+        {
+          "id": "11-dashboard-m02",
+          "name": "Vue Roadmap dynamique",
+          "status": "TODO"
+        },
+        {
+          "id": "11-dashboard-m03",
+          "name": "Projection ventes",
+          "status": "TODO"
+        },
+        {
+          "id": "11-dashboard-m04",
+          "name": "Projection marge",
+          "status": "TODO"
+        },
+        {
+          "id": "11-dashboard-m05",
+          "name": "Projection stocks",
+          "status": "TODO"
+        },
+        {
+          "id": "11-dashboard-m06",
+          "name": "Projection réceptions",
+          "status": "TODO"
+        },
+        {
+          "id": "11-dashboard-m07",
+          "name": "Projection synchronisations",
+          "status": "TODO"
+        },
+        {
+          "id": "11-dashboard-m08",
+          "name": "Projection tâches",
+          "status": "TODO"
+        },
+        {
+          "id": "11-dashboard-m09",
+          "name": "Projection marketing",
+          "status": "TODO"
+        },
+        {
+          "id": "11-dashboard-m10",
+          "name": "Rafraîchissement fiable",
+          "status": "TODO"
+        }
+      ],
+      "completed": [
+        "Frontière projection documentée"
+      ],
+      "in_progress": [],
+      "next": "Vue Roadmap dynamique",
+      "blocked": []
+    },
+    {
+      "id": "12-security",
+      "name": "Sécurité + utilisateurs",
+      "weight": 4,
+      "progress_percent": 10,
+      "weighted_progress": 0.4,
+      "status": "IN_PROGRESS",
+      "milestones": [
+        {
+          "id": "12-security-m01",
+          "name": "Principes secrets documentés",
+          "status": "DONE"
+        },
+        {
+          "id": "12-security-m02",
+          "name": "Permissions cibles définies",
+          "status": "TODO"
+        },
+        {
+          "id": "12-security-m03",
+          "name": "User et Role",
+          "status": "TODO"
+        },
+        {
+          "id": "12-security-m04",
+          "name": "Permission",
+          "status": "TODO"
+        },
+        {
+          "id": "12-security-m05",
+          "name": "AuditLog complet",
+          "status": "TODO"
+        },
+        {
+          "id": "12-security-m06",
+          "name": "SystemSetting",
+          "status": "TODO"
+        },
+        {
+          "id": "12-security-m07",
+          "name": "Références secrets",
+          "status": "TODO"
+        },
+        {
+          "id": "12-security-m08",
+          "name": "Authentification",
+          "status": "TODO"
+        },
+        {
+          "id": "12-security-m09",
+          "name": "Autorisation par action",
+          "status": "TODO"
+        },
+        {
+          "id": "12-security-m10",
+          "name": "Tests sécurité",
+          "status": "TODO"
+        }
+      ],
+      "completed": [
+        "Principes secrets documentés"
+      ],
+      "in_progress": [],
+      "next": "Permissions cibles définies",
+      "blocked": []
+    },
+    {
+      "id": "13-production",
+      "name": "Production + PWA",
+      "weight": 3,
+      "progress_percent": 10,
+      "weighted_progress": 0.3,
+      "status": "IN_PROGRESS",
+      "milestones": [
+        {
+          "id": "13-production-m01",
+          "name": "Application locale exécutable",
+          "status": "DONE"
+        },
+        {
+          "id": "13-production-m02",
+          "name": "Configuration production",
+          "status": "TODO"
+        },
+        {
+          "id": "13-production-m03",
+          "name": "PWA installable",
+          "status": "TODO"
+        },
+        {
+          "id": "13-production-m04",
+          "name": "Mode hors ligne contrôlé",
+          "status": "TODO"
+        },
+        {
+          "id": "13-production-m05",
+          "name": "Sauvegardes",
+          "status": "TODO"
+        },
+        {
+          "id": "13-production-m06",
+          "name": "Observabilité",
+          "status": "TODO"
+        },
+        {
+          "id": "13-production-m07",
+          "name": "Procédure restauration",
+          "status": "TODO"
+        },
+        {
+          "id": "13-production-m08",
+          "name": "Déploiement reproductible",
+          "status": "TODO"
+        },
+        {
+          "id": "13-production-m09",
+          "name": "Tests production",
+          "status": "TODO"
+        },
+        {
+          "id": "13-production-m10",
+          "name": "Go-live validé",
+          "status": "TODO"
+        }
+      ],
+      "completed": [
+        "Application locale exécutable"
+      ],
+      "in_progress": [],
+      "next": "Configuration production",
+      "blocked": []
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+# Roadmap officielle DrCloud OS
+
+**Version :** 1.0.0 — **mise à jour :** 2026-07-29 — **progression pondérée calculée : 27 %** — **reste : 73 %**.
+
+La mesure est fondée sur des jalons constatables dans le dépôt : `DONE = 100 %`, `IN_PROGRESS = 50 %`, `TODO/BLOCKED = 0 %` du jalon, puis moyenne des jalons et pondération du bloc. La source exécutable est [`drcloud-os-roadmap.json`](drcloud-os-roadmap.json) et `RoadmapService` recalcule les valeurs ; ce document explicite l'état, il ne pilote pas l'interface.
+
+| Bloc | Statut | Progression | Poids | Progression pondérée |
+|---|---:|---:|---:|---:|
+| 01 Core + architecture | IN_PROGRESS | 60 % | 10 | 6.0 |
+| 02 Catalogue + mapping | IN_PROGRESS | 80 % | 10 | 8.0 |
+| 03 Inventaire + EAN | IN_PROGRESS | 70 % | 10 | 7.0 |
+| 04 Stock + synchronisation | IN_PROGRESS | 30 % | 10 | 3.0 |
+| 05 Achats + fournisseurs | IN_PROGRESS | 10 % | 10 | 1.0 |
+| 06 Ventes | IN_PROGRESS | 5 % | 8 | 0.4 |
+| 07 Finance + pilotage | TODO | 0 % | 8 | 0.0 |
+| 08 Clients + fidélité | TODO | 0 % | 6 | 0.0 |
+| 09 Marketing + réseaux sociaux | TODO | 0 % | 8 | 0.0 |
+| 10 Automatisations + IA | IN_PROGRESS | 5 % | 8 | 0.4 |
+| 11 Dashboard | IN_PROGRESS | 10 % | 5 | 0.5 |
+| 12 Sécurité + utilisateurs | IN_PROGRESS | 10 % | 4 | 0.4 |
+| 13 Production + PWA | IN_PROGRESS | 10 % | 3 | 0.3 |
+| **Total** | **IN_PROGRESS** | **27 %** | **100** | **27.0** |
+
+## État opérationnel par bloc
+
+### 01 — Core + architecture
+- **Terminé :** séparation domaine/services/repositories, types métier, ActivityLog, ports repository.
+- **En cours :** catalogue d'événements et conventions communes.
+- **Prochaine étape :** idempotence persistée, jobs reprenables, notifications et autorisation complète.
+- **Bloqué :** rien.
+
+### 02 — Catalogue + mapping
+- **Terminé :** mapping certain 478/478, clé DrCloud stable, catalogue central, recherche, EAN, BarcodeAssignment dry-run et tests.
+- **En cours :** aucun jalon partiel comptabilisé.
+- **Prochaine étape :** cycle de vie complet de DrCloudProduct, avec statut et timestamps persistés.
+- **Bloqué :** activation live volontairement exclue.
+
+### 03 — Inventaire + EAN
+- **Terminé :** V1, interface OS V2, sessions SQLite, scan/comptage, progression/exports, préparation EAN et rapprochement.
+- **En cours :** aucun jalon partiel comptabilisé.
+- **Prochaine étape :** workflow validé Inventory → proposition → Stock.
+- **Bloqué :** écriture EAN live non autorisée à ce stade.
+
+### 04 — Stock + synchronisation
+- **Terminé :** StockMovement, types et proposition de correction d'inventaire.
+- **En cours :** aucun jalon partiel comptabilisé.
+- **Prochaine étape :** persister et contraindre `idempotency_key`, sans activer les mouvements.
+- **Bloqué :** aucun ; activation soumise à validation métier future.
+
+### 05 — Achats + fournisseurs
+- **Terminé :** frontière et workflow cible documentés.
+- **En cours :** aucun.
+- **Prochaine étape :** modèles Supplier/Purchase/GoodsReceipt et repositories locaux.
+- **Bloqué :** aucun ; OCR complet différé.
+
+### 06 — Ventes
+- **Terminé :** aucun.
+- **En cours :** frontière et modèles conceptuels unifiés documentés.
+- **Prochaine étape :** modèles locaux et import idempotent en lecture.
+- **Bloqué :** aucun.
+
+### 07 — Finance + pilotage
+- **Terminé / En cours :** aucun jalon d'implémentation.
+- **Prochaine étape :** définir les projections analytiques à partir de Sales, Purchasing et Stock.
+- **Bloqué :** disponibilité future des faits métier.
+
+### 08 — Clients + fidélité
+- **Terminé / En cours :** aucun jalon d'implémentation.
+- **Prochaine étape :** Customer, CustomerIdentity et CustomerConsent sans fusion automatique.
+- **Bloqué :** aucun.
+
+### 09 — Marketing + réseaux sociaux
+- **Terminé / En cours :** aucun jalon d'implémentation.
+- **Prochaine étape :** modèles Content/Campaign/SocialPost indépendants des plateformes.
+- **Bloqué :** aucun.
+
+### 10 — Automatisations + IA
+- **Terminé :** aucun.
+- **En cours :** règles, séparation READ/PROPOSE/EXECUTE et validation humaine documentées.
+- **Prochaine étape :** dispatcher événementiel local et propositions persistées.
+- **Bloqué :** aucun.
+
+### 11 — Dashboard
+- **Terminé :** frontière de projection documentée.
+- **En cours :** vue Roadmap dynamique lisant le service.
+- **Prochaine étape :** projections ventes, marge et stock.
+- **Bloqué :** faits des modules futurs.
+
+### 12 — Sécurité + utilisateurs
+- **Terminé :** principes de gestion des secrets documentés.
+- **En cours :** permissions cibles.
+- **Prochaine étape :** User, Role, Permission et contrôle serveur.
+- **Bloqué :** aucun.
+
+### 13 — Production + PWA
+- **Terminé :** application locale exécutable.
+- **En cours :** aucun.
+- **Prochaine étape :** configuration de production, sauvegardes puis PWA.
+- **Bloqué :** aucun.
+
+## Ordre de livraison
+
+Consolider d'abord Core/Catalog/Inventory/Stock sans écriture distante, puis Purchasing et Sales qui alimentent Stock. Finance, Customers et Marketing consomment ensuite ces faits. Automation/AI, Dashboard, sécurité et production progressent transversalement, sans contourner les validations.

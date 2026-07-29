@@ -9,23 +9,29 @@ from .connectors import DisabledConnector
 from .domain import Product
 from .inventory import InventoryError, InventoryRepository, InventoryService
 from .repositories import SQLiteOSRepository
+from .roadmap import DEFAULT_ROADMAP, RoadmapService
 from .services import AssignBarcodeService, BarcodeError
 
 ROOT = Path(__file__).parent / "static"
 
 class InventoryApp:
-    def __init__(self, service: InventoryService, report_output: Path | None = None, os_repository=None):
+    def __init__(self, service: InventoryService, report_output: Path | None = None, os_repository=None,
+                 roadmap_service: RoadmapService | None = None):
         self.service = service; self.report_output = report_output
         products=[Product(i["drcloud_product_key"],i["prestashop_key"],i.get("product_id"),i.get("combination_id"),i["shopcaisse_item_id"],service._name(i),service._ean(i),None,i.get("stock_prestashop"),i.get("stock_shopcaisse")) for i in service.items]
         self.os_repository=os_repository or SQLiteOSRepository(service.repo.path,products)
         self.barcodes=AssignBarcodeService(self.os_repository,self.os_repository,DisabledConnector(),DisabledConnector())
+        self.roadmap_service = roadmap_service or RoadmapService(DEFAULT_ROADMAP)
     def __call__(self, environ, start_response):
         path=environ.get("PATH_INFO", "/"); method=environ.get("REQUEST_METHOD", "GET")
         try:
             if path in {"/", "/catalogue"}: return self._send(start_response, (ROOT/"inventory.html").read_bytes(), "text/html; charset=utf-8")
+            if path == "/roadmap": return self._send(start_response, (ROOT/"roadmap.html").read_bytes(), "text/html; charset=utf-8")
+            if path == "/roadmap.js": return self._send(start_response, (ROOT/"roadmap.js").read_bytes(), "text/javascript; charset=utf-8")
             if path == "/inventory.js": return self._send(start_response, (ROOT/"inventory.js").read_bytes(), "text/javascript; charset=utf-8")
             if path == "/inventory.css": return self._send(start_response, (ROOT/"inventory.css").read_bytes(), "text/css; charset=utf-8")
             if path == "/api/state": return self._json(start_response, {"session":self.service.session(),"progress":self.service.progress()})
+            if path == "/api/roadmap": return self._json(start_response, self.roadmap_service.load())
             if path == "/api/catalogue": return self._json(start_response,self._catalogue(parse_qs(environ.get("QUERY_STRING", ""))))
             if path == "/api/items":
                 q=parse_qs(environ.get("QUERY_STRING", "")); return self._json(start_response, self.service.search(q.get("q",[""])[0],q.get("view",["ALL"])[0],q.get("without_ean",["0"])[0]=="1"))
