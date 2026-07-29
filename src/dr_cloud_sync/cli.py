@@ -18,11 +18,12 @@ from .sync import synchronize
 from .mapping import run as run_mapping
 from .mapping import pull_prestashop, pull_shopcaisse
 from .exceptions import run as run_exceptions
+from .exception_rebuild import build_final_mapping, run_exception_rebuild
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Importe le catalogue maître PrestaShop")
-    parser.add_argument("command", choices=["pull", "shopcaisse-pull", "shopcaisse-import-dry-run", "shopcaisse-import-pilot", "shopcaisse-import-controlled", "shopcaisse-import-all", "build-catalog-mapping", "analyse-mapping-exceptions"], help="Récupérer un snapshot complet")
+    parser.add_argument("command", choices=["pull", "shopcaisse-pull", "shopcaisse-import-dry-run", "shopcaisse-import-pilot", "shopcaisse-import-controlled", "shopcaisse-import-all", "build-catalog-mapping", "analyse-mapping-exceptions", "create-mapping-exceptions", "build-final-mapping"], help="Récupérer un snapshot complet")
     args = parser.parse_args(argv)
     if args.command == "pull":
         try:
@@ -114,7 +115,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Erreur: {exc}", file=sys.stderr)
             return 1
         print(json.dumps({"status": "mapping-completed", "quality": quality}, ensure_ascii=False))
-    else:
+    elif args.command == "analyse-mapping-exceptions":
         try:
             ps_client = PrestaShopClient(os.environ.get("PRESTASHOP_API_URL") or "https://dr-cloudshop.com/api",
                                          os.environ.get("PRESTASHOP_API_KEY", ""))
@@ -130,6 +131,36 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Erreur: {exc}", file=sys.stderr)
             return 1
         print(json.dumps({"status": "analysis-completed", "report": report}, ensure_ascii=False))
+    elif args.command == "create-mapping-exceptions":
+        try:
+            ps_client = PrestaShopClient(os.environ.get("PRESTASHOP_API_URL", ""),
+                                         os.environ.get("PRESTASHOP_API_KEY", ""))
+            report = run_exception_rebuild(
+                os.environ.get("SHOPCAISSE_API_KEY", ""), os.environ.get("PRESTASHOP_API_KEY", ""),
+                os.environ.get("SHOPCAISSE_EXCEPTION_CONFIRM", ""), os.environ.get("SHOPCAISSE_COMPANY_ID", ""),
+                Path("dist/rapport-exceptions-mapping.json"), Path("dist/mapping-corrections-exceptions.json"),
+                Path("dist/rapport-creation-exceptions.json"),
+                prestashop_loader=lambda: pull_prestashop(ps_client),
+            )
+        except (PilotSafetyError, PrestaShopError, ShopCaisseError, ValueError, OSError, json.JSONDecodeError) as exc:
+            print(f"Erreur: {exc}", file=sys.stderr)
+            return 1
+        print(json.dumps({"status": "exception-rebuild-completed", "report": report}, ensure_ascii=False))
+        if report["failed"] or not report["complete"]:
+            return 1
+    else:
+        try:
+            report = build_final_mapping(
+                Path("dist/mapping-prestashop-shopcaisse.json"), Path("dist/rapport-exceptions-mapping.json"),
+                Path("dist/mapping-corrections-exceptions.json"),
+                Path("dist/mapping-prestashop-shopcaisse-final.json"),
+            )
+        except (PilotSafetyError, ValueError, OSError, json.JSONDecodeError) as exc:
+            print(f"Erreur: {exc}", file=sys.stderr)
+            return 1
+        print(json.dumps({"status": "final-mapping-built", "report": report}, ensure_ascii=False))
+        if not report["complete"]:
+            return 1
     return 0
 
 
