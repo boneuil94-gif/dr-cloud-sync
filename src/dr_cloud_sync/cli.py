@@ -18,7 +18,8 @@ from .sync import synchronize
 from .mapping import run as run_mapping
 from .mapping import pull_prestashop, pull_shopcaisse
 from .exceptions import run as run_exceptions
-from .exception_rebuild import build_final_mapping, run_exception_rebuild
+from .exception_rebuild import run_exception_rebuild
+from .final_mapping import FinalMappingError, finalize_mapping
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -150,16 +151,18 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     else:
         try:
-            report = build_final_mapping(
-                Path("dist/mapping-prestashop-shopcaisse.json"), Path("dist/rapport-exceptions-mapping.json"),
+            report = finalize_mapping(
+                Path("dist/mapping-prestashop-shopcaisse.json"),
                 Path("dist/mapping-corrections-exceptions.json"),
-                Path("dist/mapping-prestashop-shopcaisse-final.json"),
+                Path("dist/rapport-creation-exceptions.json"), Path("dist"),
+                os.environ.get("SHOPCAISSE_COMPANY_ID", ""),
+                ShopCaisseClient(os.environ.get("SHOPCAISSE_API_KEY", "")),
             )
-        except (PilotSafetyError, ValueError, OSError, json.JSONDecodeError) as exc:
+        except (FinalMappingError, ShopCaisseError, ValueError, OSError, json.JSONDecodeError) as exc:
             print(f"Erreur: {exc}", file=sys.stderr)
             return 1
         print(json.dumps({"status": "final-mapping-built", "report": report}, ensure_ascii=False))
-        if not report["complete"]:
+        if not report["ready_for_inventory"]:
             return 1
     return 0
 
