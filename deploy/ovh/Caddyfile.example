@@ -1,0 +1,11 @@
+# Activer ce site seulement après avoir créé et laissé propager les entrées DNS.
+os.drcloud.fr {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+	# Les en-têtes applicatifs CSP, frame, nosniff et referrer restent gérés par DrCloud OS.
+}

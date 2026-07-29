@@ -1,4 +1,12 @@
 .env
+deploy/ovh/drcloud.env
+deploy/ovh/*.env
+deploy/ovh/backups/
+deploy/ovh/validated/
+deploy/ovh/*.sqlite*
+deploy/ovh/*.db
+deploy/ovh/*_rsa
+deploy/ovh/*_ed25519
 .venv/
 __pycache__/
 *.py[cod]
@@ -8,4 +16,3 @@ __pycache__/
 dist/
 build/
 *.egg-info/
-

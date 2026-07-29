@@ -1,0 +1,25 @@
+name: drcloud-os
+
+services:
+  drcloud-os:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: drcloud-os:local
+    restart: unless-stopped
+    env_file:
+      - ./drcloud.env
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - drcloud-data:/data
+      - ${DRCLOUD_BACKUP_ROOT:-/var/backups/drcloud}:/backups
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  drcloud-data:
+    name: drcloud-data
