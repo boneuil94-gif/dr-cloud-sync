@@ -1,0 +1,76 @@
+name: Analyser exceptions mapping
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  analyse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Installer et tester
+        run: |
+          python -m pip install . pytest
+          python -m pytest -q
+          python -m compileall -q src tests
+      - name: Récupérer le dernier artifact de mapping réussi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          mkdir -p dist /tmp/artifacts
+          run_id=$(gh api --method GET "repos/$REPOSITORY/actions/workflows/build-catalog-mapping.yml/runs?status=success&per_page=1" --jq '.workflow_runs[0].id // empty')
+          test -n "$run_id" || { echo "Aucun workflow de mapping réussi" >&2; exit 1; }
+          artifact_url=$(gh api --method GET "repos/$REPOSITORY/actions/runs/$run_id/artifacts" --jq '.artifacts[] | select(.name == "mapping-prestashop-shopcaisse") | .archive_download_url' | head -1)
+          test -n "$artifact_url" || { echo "Artifact mapping absent du dernier workflow réussi" >&2; exit 1; }
+          curl --fail --silent --show-error --location --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" "$artifact_url" -o /tmp/artifacts/mapping.zip
+          unzip -jo /tmp/artifacts/mapping.zip '*.json' -d dist
+      - name: Récupérer les rapports d'import disponibles
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          for artifact in rapport-import-pilote-shopcaisse rapport-import-controle-shopcaisse rapport-import-final-shopcaisse; do
+            url=$(gh api --method GET "repos/$REPOSITORY/actions/artifacts?name=$artifact&per_page=1" --jq '.artifacts[0].archive_download_url // empty')
+            if [ -n "$url" ]; then
+              curl --fail --silent --show-error --location --header "Authorization: Bearer $GH_TOKEN" \
+                --header "Accept: application/vnd.github+json" "$url" -o "/tmp/artifacts/$artifact.zip"
+              unzip -jo "/tmp/artifacts/$artifact.zip" '*.json' -d dist
+            fi
+          done
+      - name: Analyser avec les catalogues actuels (GET uniquement)
+        env:
+          PRESTASHOP_API_KEY: ${{ secrets.PRESTASHOP_API_KEY }}
+          SHOPCAISSE_API_KEY: ${{ secrets.SHOPCAISSE_API_KEY }}
+          SHOPCAISSE_COMPANY_ID: ${{ vars.SHOPCAISSE_COMPANY_ID }}
+          PRESTASHOP_API_URL: ${{ vars.PRESTASHOP_API_URL }}
+        run: |
+          # Le plan versionné permet aussi d'identifier les anciennes entrées non PRET_A_CREER.
+          dr-cloud-sync analyse-mapping-exceptions
+      - name: Valider les rapports
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('dist/rapport-exceptions-mapping.json').read_text())
+          inventory = json.loads(Path('dist/liste-inventaire-drcloud.json').read_text())
+          assert report['total_analyse'] == len(report['exceptions'])
+          assert inventory['total'] == len(inventory['articles'])
+          forbidden = ('PRESTASHOP_API_KEY', 'SHOPCAISSE_API_KEY', 'Authorization', 'Bearer ')
+          assert not any(value in json.dumps([report, inventory]) for value in forbidden)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: analyse-mapping-exceptions
+          if-no-files-found: error
+          path: |
+            dist/rapport-exceptions-mapping.json
+            dist/liste-inventaire-drcloud.json
