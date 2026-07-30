@@ -128,3 +128,27 @@ and their `prestashop_key` are preserved, `drcloud_product_key` is backfilled as
 `drc:<prestashop_key>`, and the ledger/audit columns and indexes are added. Legacy
 rows receive `legacy:<existing id>` so they are readable through the canonical model
 without conflating any historical operations.
+
+## Resumable synchronization jobs
+
+`sync_runs` is the canonical job history. `JobRun` adds a stable UUID (or a caller-supplied
+identity), job/connector/operation, bounded attempts, timestamps, sanitized error metadata and
+a small JSON summary. Its transitions are `PENDING → RUNNING → SUCCEEDED` and
+`PENDING/FAILED/RETRYABLE → RUNNING → FAILED/RETRYABLE`; `SUCCEEDED` and `RUNNING` cannot be
+acquired again. The atomic conditional SQLite update to `RUNNING` is the execution lock and
+increments `attempt`. A retry keeps the same `job_id`; optional unique
+`(job_type, idempotency_key)` identifies a replay, while omitting the key creates a deliberately
+new synchronization.
+
+Schema migration is additive and repeatable. Existing `sync_runs` columns and rows are retained;
+their technical id becomes `legacy-sync-<id>`, `started_at` becomes `created_at`, and lowercase
+`running`, `completed`, and `failed` are read respectively as `RUNNING`, `SUCCEEDED`, and
+`FAILED`. No legacy snapshot or history is reset.
+
+The PrestaShop snapshot pull now runs through `JobRunner`. Every HTTP page is still fetched
+before the snapshot transaction begins, so a remote or validation failure leaves the prior
+snapshot intact. A recoverable job can repeat that intrinsically safe full read/atomic replace
+up to `max_attempts`; a completed job replay returns its persisted summary without another HTTP
+call. ShopCaisse clients already have bounded sanitized HTTP retries, but their multiple manual
+read/import workflows are intentionally not migrated here: the generic connector/operation job
+contract can host a later, separately scoped migration without changing safe-mode permissions.

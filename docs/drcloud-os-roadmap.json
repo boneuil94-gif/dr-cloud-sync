@@ -1,21 +1,21 @@
 {
   "version": "1.0.0",
-  "updated_at": "2026-07-29",
+  "updated_at": "2026-07-30",
   "calculation": {
     "DONE": 1,
     "IN_PROGRESS": 0.5,
     "TODO": 0,
     "BLOCKED": 0
   },
-  "global_progress_percent": 29.89,
-  "remaining_percent": 70.11,
+  "global_progress_percent": 30.89,
+  "remaining_percent": 69.11,
   "modules": [
     {
       "id": "01-core",
       "name": "Core + architecture",
       "weight": 10,
-      "progress_percent": 60.0,
-      "weighted_progress": 6.0,
+      "progress_percent": 70.0,
+      "weighted_progress": 7.0,
       "status": "IN_PROGRESS",
       "milestones": [
         {
@@ -51,7 +51,7 @@
         {
           "id": "01-core-m07",
           "name": "Jobs reprenables",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "01-core-m08",
@@ -75,10 +75,11 @@
         "Ports repositories",
         "Services métier",
         "Événements métier contractuels",
-        "Idempotence commune"
+        "Idempotence commune",
+        "Jobs reprenables"
       ],
       "in_progress": [],
-      "next": "Jobs reprenables",
+      "next": "Notifications",
       "blocked": []
     },
     {

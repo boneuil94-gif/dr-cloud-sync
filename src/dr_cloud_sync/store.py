@@ -46,7 +46,7 @@ class SnapshotStore:
         return int(cursor.lastrowid)
 
     def replace_snapshot(
-        self, connection: sqlite3.Connection, run_id: int, resources: dict[str, list[dict[str, Any]]]
+        self, connection: sqlite3.Connection, run_id: int | None, resources: dict[str, list[dict[str, Any]]]
     ) -> dict[str, int]:
         counts = {name: len(rows) for name, rows in resources.items()}
         now = _now()
@@ -58,10 +58,11 @@ class SnapshotStore:
                     "INSERT INTO prestashop_entities(resource, source_id, payload_json, synced_at) VALUES (?, ?, ?, ?)",
                     [(resource, _source_id(row), json.dumps(row, ensure_ascii=False), now) for row in rows],
                 )
-            connection.execute(
-                "UPDATE sync_runs SET completed_at=?, status='completed', counts_json=? WHERE id=?",
-                (now, json.dumps(counts, sort_keys=True), run_id),
-            )
+            if run_id is not None:
+                connection.execute(
+                    "UPDATE sync_runs SET completed_at=?, status='completed', counts_json=? WHERE id=?",
+                    (now, json.dumps(counts, sort_keys=True), run_id),
+                )
             connection.commit()
         except Exception:
             connection.rollback()
@@ -85,4 +86,3 @@ def _source_id(row: dict[str, Any]) -> int:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
-
