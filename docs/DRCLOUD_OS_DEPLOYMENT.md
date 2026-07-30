@@ -34,7 +34,7 @@ INVENTORY_MAPPING_REPORT=/secure-import/rapport-mapping-final.json \
 DRCLOUD_DATA_DIR=/data dr-cloud-sync os-init-catalog
 ```
 
-La commande refuse tout autre nombre que 478 et un rapport non validé, fait un upsert par `drcloud_product_key`, initialise `schema_version`, puis conserve les entrées validées dans le volume. Elle ne contacte aucun connecteur. Elle est rejouable sans doublon.
+La commande exige un mapping validé et non vide, initialise `schema_version`, puis insère uniquement les identités absentes par `drcloud_product_key`. Elle ne contacte aucun connecteur, ne remplace pas les produits existants et est rejouable sans doublon.
 
 ## Option A — VPS, Docker et proxy HTTPS (recommandée aujourd'hui)
 

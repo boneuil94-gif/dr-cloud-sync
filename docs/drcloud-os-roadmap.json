@@ -7,8 +7,8 @@
     "TODO": 0,
     "BLOCKED": 0
   },
-  "global_progress_percent": 36.89,
-  "remaining_percent": 63.11,
+  "global_progress_percent": 38.89,
+  "remaining_percent": 61.11,
   "modules": [
     {
       "id": "01-core",
@@ -86,8 +86,8 @@
       "id": "02-catalog",
       "name": "Catalogue + mapping",
       "weight": 10,
-      "progress_percent": 80.0,
-      "weighted_progress": 8.0,
+      "progress_percent": 90.0,
+      "weighted_progress": 9.0,
       "status": "IN_PROGRESS",
       "milestones": [
         {
@@ -133,7 +133,7 @@
         {
           "id": "02-catalog-m09",
           "name": "Cycle de vie produit complet",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "02-catalog-m10",
@@ -149,10 +149,11 @@
         "Recherche catalogue",
         "EAN référencé",
         "BarcodeAssignment dry-run",
-        "Tests catalogue"
+        "Tests catalogue",
+        "Cycle de vie produit complet"
       ],
       "in_progress": [],
-      "next": "Cycle de vie produit complet",
+      "next": "Repository PostgreSQL prêt",
       "blocked": []
     },
     {

@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Protocol
 
 from .domain import (ActivityLog, AssignmentStatus, BarcodeAssignment, MovementStatus,
-                     MovementType, Product, RemoteStatus, StockMovement)
+                     MovementType, Product, ProductStatus, RemoteStatus, StockMovement,
+                     utc_now)
 
 
 STOCK_MOVEMENT_COLUMNS = {
@@ -150,6 +151,7 @@ class CatalogRepository(Protocol):
     def get(self, key: str) -> Product | None: ...
     def by_ean(self, ean: str) -> list[Product]: ...
     def set_ean(self, key: str, ean: str) -> None: ...
+    def set_status(self, key: str, status: ProductStatus) -> Product: ...
 
 
 class AuditRepository(Protocol):
@@ -166,6 +168,8 @@ class MemoryCatalogRepository:
     def get(self, key: str) -> Product | None: return self.products.get(key)
     def by_ean(self, ean: str) -> list[Product]: return [p for p in self.all() if p.ean == ean and ean]
     def set_ean(self, key: str, ean: str) -> None: self.products[key].ean = ean
+    def set_status(self, key: str, status: ProductStatus) -> Product:
+        product=self.products[key]; product.transition_to(status); return product
 
 
 class MemoryAuditRepository:
@@ -177,22 +181,106 @@ class MemoryAuditRepository:
 
 
 class SQLiteOSRepository(MemoryCatalogRepository, MemoryAuditRepository):
-    """One adapter implementing both ports; PostgreSQL can replace it unchanged."""
+    """Durable catalogue and audit adapter.
+
+    ``products`` is bootstrap input only: existing rows are never overwritten.
+    Additive columns also upgrade the former JSON-only ``drcloud_products`` table.
+    """
     def __init__(self, path: Path, products: list[Product]):
         MemoryCatalogRepository.__init__(self, products)
         MemoryAuditRepository.__init__(self)
-        self.db = sqlite3.connect(path)
+        self.db = sqlite3.connect(path, check_same_thread=False)
+        self.db.row_factory = sqlite3.Row
         self.db.executescript("""
         CREATE TABLE IF NOT EXISTS barcode_assignments(id TEXT PRIMARY KEY, data TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS activity_logs(id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, data TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS catalogue_eans(drcloud_product_key TEXT PRIMARY KEY, ean TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS drcloud_products(
+          drcloud_product_key TEXT PRIMARY KEY, data TEXT, updated_at TEXT,
+          prestashop_key TEXT, product_id TEXT, combination_id TEXT,
+          shopcaisse_item_id TEXT, name TEXT, ean TEXT NOT NULL DEFAULT '',
+          reference TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'ACTIVE',
+          created_at TEXT);
         """)
-        for key, ean in self.db.execute("SELECT drcloud_product_key,ean FROM catalogue_eans"):
-            if key in self.products: self.products[key].ean = ean
+        columns={r[1] for r in self.db.execute("PRAGMA table_info(drcloud_products)")}
+        declarations={"prestashop_key":"TEXT","product_id":"TEXT","combination_id":"TEXT",
+          "shopcaisse_item_id":"TEXT","name":"TEXT","ean":"TEXT NOT NULL DEFAULT ''",
+          "reference":"TEXT NOT NULL DEFAULT ''","status":"TEXT NOT NULL DEFAULT 'ACTIVE'",
+          "created_at":"TEXT"}
+        for name,declaration in declarations.items():
+            if name not in columns: self.db.execute(f"ALTER TABLE drcloud_products ADD COLUMN {name} {declaration}")
+        self._migrate_legacy_json()
+        self._bootstrap(products)
+        self._ensure_unique_references()
+        loaded=[self._product(r) for r in self.db.execute("SELECT * FROM drcloud_products ORDER BY drcloud_product_key")]
+        self.products={p.drcloud_product_key:p for p in loaded}
+
+    def _migrate_legacy_json(self) -> None:
+        for row in self.db.execute("SELECT * FROM drcloud_products WHERE prestashop_key IS NULL").fetchall():
+            if not row["data"]: continue
+            value=json.loads(row["data"]); stamp=row["updated_at"] or utc_now()
+            self.db.execute("""UPDATE drcloud_products SET prestashop_key=?,product_id=?,combination_id=?,
+              shopcaisse_item_id=?,name=?,ean=?,reference=?,status='ACTIVE',created_at=?,updated_at=?
+              WHERE drcloud_product_key=?""",(value.get("prestashop_key"),value.get("product_id"),
+              value.get("combination_id"),value.get("shopcaisse_item_id"),value.get("name") or value.get("nom complet") or "",
+              value.get("ean") or value.get("EAN") or "",value.get("reference") or value.get("référence") or "",
+              stamp,stamp,row["drcloud_product_key"]))
+        self.db.commit()
+
+    def _bootstrap(self, products: list[Product]) -> None:
+        with self.db:
+            for p in products:
+                self.db.execute("""INSERT OR IGNORE INTO drcloud_products(
+                  drcloud_product_key,prestashop_key,product_id,combination_id,shopcaisse_item_id,
+                  name,ean,reference,status,created_at,updated_at,data) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                  (p.drcloud_product_key,p.prestashop_key,str(p.product_id),
+                   None if p.combination_id is None else str(p.combination_id),str(p.shopcaisse_item_id),
+                   p.name,p.ean,p.reference,p.status.value,p.created_at,p.updated_at,json.dumps(asdict(p),default=str)))
+
+    def _ensure_unique_references(self) -> None:
+        ean_conflicts=self.db.execute("SELECT ean FROM drcloud_products WHERE ean!='' GROUP BY ean HAVING COUNT(*)>1").fetchall()
+        external_conflicts=[]
+        for fields in ("prestashop_key,product_id,COALESCE(combination_id,'')", "shopcaisse_item_id"):
+            rows=self.db.execute(f"SELECT {fields},COUNT(*) n FROM drcloud_products WHERE status!='ARCHIVED' AND {fields.split(',')[0]} IS NOT NULL AND {fields.split(',')[0]}!='' GROUP BY {fields} HAVING n>1").fetchall()
+            external_conflicts.extend(rows)
+        if external_conflicts:
+            raise ValueError("Catalogue incohérent: références externes dupliquées; migration annulée")
+        with self.db:
+            # Historical duplicates are preserved and surfaced by diagnostics.
+            # Once cleaned explicitly, the next idempotent startup adds the constraint.
+            if not ean_conflicts:
+                self.db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_products_ean ON drcloud_products(ean) WHERE ean!=''")
+            self.db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_products_prestashop ON drcloud_products(prestashop_key,product_id,COALESCE(combination_id,'')) WHERE status!='ARCHIVED'")
+            self.db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_products_shopcaisse ON drcloud_products(shopcaisse_item_id) WHERE status!='ARCHIVED'")
+
+    @staticmethod
+    def _product(row: sqlite3.Row) -> Product:
+        return Product(row["drcloud_product_key"],row["prestashop_key"],row["product_id"],row["combination_id"],
+          row["shopcaisse_item_id"],row["name"] or "",row["ean"] or "",reference=row["reference"] or "",
+          status=ProductStatus(row["status"]),created_at=row["created_at"] or row["updated_at"] or utc_now(),
+          updated_at=row["updated_at"] or utc_now())
 
     def set_ean(self, key: str, ean: str) -> None:
+        duplicate=self.db.execute("SELECT drcloud_product_key FROM drcloud_products WHERE ean=? AND drcloud_product_key!=?",(ean,key)).fetchone() if ean else None
+        if duplicate: raise ValueError("EAN déjà associé à un autre produit")
+        try:
+            with self.db:
+                self.db.execute("UPDATE drcloud_products SET ean=?,updated_at=? WHERE drcloud_product_key=?",(ean,utc_now(),key))
+                self.db.execute("INSERT OR REPLACE INTO catalogue_eans VALUES(?,?)", (key, ean))
+        except sqlite3.IntegrityError as exc: raise ValueError("EAN déjà associé à un autre produit") from exc
         super().set_ean(key, ean)
-        with self.db: self.db.execute("INSERT OR REPLACE INTO catalogue_eans VALUES(?,?)", (key, ean))
+
+    def set_status(self, key: str, status: ProductStatus) -> Product:
+        product=self.get(key)
+        if product is None: raise KeyError(key)
+        old=product.status; product.transition_to(status)
+        try:
+            with self.db: self.db.execute("UPDATE drcloud_products SET status=?,updated_at=? WHERE drcloud_product_key=?",(product.status.value,product.updated_at,key))
+        except sqlite3.IntegrityError:
+            product.status=old
+            raise ValueError("Référence externe déjà utilisée par un produit exploitable")
+        self.add_activity(ActivityLog("PRODUCT_STATUS_CHANGED",key,"CATALOGUE",{"from":old.value,"to":product.status.value}))
+        return product
 
     def save_assignment(self, assignment: BarcodeAssignment) -> None:
         super().save_assignment(assignment)

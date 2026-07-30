@@ -5,7 +5,7 @@ import hashlib, hmac, json, logging, os, secrets, time, uuid
 from pathlib import Path
 from urllib.parse import parse_qs
 from .connectors import DisabledConnector
-from .domain import Product
+from .domain import Product, ProductStatus
 from .inventory import InventoryError, InventoryRepository, InventoryService
 from .os_config import OSSettings
 from .repositories import SQLiteOSRepository
@@ -79,6 +79,11 @@ class InventoryApp:
                 comparison=next((r for r in self.external_stock.comparisons() if r["drcloud_product_key"]==key),None)
                 return self._json(start,{"position":asdict(position),"observations":comparison,"movements":[self._stock_movement(m) for m in self.service.repo.movements_for_product(key)]})
             if path == "/api/catalogue": return self._json(start,self._catalogue(parse_qs(env.get("QUERY_STRING", ""))))
+            if path.startswith("/api/catalogue/products/") and path.endswith("/status") and method == "POST":
+                from urllib.parse import unquote
+                key=unquote(path.removeprefix("/api/catalogue/products/").removesuffix("/status"))
+                product=self.os_repository.set_status(key,ProductStatus(self._body(env)["status"]))
+                return self._json(start,asdict(product))
             if path == "/api/items":
                 q=parse_qs(env.get("QUERY_STRING", "")); return self._json(start,self.service.search(q.get("q",[""])[0],q.get("view",["ALL"])[0],q.get("without_ean",["0"])[0]=="1"))
             if path == "/api/scan": return self._json(start,self.service.scan(parse_qs(env.get("QUERY_STRING", "")).get("ean",[""])[0]))
@@ -100,7 +105,7 @@ class InventoryApp:
             if path == "/api/export.csv": return self._send(start,self.service.csv().encode(),"text/csv; charset=utf-8",headers=[("Content-Disposition","attachment; filename=inventaire-drcloud.csv")])
             return self._error(start,404,request_id)
         except PermissionError: return self._error(start,403,request_id)
-        except (InventoryError,BarcodeError,KeyError,json.JSONDecodeError) as exc: return self._json(start,{"error":str(exc)},"400 Bad Request")
+        except (InventoryError,BarcodeError,KeyError,ValueError,json.JSONDecodeError) as exc: return self._json(start,{"error":str(exc)},"400 Bad Request")
         except Exception:
             LOG.exception("request_failed request_id=%s path=%s",request_id,path); return self._error(start,500,request_id)
 
@@ -150,9 +155,14 @@ class InventoryApp:
     def _catalogue(self,query):
         text=query.get("q",[""])[0].casefold(); selected=query.get("filter",["ALL"])[0]; conflicts={p.drcloud_product_key for p in self.os_repository.all() for other in self.os_repository.by_ean(p.ean) if p.ean and other.drcloud_product_key != p.drcloud_product_key}; counts=self.service.repo.counts(self.service.session()["id"]); rows=[]
         for p in self.os_repository.all():
-            if text and text not in f"{p.name} {p.ean}".casefold(): continue
+            if text and text not in f"{p.name} {p.ean} {p.reference} {p.prestashop_key} {p.shopcaisse_item_id}".casefold(): continue
             if (selected=="WITH_EAN" and not p.ean) or (selected=="WITHOUT_EAN" and p.ean) or (selected=="CONFLICT" and p.drcloud_product_key not in conflicts): continue
-            row=asdict(p); row["ean_status"]="CONFLICT" if p.drcloud_product_key in conflicts else "WITH_EAN" if p.ean else "WITHOUT_EAN"; count=counts.get(p.prestashop_key); row["physical_quantity"]=count["physical_quantity"] if count else None; rows.append(row)
+            row=asdict(p); problems=[]
+            if p.drcloud_product_key in conflicts: problems.append("EAN dupliqué")
+            if not p.prestashop_key or not p.shopcaisse_item_id: problems.append("Référence externe requise absente")
+            row["coherence"]="INCOHÉRENT" if problems else "ATTENTION" if not p.ean else "OK"
+            row["coherence_issues"]=problems or (["EAN absent"] if not p.ean else [])
+            row["ean_status"]="CONFLICT" if p.drcloud_product_key in conflicts else "WITH_EAN" if p.ean else "WITHOUT_EAN"; count=counts.get(p.prestashop_key); row["physical_quantity"]=count["physical_quantity"] if count else None; rows.append(row)
         return rows
     @staticmethod
     def _stock_movement(movement):

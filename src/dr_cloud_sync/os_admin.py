@@ -12,8 +12,8 @@ from .admin_status import application_metadata
 def init_catalog(source: Path, report: Path, database: Path) -> int:
     raw = json.loads(source.read_text(encoding="utf-8")); rows = raw.get("mappings", raw) if isinstance(raw, dict) else raw
     validation = json.loads(report.read_text(encoding="utf-8"))
-    if validation.get("ready_for_inventory") is not True or not isinstance(rows, list) or len(rows) != 478:
-        raise ValueError("Le mapping final validé de 478 articles est requis")
+    if validation.get("ready_for_inventory") is not True or not isinstance(rows, list) or not rows:
+        raise ValueError("Un mapping final validé et non vide est requis")
     database.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(database)
     with db:
@@ -23,9 +23,9 @@ def init_catalog(source: Path, report: Path, database: Path) -> int:
         for row in rows:
             key = row.get("drcloud_product_key") or f"drc:{row['prestashop_key']}"
             item = {**row, "drcloud_product_key": key}
-            db.execute("INSERT INTO drcloud_products VALUES(?,?,datetime('now')) ON CONFLICT(drcloud_product_key) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at", (key, json.dumps(item, ensure_ascii=False)))
+            # Bootstrap only. Runtime edits and lifecycle state remain authoritative.
+            db.execute("INSERT OR IGNORE INTO drcloud_products(drcloud_product_key,data,updated_at) VALUES(?,?,datetime('now'))", (key, json.dumps(item, ensure_ascii=False)))
     count = db.execute("SELECT count(*) FROM drcloud_products").fetchone()[0]; db.close()
-    if count != 478: raise ValueError(f"Catalogue inattendu après import: {count}")
     # Keep validated input beside the persistent DB for the inventory service.
     shutil.copyfile(source, database.parent / "catalogue.json")
     shutil.copyfile(report, database.parent / "catalogue-report.json")
