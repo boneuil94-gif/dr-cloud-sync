@@ -5,7 +5,7 @@ import hashlib, hmac, json, logging, os, secrets, time, uuid
 from pathlib import Path
 from urllib.parse import parse_qs
 from .connectors import DisabledConnector
-from .domain import Product, ProductStatus, SupplierStatus
+from .domain import Product, ProductStatus, PurchaseOrderStatus, SupplierStatus
 from .inventory import InventoryError, InventoryRepository, InventoryService
 from .os_config import OSSettings
 from .repositories import SQLiteOSRepository
@@ -14,7 +14,8 @@ from .services import AssignBarcodeService, BarcodeError, StockProjectionService
 from .admin_status import AdminStatusService, application_metadata
 from .modules import available_pages, render_navigation
 from .external_stock import ExternalStockQueryService
-from .purchasing import SQLiteSupplierRepository, SupplierService
+from .purchasing import (PurchaseOrderService, SQLitePurchaseOrderRepository,
+                         SQLiteSupplierRepository, SupplierService)
 
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
@@ -35,6 +36,7 @@ class InventoryApp:
         self.stock=StockProjectionService(service.repo,self.os_repository)
         self.external_stock=ExternalStockQueryService(service.repo.path,self.os_repository.all(),service.repo)
         self.suppliers=SupplierService(SQLiteSupplierRepository(service.repo.path),self.os_repository)
+        self.purchase_orders=PurchaseOrderService(SQLitePurchaseOrderRepository(service.repo.path),self.suppliers,self.os_repository,self.os_repository)
 
     def __call__(self, env, start):
         request_id=env.get("HTTP_X_REQUEST_ID") or str(uuid.uuid4()); path=env.get("PATH_INFO", "/"); method=env.get("REQUEST_METHOD", "GET")
@@ -62,6 +64,27 @@ class InventoryApp:
             if path == "/achats": return self._html(start,"purchasing.html",session,request_id)
             if path.startswith("/achats/fournisseurs/"):
                 return self._html(start,"purchasing.html",session,request_id)
+            if path.startswith("/achats/commandes"):
+                return self._html(start,"purchasing.html",session,request_id)
+            if path == "/api/purchase-orders" and method == "GET":
+                q=parse_qs(env.get("QUERY_STRING","")); status=q.get("status",[None])[0]
+                rows=self.purchase_orders.list(status)
+                return self._json(start,{"purchase_orders":[self._purchase_order(row) for row in rows]})
+            if path == "/api/purchase-orders" and method == "POST":
+                row=self.purchase_orders.create(self._body(env),session.get("u","authenticated"))
+                return self._json(start,{"purchase_order":self._purchase_order(row)},"201 Created")
+            if path.startswith("/api/purchase-orders/"):
+                tail=path.removeprefix("/api/purchase-orders/"); parts=tail.split("/"); oid=parts[0]
+                if len(parts)==1 and method=="GET":
+                    row=self.purchase_orders.get(oid)
+                    if not row:return self._json(start,{"error":"Commande fournisseur introuvable"},"404 Not Found")
+                    return self._json(start,{"purchase_order":self._purchase_order(row),"activities":[asdict(a) for a in self.purchase_orders.activities(oid)]})
+                if len(parts)==1 and method=="PATCH": return self._json(start,{"purchase_order":self._purchase_order(self.purchase_orders.update(oid,self._body(env),session.get("u","authenticated")))})
+                if parts[1:]==["status"] and method=="POST": return self._json(start,{"purchase_order":self._purchase_order(self.purchase_orders.transition(oid,self._body(env)["status"],session.get("u","authenticated")))})
+                if parts[1:]==["lines"] and method=="POST": return self._json(start,{"line":asdict(self.purchase_orders.add_line(oid,self._body(env),session.get("u","authenticated")))},"201 Created")
+                if len(parts)==3 and parts[1]=="lines" and method=="PATCH": return self._json(start,{"line":asdict(self.purchase_orders.update_line(oid,parts[2],self._body(env),session.get("u","authenticated")))})
+                if len(parts)==3 and parts[1]=="lines" and method=="DELETE":
+                    self.purchase_orders.remove_line(oid,parts[2],session.get("u","authenticated")); return self._json(start,{"deleted":True})
             if path == "/api/suppliers" and method == "GET":
                 q=parse_qs(env.get("QUERY_STRING","")); status=q.get("status",[None])[0]
                 rows=self.suppliers.list(q.get("q",[""])[0],SupplierStatus(status) if status else None)
@@ -195,6 +218,10 @@ class InventoryApp:
         return {"id":movement.id,"product_id":movement.drcloud_product_key,"delta":movement.quantity_delta,
           "type":movement.movement_type.value,"origin":labels.get(movement.source_type,movement.source_type.title()),
           "source_reference":movement.source_id,"occurred_at":movement.applied_at or movement.created_at}
+    def _purchase_order(self,order):
+        value=asdict(order); lines=self.purchase_orders.lines(order.purchase_order_id)
+        value.update(lines=[asdict(x) for x in lines],line_count=len(lines),total=self.purchase_orders.total(order.purchase_order_id),cost_complete=bool(lines) and all(x.unit_cost is not None for x in lines))
+        return value
     def _error(self,start,code,request_id): return self._html(start,"error.html",{"csrf":""},request_id,status={401:"401 Unauthorized",403:"403 Forbidden",404:"404 Not Found",429:"429 Too Many Requests",500:"500 Internal Server Error"}[code])
     def _redirect(self,start,location,request_id,cookie=None,clear=False):
         headers=[("Location",location),("X-Request-ID",request_id)]; secure=self.settings and self.settings.environment=="production"; attrs="; Path=/; HttpOnly; SameSite=Lax"+("; Secure" if secure else "")

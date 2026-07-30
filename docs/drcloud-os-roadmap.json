@@ -7,8 +7,8 @@
     "TODO": 0,
     "BLOCKED": 0
   },
-  "global_progress_percent": 39.89,
-  "remaining_percent": 60.11,
+  "global_progress_percent": 40.89,
+  "remaining_percent": 59.11,
   "modules": [
     {
       "id": "01-core",
@@ -307,8 +307,8 @@
       "id": "05-purchasing",
       "name": "Achats + fournisseurs",
       "weight": 10,
-      "progress_percent": 20.0,
-      "weighted_progress": 2.0,
+      "progress_percent": 30.0,
+      "weighted_progress": 3.0,
       "status": "IN_PROGRESS",
       "milestones": [
         {
@@ -323,8 +323,8 @@
         },
         {
           "id": "05-purchasing-m03",
-          "name": "Import document local",
-          "status": "TODO"
+          "name": "Commandes fournisseurs V1",
+          "status": "DONE"
         },
         {
           "id": "05-purchasing-m04",
@@ -364,10 +364,11 @@
       ],
       "completed": [
         "Frontière domaine documentée",
-        "Référentiel Fournisseurs V1"
+        "Référentiel Fournisseurs V1",
+        "Commandes fournisseurs V1"
       ],
       "in_progress": [],
-      "next": "Commandes fournisseurs (PR I)",
+      "next": "Réceptions marchandises (PR J)",
       "blocked": []
     },
     {
