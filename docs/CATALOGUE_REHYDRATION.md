@@ -61,3 +61,50 @@ Arrêter l'application, identifier la sauvegarde du résumé du JobRun, puis uti
 la procédure de restauration hors ligne documentée dans `deploy/ovh/RESTORE.md`.
 Restaurer le bundle complet DB + médias, redémarrer et exécuter les contrôles de santé.
 Il n'existe volontairement aucun bouton de rollback en ligne.
+
+## Source historique, résolution et packaging
+
+La cause de l'incident du 30 juillet 2026 était une divergence entre tests et image de
+production : l'Administration cherchait
+`$DRCLOUD_DATA_DIR/catalogue-prestashop-reconstruit.json`, alors que le référentiel
+validé était un artefact `dist/` ignoré par le contexte Docker. Le Dockerfile ne
+copiait que `src/`; aucun mécanisme ne persistait cet artefact dans `/data`. Les tests
+créaient leur propre fichier temporaire ou lisaient `dist/` depuis la racine Git, ce
+qui masquait à la fois l'absence dans la wheel et la dépendance au working directory.
+`final_mapping.py` décrit et produit le mapping final, mais ne contient aucune des 478
+lignes historiques.
+
+La source canonique unique est désormais
+`dr_cloud_sync/data/catalogue-prestashop-reconstruit.json`. C'est le snapshot
+PrestaShop reconstruit validé (72 parents, 453 combinaisons, soit 478 identités de
+vente en comptant les 25 produits sans combinaison). Il est versionné et inclus dans
+la wheel par `tool.setuptools.package-data`; l'image Docker installe cette wheel.
+`importlib.resources` le résout depuis le package installé, sans dépendre du répertoire
+courant. `DRCLOUD_REHYDRATION_SNAPSHOT` reste une surcharge explicite destinée aux
+contrôles opératoires et aux tests; elle subit exactement les mêmes validations.
+
+Avant chaque PREVIEW et chaque APPLY_SAFE, le document doit être lisible, contenir
+une liste `catalogue` non vide et ne présenter aucune identité dupliquée. L'identité
+est exclusivement `(product_id, combination_id)`; aucun nom, ordre, prix, image ou
+EAN ne participe à la jointure. Toute absence, corruption ou duplication fait échouer
+le job et interdit donc APPLY_SAFE. Le diagnostic Administration ne publie aucun
+chemin serveur : il nomme la source, son statut et recommande de vérifier/redéployer
+le package.
+
+## Contrôle de disponibilité et procédure PREVIEW
+
+Le statut de réhydratation vérifie réellement la lecture du catalogue SQLite et le
+parsing/intégrité du mapping packagé. Il affiche le nombre de produits locaux et les
+478 identités du snapshot. PrestaShop et ShopCaisse sont indiqués `NOT_USED`, et non
+faussement disponibles : PREVIEW n'effectue aucun appel réseau et n'en a pas besoin.
+
+Après déploiement : ouvrir **Administration > Réhydratation Catalogue**, vérifier
+`Catalogue local : Disponible` et `Mapping historique : Disponible`, puis cliquer
+uniquement sur **Analyser le catalogue**. Contrôler produits analysés, SAFE,
+AMBIGUOUS, NO_DATA, produits enrichissables et champs candidats. Vérifier notamment
+les combinaisons Hyper Max 710–716. Le snapshot confirme les variantes PEACH ICE,
+STRAWBERRY PUNCH, LOVE, GUM MINT, MINT, MAGIC LOVE et MANGO PINEAPPLE; leurs EAN et
+références absents restent `NO_DATA`. Ne pas utiliser APPLY_SAFE dans le cadre de ce
+correctif. Si une source est indisponible, conserver le job FAILED, vérifier que la
+wheel contient la ressource, puis redéployer le même artefact validé; ne jamais copier
+une fixture ou fabriquer un snapshot dans `/data`.

@@ -6,6 +6,7 @@ Preview is side-effect free; apply requires a successful SQLite/media backup.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from importlib.resources import files
 import json
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -15,6 +16,58 @@ from .hydration import PROTECTED_SOURCES, ProductObservation, valid_ean, variant
 from .jobs import JobRunner, SqliteJobRepository
 
 SAFE, AMBIGUOUS, NO_DATA = "SAFE", "AMBIGUOUS", "NO_DATA"
+
+HISTORICAL_SNAPSHOT_NAME = "catalogue-prestashop-reconstruit.json"
+
+
+class HistoricalCatalogueUnavailable(RuntimeError):
+    """Operator-safe failure raised when the immutable source cannot be trusted."""
+
+    def __init__(self, status: str = "indisponible"):
+        self.operator_safe = True
+        super().__init__(
+            "Analyse impossible : la source historique du catalogue n'est pas disponible. "
+            f"Source : mapping historique versionné ; statut : {status}. "
+            "Action recommandée : vérifier le package déployé puis redéployer ; "
+            "l'application reste en lecture seule."
+        )
+
+
+def packaged_historical_snapshot() -> Path:
+    """Resolve the installed resource independently of the working directory."""
+    return Path(str(files("dr_cloud_sync").joinpath("data", HISTORICAL_SNAPSHOT_NAME)))
+
+
+def validate_historical_snapshot(path: Path) -> dict[str, Any]:
+    """Fail closed on an absent, malformed, or identity-ambiguous source."""
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError):
+        raise HistoricalCatalogueUnavailable("absente ou illisible") from None
+    catalogue = document.get("catalogue") if isinstance(document, dict) else None
+    if not isinstance(catalogue, list):
+        raise HistoricalCatalogueUnavailable("format invalide")
+    identities: set[tuple[str, str | None]] = set()
+    for parent in catalogue:
+        if not isinstance(parent, dict) or parent.get("id", parent.get("product_id")) in (None, ""):
+            raise HistoricalCatalogueUnavailable("format invalide")
+        product_id = str(parent.get("id") or parent.get("product_id"))
+        combinations = parent.get("declinaisons", [])
+        if not isinstance(combinations, list):
+            raise HistoricalCatalogueUnavailable("format invalide")
+        for combination in combinations or [None]:
+            combination_id = None
+            if combination is not None:
+                if not isinstance(combination, dict) or combination.get("id") in (None, ""):
+                    raise HistoricalCatalogueUnavailable("format invalide")
+                combination_id = str(combination["id"])
+            identity = (product_id, combination_id)
+            if identity in identities:
+                raise HistoricalCatalogueUnavailable("identité PrestaShop dupliquée")
+            identities.add(identity)
+    if not identities:
+        raise HistoricalCatalogueUnavailable("catalogue vide")
+    return document
 
 
 @dataclass
@@ -32,7 +85,7 @@ class RehydrationItem:
 
 def historical_observations(path: Path, products: Iterable[Any]) -> list[ProductObservation]:
     """Read the rich repository snapshot and join solely by persisted IDs."""
-    document = json.loads(path.read_text(encoding="utf-8"))
+    document = validate_historical_snapshot(path)
     parents = {str(row.get("id") or row.get("product_id")): row
                for row in document.get("catalogue", [])}
     observations = []

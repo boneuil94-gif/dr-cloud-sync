@@ -70,7 +70,7 @@ jamais la clé.
 
 ## Récupération ShopCaisse
 
-Le dépôt doit déjà contenir `dist/catalogue-prestashop-reconstruit.json`. Le pull local se lance avec :
+La wheel contient le snapshot historique versionné sous `dr_cloud_sync/data/catalogue-prestashop-reconstruit.json`. Le pull local se lance avec :
 
 ```bash
 SHOPCAISSE_API_KEY="$SHOPCAISSE_API_KEY" dr-cloud-sync shopcaisse-pull

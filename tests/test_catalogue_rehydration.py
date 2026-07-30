@@ -5,7 +5,7 @@ import pytest
 from dr_cloud_sync.domain import Product, StockMovement, MovementType, MovementStatus
 from dr_cloud_sync.hydration import ProductObservation
 from dr_cloud_sync.rehydration import (AMBIGUOUS, SAFE, CatalogueRehydrationService,
-                                        historical_observations)
+                                        historical_observations, packaged_historical_snapshot)
 from dr_cloud_sync.repositories import SQLiteOSRepository, SQLiteStockMovementRepository
 
 
@@ -85,6 +85,31 @@ def test_stock_count_is_unchanged(tmp_path):
 
 
 def test_repository_snapshot_contains_the_real_hyper_max_data():
-    path = __import__('pathlib').Path("dist/catalogue-prestashop-reconstruit.json")
+    path = packaged_historical_snapshot()
     products = [product(710+i) for i in range(7)]
     assert [x.variant_name for x in historical_observations(path, products)] == NAMES
+
+
+def test_packaged_snapshot_is_cwd_independent_and_has_478_unique_identities(tmp_path, monkeypatch):
+    from dr_cloud_sync.rehydration import validate_historical_snapshot
+    monkeypatch.chdir(tmp_path)
+    document = validate_historical_snapshot(packaged_historical_snapshot())
+    identities = {(str(parent["id"]), str(combination["id"]) if combination else None)
+                  for parent in document["catalogue"]
+                  for combination in (parent.get("declinaisons") or [None])}
+    assert len(identities) == 478
+
+
+def test_missing_or_corrupt_snapshot_fails_closed_without_mutation(tmp_path):
+    from dr_cloud_sync.rehydration import HistoricalCatalogueUnavailable
+    repo = SQLiteOSRepository(tmp_path / "db.sqlite", [product(710)])
+    before = repo.all()
+    for name, contents in (("missing.json", None), ("broken.json", "not json"),
+                           ("duplicate.json", json.dumps({"catalogue": [
+                               {"id": 100}, {"id": 100}]}))):
+        path = tmp_path / name
+        if contents is not None:
+            path.write_text(contents)
+        with pytest.raises(HistoricalCatalogueUnavailable, match="Analyse impossible"):
+            historical_observations(path, repo.all())
+        assert repo.all() == before

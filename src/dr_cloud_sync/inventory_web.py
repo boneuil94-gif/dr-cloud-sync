@@ -23,6 +23,7 @@ from .media import (MAX_FILE_SIZE, LocalMediaStorage, MediaError, ProductMediaSe
 from .domain import MediaVariantKind
 from .hydration import ProductHydrationService
 from .admin_rehydration import AdminCatalogueRehydration, RehydrationConflict
+from .rehydration import packaged_historical_snapshot
 
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
@@ -64,7 +65,7 @@ class InventoryApp:
         self.admin_status.media_diagnostics=self.media.diagnostics
         self.catalogue_rehydration = AdminCatalogueRehydration(
             service.repo.path,
-            Path(os.environ.get("DRCLOUD_REHYDRATION_SNAPSHOT", (settings.data_dir if settings else service.repo.path.parent) / "catalogue-prestashop-reconstruit.json")),
+            Path(os.environ["DRCLOUD_REHYDRATION_SNAPSHOT"]) if os.environ.get("DRCLOUD_REHYDRATION_SNAPSHOT") else packaged_historical_snapshot(),
             Path(os.environ.get("DRCLOUD_BACKUP_DIR", (settings.data_dir if settings else service.repo.path.parent) / "backups")),
             environment=settings.environment if settings else "development",
             safe_mode=settings.safe_mode if settings else True)
