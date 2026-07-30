@@ -71,6 +71,56 @@ class SupplierStatus(StrEnum):
     ARCHIVED = "ARCHIVED"
 
 
+class PurchaseOrderStatus(StrEnum):
+    DRAFT = "DRAFT"
+    ORDERED = "ORDERED"
+    PARTIALLY_RECEIVED = "PARTIALLY_RECEIVED"
+    RECEIVED = "RECEIVED"
+    CANCELLED = "CANCELLED"
+
+
+@dataclass(frozen=True)
+class PurchaseOrderLine:
+    line_id: str
+    purchase_order_id: str
+    product_key: str
+    ordered_quantity: int
+    supplier_product_reference: str = ""
+    unit_cost: str | None = None
+    created_at: str = field(default_factory=utc_now)
+    updated_at: str = field(default_factory=utc_now)
+
+    def __post_init__(self) -> None:
+        if not self.line_id.startswith("pol:") or not self.purchase_order_id.startswith("po:"):
+            raise ValueError("invalid purchase order line identity")
+        if not self.product_key.strip():
+            raise ValueError("product_key is required")
+        if isinstance(self.ordered_quantity, bool) or not isinstance(self.ordered_quantity, int) or self.ordered_quantity <= 0:
+            raise ValueError("ordered_quantity must be a positive integer")
+
+
+@dataclass(frozen=True)
+class PurchaseOrder:
+    purchase_order_id: str
+    supplier_id: str
+    reference: str
+    status: PurchaseOrderStatus = PurchaseOrderStatus.DRAFT
+    supplier_reference: str = ""
+    ordered_at: str | None = None
+    expected_at: str | None = None
+    notes: str = ""
+    currency: str = "EUR"
+    created_at: str = field(default_factory=utc_now)
+    updated_at: str = field(default_factory=utc_now)
+
+    def __post_init__(self) -> None:
+        if not self.purchase_order_id.startswith("po:"):
+            raise ValueError("invalid purchase_order_id")
+        if not self.supplier_id.strip() or not self.reference.strip():
+            raise ValueError("supplier_id and reference are required")
+        object.__setattr__(self, "status", PurchaseOrderStatus(self.status))
+
+
 @dataclass
 class Supplier:
     """Canonical supplier, independent from every external connector."""

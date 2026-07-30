@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 from dataclasses import asdict, replace
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
 import sqlite3
 from pathlib import Path
 from typing import Protocol
 import uuid
 
-from .domain import ActivityLog, Supplier, SupplierStatus, utc_now
+from .domain import (ActivityLog, ProductStatus, PurchaseOrder, PurchaseOrderLine,
+                     PurchaseOrderStatus, Supplier, SupplierStatus, utc_now)
 
 
 class SupplierRepository(Protocol):
@@ -135,3 +137,141 @@ class SupplierService:
 
     def activities(self, supplier_id):
         return [a for a in self.audit.activities() if a.drcloud_product_key == supplier_id]
+
+
+class PurchaseOrderRepository(Protocol):
+    def create(self, order: PurchaseOrder) -> PurchaseOrder: ...
+    def get(self, order_id: str) -> PurchaseOrder | None: ...
+    def list(self, status: PurchaseOrderStatus | None = None) -> list[PurchaseOrder]: ...
+    def update_draft(self, order: PurchaseOrder) -> PurchaseOrder: ...
+    def transition_status(self, order_id: str, status: PurchaseOrderStatus, ordered_at: str | None) -> PurchaseOrder: ...
+    def add_line(self, line: PurchaseOrderLine) -> PurchaseOrderLine: ...
+    def update_line(self, line: PurchaseOrderLine) -> PurchaseOrderLine: ...
+    def remove_line(self, order_id: str, line_id: str) -> None: ...
+    def list_lines(self, order_id: str) -> list[PurchaseOrderLine]: ...
+
+
+class SQLitePurchaseOrderRepository:
+    ORDER_COLUMNS=("purchase_order_id","supplier_id","status","reference","supplier_reference","ordered_at","expected_at","notes","currency","created_at","updated_at")
+    LINE_COLUMNS=("line_id","purchase_order_id","product_key","supplier_product_reference","ordered_quantity","unit_cost","created_at","updated_at")
+    def __init__(self,path:Path):
+        self.db=sqlite3.connect(path,check_same_thread=False); self.db.row_factory=sqlite3.Row
+        self.db.execute("PRAGMA foreign_keys=ON")
+        self.db.execute("""CREATE TABLE IF NOT EXISTS purchase_orders(
+          purchase_order_id TEXT PRIMARY KEY,supplier_id TEXT NOT NULL,status TEXT NOT NULL,reference TEXT NOT NULL UNIQUE,
+          supplier_reference TEXT NOT NULL DEFAULT '',ordered_at TEXT,expected_at TEXT,notes TEXT NOT NULL DEFAULT '',
+          currency TEXT NOT NULL DEFAULT 'EUR',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
+          FOREIGN KEY(supplier_id) REFERENCES suppliers(supplier_id))""")
+        self.db.execute("""CREATE TABLE IF NOT EXISTS purchase_order_lines(
+          line_id TEXT PRIMARY KEY,purchase_order_id TEXT NOT NULL,product_key TEXT NOT NULL,
+          supplier_product_reference TEXT NOT NULL DEFAULT '',ordered_quantity INTEGER NOT NULL CHECK(ordered_quantity>0),
+          unit_cost TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
+          FOREIGN KEY(purchase_order_id) REFERENCES purchase_orders(purchase_order_id) ON DELETE RESTRICT)""")
+        self.db.execute("CREATE INDEX IF NOT EXISTS ix_purchase_orders_status ON purchase_orders(status)")
+        self.db.execute("CREATE INDEX IF NOT EXISTS ix_purchase_orders_supplier ON purchase_orders(supplier_id)")
+        self.db.execute("CREATE INDEX IF NOT EXISTS ix_purchase_order_lines_order ON purchase_order_lines(purchase_order_id)"); self.db.commit()
+    def _order(self,r): return PurchaseOrder(**{k:r[k] for k in self.ORDER_COLUMNS}) if r else None
+    def _line(self,r): return PurchaseOrderLine(**{k:r[k] for k in self.LINE_COLUMNS}) if r else None
+    def create(self,o):
+        with self.db:self.db.execute(f"INSERT INTO purchase_orders({','.join(self.ORDER_COLUMNS)}) VALUES({','.join('?'*len(self.ORDER_COLUMNS))})",tuple(getattr(o,k).value if k=='status' else getattr(o,k) for k in self.ORDER_COLUMNS))
+        return o
+    def get(self,i): return self._order(self.db.execute("SELECT * FROM purchase_orders WHERE purchase_order_id=?",(i,)).fetchone())
+    def list(self,status=None):
+        where=" WHERE status=?" if status else ""; params=(PurchaseOrderStatus(status).value,) if status else ()
+        return [self._order(r) for r in self.db.execute("SELECT * FROM purchase_orders"+where+" ORDER BY created_at DESC",params)]
+    def update_draft(self,o):
+        with self.db:r=self.db.execute("""UPDATE purchase_orders SET supplier_id=?,reference=?,supplier_reference=?,expected_at=?,notes=?,currency=?,updated_at=? WHERE purchase_order_id=? AND status='DRAFT'""",(o.supplier_id,o.reference,o.supplier_reference,o.expected_at,o.notes,o.currency,o.updated_at,o.purchase_order_id))
+        if not r.rowcount: raise ValueError("only DRAFT purchase orders can be modified")
+        return o
+    def transition_status(self,i,status,ordered_at):
+        now=utc_now()
+        with self.db:r=self.db.execute("UPDATE purchase_orders SET status=?,ordered_at=COALESCE(?,ordered_at),updated_at=? WHERE purchase_order_id=?",(status.value,ordered_at,now,i))
+        if not r.rowcount: raise KeyError("purchase order not found")
+        return self.get(i)
+    def add_line(self,line):
+        with self.db:self.db.execute(f"INSERT INTO purchase_order_lines({','.join(self.LINE_COLUMNS)}) VALUES({','.join('?'*len(self.LINE_COLUMNS))})",tuple(getattr(line,k) for k in self.LINE_COLUMNS))
+        return line
+    def update_line(self,line):
+        with self.db:r=self.db.execute("UPDATE purchase_order_lines SET supplier_product_reference=?,ordered_quantity=?,unit_cost=?,updated_at=? WHERE line_id=? AND purchase_order_id=?",(line.supplier_product_reference,line.ordered_quantity,line.unit_cost,line.updated_at,line.line_id,line.purchase_order_id))
+        if not r.rowcount: raise KeyError("purchase order line not found")
+        return line
+    def remove_line(self,oid,lid):
+        with self.db:r=self.db.execute("DELETE FROM purchase_order_lines WHERE purchase_order_id=? AND line_id=?",(oid,lid))
+        if not r.rowcount: raise KeyError("purchase order line not found")
+    def list_lines(self,oid): return [self._line(r) for r in self.db.execute("SELECT * FROM purchase_order_lines WHERE purchase_order_id=? ORDER BY created_at,line_id",(oid,))]
+
+
+class PurchaseOrderService:
+    def __init__(self,repository,suppliers,catalogue,audit): self.repository=repository;self.suppliers=suppliers;self.catalogue=catalogue;self.audit=audit
+    def _audit(self,event,oid,actor,**metadata): self.audit.add_activity(ActivityLog(event,oid,"PURCHASING",{"actor":actor,**metadata}))
+    def _supplier(self,sid):
+        supplier=self.suppliers.get(sid)
+        if not supplier: raise ValueError("supplier not found")
+        if supplier.status is not SupplierStatus.ACTIVE: raise ValueError("supplier must be ACTIVE")
+    def _cost(self,value):
+        if value in (None,""): return None
+        try: amount=Decimal(str(value))
+        except (InvalidOperation,ValueError): raise ValueError("unit_cost is invalid")
+        if not amount.is_finite() or amount < 0: raise ValueError("unit_cost must be positive or zero")
+        return str(amount.quantize(Decimal("0.01"),rounding=ROUND_HALF_UP))
+    def create(self,data,actor="authenticated"):
+        self._supplier(data.get("supplier_id","")); now=utc_now(); oid=f"po:{uuid.uuid4()}"
+        order=PurchaseOrder(oid,data["supplier_id"],data.get("reference","").strip() or f"PO-{now[:10].replace('-','')}-{oid[-6:].upper()}",supplier_reference=str(data.get("supplier_reference") or "").strip(),expected_at=data.get("expected_at") or None,notes=str(data.get("notes") or "").strip())
+        self.repository.create(order); self._audit("PURCHASE_ORDER_CREATED",oid,actor); return order
+    def get(self,i): return self.repository.get(i)
+    def list(self,status=None): return self.repository.list(PurchaseOrderStatus(status) if status else None)
+    def update(self,i,data,actor="authenticated"):
+        old=self.repository.get(i)
+        if not old: raise KeyError("purchase order not found")
+        if "purchase_order_id" in data and data["purchase_order_id"]!=i: raise ValueError("purchase_order_id is immutable")
+        if "status" in data: raise ValueError("use the status transition endpoint")
+        sid=data.get("supplier_id",old.supplier_id); self._supplier(sid)
+        changed=replace(old,supplier_id=sid,reference=str(data.get("reference",old.reference)).strip(),supplier_reference=str(data.get("supplier_reference",old.supplier_reference)).strip(),expected_at=data.get("expected_at",old.expected_at) or None,notes=str(data.get("notes",old.notes)).strip(),updated_at=utc_now())
+        self.repository.update_draft(changed); self._audit("PURCHASE_ORDER_UPDATED",i,actor); return changed
+    def _editable(self,i):
+        o=self.repository.get(i)
+        if not o: raise KeyError("purchase order not found")
+        if o.status is not PurchaseOrderStatus.DRAFT: raise ValueError("only DRAFT purchase orders can be modified")
+        return o
+    def _product(self,key):
+        p=self.catalogue.get(key)
+        if not p: raise ValueError("product not found")
+        if p.status is not ProductStatus.ACTIVE: raise ValueError("product must be ACTIVE")
+    def add_line(self,i,data,actor="authenticated"):
+        self._editable(i); key=str(data.get("product_key") or ""); self._product(key)
+        try:q=int(data.get("ordered_quantity"))
+        except (TypeError,ValueError): raise ValueError("ordered_quantity must be a positive integer")
+        if isinstance(data.get("ordered_quantity"), bool) or str(data.get("ordered_quantity")).strip()!=str(q): raise ValueError("ordered_quantity must be a positive integer")
+        line=PurchaseOrderLine(f"pol:{uuid.uuid4()}",i,key,q,str(data.get("supplier_product_reference") or "").strip(),self._cost(data.get("unit_cost")))
+        self.repository.add_line(line); self._audit("PURCHASE_ORDER_LINE_ADDED",i,actor,line_id=line.line_id); return line
+    def update_line(self,i,lid,data,actor="authenticated"):
+        self._editable(i); old=next((x for x in self.repository.list_lines(i) if x.line_id==lid),None)
+        if not old: raise KeyError("purchase order line not found")
+        raw_quantity=data.get("ordered_quantity",old.ordered_quantity)
+        try:q=int(raw_quantity)
+        except (TypeError,ValueError): raise ValueError("ordered_quantity must be a positive integer")
+        if isinstance(raw_quantity,bool) or str(raw_quantity).strip()!=str(q): raise ValueError("ordered_quantity must be a positive integer")
+        line=replace(old,ordered_quantity=q,supplier_product_reference=str(data.get("supplier_product_reference",old.supplier_product_reference)).strip(),unit_cost=self._cost(data.get("unit_cost",old.unit_cost)),updated_at=utc_now())
+        self.repository.update_line(line); self._audit("PURCHASE_ORDER_LINE_UPDATED",i,actor,line_id=lid); return line
+    def remove_line(self,i,lid,actor="authenticated"):
+        self._editable(i); self.repository.remove_line(i,lid); self._audit("PURCHASE_ORDER_LINE_REMOVED",i,actor,line_id=lid)
+    def lines(self,i): return self.repository.list_lines(i)
+    def transition(self,i,target,actor="authenticated"):
+        order=self.repository.get(i)
+        if not order: raise KeyError("purchase order not found")
+        target=PurchaseOrderStatus(target)
+        if target==order.status: return order
+        allowed={PurchaseOrderStatus.DRAFT:{PurchaseOrderStatus.ORDERED,PurchaseOrderStatus.CANCELLED},PurchaseOrderStatus.ORDERED:{PurchaseOrderStatus.CANCELLED}}
+        if target not in allowed.get(order.status,set()): raise ValueError(f"transition {order.status} -> {target} is forbidden")
+        if target is PurchaseOrderStatus.ORDERED:
+            self._supplier(order.supplier_id); lines=self.lines(i)
+            if not lines: raise ValueError("an empty purchase order cannot be ordered")
+            for line in lines:self._product(line.product_key)
+        changed=self.repository.transition_status(i,target,utc_now() if target is PurchaseOrderStatus.ORDERED else None)
+        self._audit("PURCHASE_ORDER_ORDERED" if target is PurchaseOrderStatus.ORDERED else "PURCHASE_ORDER_CANCELLED",i,actor)
+        return changed
+    def total(self,i):
+        lines=self.lines(i)
+        if any(x.unit_cost is None for x in lines): return None
+        return str(sum((Decimal(x.unit_cost)*x.ordered_quantity for x in lines),Decimal()).quantize(Decimal("0.01")))
+    def activities(self,i): return [a for a in self.audit.activities() if a.drcloud_product_key==i]
