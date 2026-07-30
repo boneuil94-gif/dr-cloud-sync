@@ -9,8 +9,11 @@ from pathlib import Path
 from typing import Protocol
 import uuid
 
-from .domain import (ActivityLog, ProductStatus, PurchaseOrder, PurchaseOrderLine,
-                     PurchaseOrderStatus, Supplier, SupplierStatus, utc_now)
+from .domain import (ActivityLog, GoodsReceipt, GoodsReceiptLine, GoodsReceiptStatus,
+                     MovementStatus, MovementType, ProductStatus, PurchaseOrder,
+                     PurchaseOrderLine, PurchaseOrderStatus, StockMovement, Supplier,
+                     SupplierStatus, utc_now)
+from .services import StockService
 
 
 class SupplierRepository(Protocol):
@@ -275,3 +278,103 @@ class PurchaseOrderService:
         if any(x.unit_cost is None for x in lines): return None
         return str(sum((Decimal(x.unit_cost)*x.ordered_quantity for x in lines),Decimal()).quantize(Decimal("0.01")))
     def activities(self,i): return [a for a in self.audit.activities() if a.drcloud_product_key==i]
+
+
+class SQLiteGoodsReceiptRepository:
+    """Additive SQLite persistence for immutable, applied supplier receipts."""
+    RECEIPT_COLUMNS=("receipt_id","purchase_order_id","status","received_at","received_by","notes","created_at","applied_at","idempotency_key")
+    LINE_COLUMNS=("receipt_line_id","receipt_id","purchase_order_line_id","product_key","received_quantity")
+    def __init__(self,path:Path,db=None):
+        self.db=db or sqlite3.connect(path,check_same_thread=False); self.db.row_factory=sqlite3.Row
+        self.db.execute("PRAGMA foreign_keys=ON")
+        self.db.execute("""CREATE TABLE IF NOT EXISTS goods_receipts(
+          receipt_id TEXT PRIMARY KEY,purchase_order_id TEXT NOT NULL,status TEXT NOT NULL,
+          received_at TEXT NOT NULL,received_by TEXT NOT NULL,notes TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL,applied_at TEXT,idempotency_key TEXT NOT NULL UNIQUE,
+          FOREIGN KEY(purchase_order_id) REFERENCES purchase_orders(purchase_order_id) ON DELETE RESTRICT)""")
+        self.db.execute("""CREATE TABLE IF NOT EXISTS goods_receipt_lines(
+          receipt_line_id TEXT PRIMARY KEY,receipt_id TEXT NOT NULL,purchase_order_line_id TEXT NOT NULL,
+          product_key TEXT NOT NULL,received_quantity INTEGER NOT NULL CHECK(received_quantity>0),
+          FOREIGN KEY(receipt_id) REFERENCES goods_receipts(receipt_id) ON DELETE RESTRICT,
+          FOREIGN KEY(purchase_order_line_id) REFERENCES purchase_order_lines(line_id) ON DELETE RESTRICT)""")
+        self.db.execute("CREATE INDEX IF NOT EXISTS ix_goods_receipts_order ON goods_receipts(purchase_order_id)")
+        self.db.execute("CREATE INDEX IF NOT EXISTS ix_goods_receipt_lines_receipt ON goods_receipt_lines(receipt_id)"); self.db.commit()
+    def _receipt(self,r): return GoodsReceipt(**{k:r[k] for k in self.RECEIPT_COLUMNS}) if r else None
+    def _line(self,r): return GoodsReceiptLine(**{k:r[k] for k in self.LINE_COLUMNS}) if r else None
+    def get(self,i): return self._receipt(self.db.execute("SELECT * FROM goods_receipts WHERE receipt_id=?",(i,)).fetchone())
+    def by_key(self,key): return self._receipt(self.db.execute("SELECT * FROM goods_receipts WHERE idempotency_key=?",(key,)).fetchone())
+    def list(self,order_id=None):
+        sql="SELECT * FROM goods_receipts"; params=()
+        if order_id: sql+=" WHERE purchase_order_id=?"; params=(order_id,)
+        return [self._receipt(r) for r in self.db.execute(sql+" ORDER BY created_at DESC",params)]
+    def lines(self,i): return [self._line(r) for r in self.db.execute("SELECT * FROM goods_receipt_lines WHERE receipt_id=? ORDER BY receipt_line_id",(i,))]
+    def received(self,order_id):
+        return {r[0]:r[1] for r in self.db.execute("""SELECT l.purchase_order_line_id,COALESCE(SUM(l.received_quantity),0)
+          FROM goods_receipt_lines l JOIN goods_receipts r ON r.receipt_id=l.receipt_id
+          WHERE r.purchase_order_id=? AND r.status='APPLIED' GROUP BY l.purchase_order_line_id""",(order_id,))}
+
+
+class GoodsReceiptService:
+    """Explicit receipt workflow; archived suppliers/products remain receivable commitments."""
+    def __init__(self,repository,orders,stock_repository,audit):
+        self.repository=repository; self.orders=orders; self.stock=StockService(stock_repository); self.audit=audit
+    def receivable(self,oid):
+        order=self.orders.get(oid)
+        if not order: raise KeyError("purchase order not found")
+        received=self.repository.received(oid)
+        return [{**line.__dict__,"received_quantity":received.get(line.line_id,0),"remaining_quantity":line.ordered_quantity-received.get(line.line_id,0)} for line in self.orders.lines(oid)]
+    def create(self,oid,data,actor="authenticated"):
+        order=self.orders.get(oid)
+        if not order: raise KeyError("purchase order not found")
+        if order.status not in (PurchaseOrderStatus.ORDERED,PurchaseOrderStatus.PARTIALLY_RECEIVED): raise ValueError("purchase order cannot be received")
+        key=str(data.get("idempotency_key") or "").strip()
+        if not key: raise ValueError("idempotency_key is required")
+        existing=self.repository.by_key(key)
+        if existing: return existing
+        available={x["line_id"]:x for x in self.receivable(oid)}; requested=data.get("lines") or []
+        if not requested: raise ValueError("at least one receipt line is required")
+        rid=f"gr:{uuid.uuid4()}"; now=utc_now(); lines=[]; seen=set()
+        for item in requested:
+            lid=str(item.get("purchase_order_line_id") or "")
+            if lid in seen or lid not in available: raise ValueError("purchase order line is invalid or duplicated")
+            seen.add(lid)
+            raw=item.get("received_quantity")
+            try: quantity=int(raw)
+            except (TypeError,ValueError): raise ValueError("received_quantity must be a positive integer")
+            if isinstance(raw,bool) or str(raw).strip()!=str(quantity) or quantity<=0: raise ValueError("received_quantity must be a positive integer")
+            if quantity>available[lid]["remaining_quantity"]: raise ValueError("received_quantity exceeds remaining quantity")
+            lines.append(GoodsReceiptLine(f"grl:{uuid.uuid4()}",rid,lid,available[lid]["product_key"],quantity))
+        receipt=GoodsReceipt(rid,oid,received_by=actor,notes=str(data.get("notes") or "").strip(),idempotency_key=key)
+        with self.repository.db:
+            self.repository.db.execute(f"INSERT INTO goods_receipts({','.join(self.repository.RECEIPT_COLUMNS)}) VALUES({','.join('?'*len(self.repository.RECEIPT_COLUMNS))})",tuple(getattr(receipt,k).value if k=='status' else getattr(receipt,k) for k in self.repository.RECEIPT_COLUMNS))
+            for line in lines:self.repository.db.execute(f"INSERT INTO goods_receipt_lines({','.join(self.repository.LINE_COLUMNS)}) VALUES({','.join('?'*len(self.repository.LINE_COLUMNS))})",tuple(getattr(line,k) for k in self.repository.LINE_COLUMNS))
+        self.audit.add_activity(ActivityLog("GOODS_RECEIPT_CREATED",rid,"PURCHASING",{"actor":actor,"purchase_order_id":oid}))
+        return receipt
+    def apply(self,rid,actor="authenticated"):
+        receipt=self.repository.get(rid)
+        if not receipt: raise KeyError("goods receipt not found")
+        if receipt.status is GoodsReceiptStatus.APPLIED: return receipt
+        order=self.orders.get(receipt.purchase_order_id)
+        if not order or order.status not in (PurchaseOrderStatus.ORDERED,PurchaseOrderStatus.PARTIALLY_RECEIVED): raise ValueError("purchase order cannot be received")
+        # Revalidate under SQLite's write lock. Stable movement keys make timeout/concurrent retries safe.
+        db=self.repository.db; db.execute("BEGIN IMMEDIATE")
+        try:
+            current=self.repository.get(rid)
+            if current.status is GoodsReceiptStatus.APPLIED: db.rollback(); return current
+            available={x["line_id"]:x for x in self.receivable(order.purchase_order_id)}
+            for line in self.repository.lines(rid):
+                if line.received_quantity>available[line.purchase_order_line_id]["remaining_quantity"]: raise ValueError("received_quantity exceeds remaining quantity")
+                movement_time=utc_now()
+                self.stock.apply(StockMovement(line.product_key,line.received_quantity,MovementType.SUPPLIER_RECEIPT,"GOODS_RECEIPT",rid,f"{rid}:{line.receipt_line_id}",MovementStatus.APPLIED,validated_at=movement_time,applied_at=movement_time,actor=actor))
+            now=utc_now(); db.execute("UPDATE goods_receipts SET status='APPLIED',applied_at=? WHERE receipt_id=? AND status='DRAFT'",(now,rid))
+            remaining=sum(x["remaining_quantity"] for x in self.receivable(order.purchase_order_id))
+            status=PurchaseOrderStatus.RECEIVED if remaining==0 else PurchaseOrderStatus.PARTIALLY_RECEIVED
+            db.execute("UPDATE purchase_orders SET status=?,updated_at=? WHERE purchase_order_id=?",(status.value,now,order.purchase_order_id)); db.commit()
+        except Exception: db.rollback(); raise
+        self.audit.add_activity(ActivityLog("GOODS_RECEIPT_APPLIED",rid,"PURCHASING",{"actor":actor,"purchase_order_id":order.purchase_order_id}))
+        self.audit.add_activity(ActivityLog("PURCHASE_ORDER_RECEIVED" if status is PurchaseOrderStatus.RECEIVED else "PURCHASE_ORDER_PARTIALLY_RECEIVED",order.purchase_order_id,"PURCHASING",{"actor":actor,"receipt_id":rid}))
+        return self.repository.get(rid)
+    def detail(self,rid):
+        receipt=self.repository.get(rid)
+        if not receipt: raise KeyError("goods receipt not found")
+        return receipt,self.repository.lines(rid)

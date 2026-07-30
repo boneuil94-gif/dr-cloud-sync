@@ -78,6 +78,43 @@ class PurchaseOrderStatus(StrEnum):
     RECEIVED = "RECEIVED"
     CANCELLED = "CANCELLED"
 
+class GoodsReceiptStatus(StrEnum):
+    DRAFT = "DRAFT"
+    APPLIED = "APPLIED"
+
+@dataclass(frozen=True)
+class GoodsReceiptLine:
+    receipt_line_id: str
+    receipt_id: str
+    purchase_order_line_id: str
+    product_key: str
+    received_quantity: int
+
+    def __post_init__(self) -> None:
+        if not self.receipt_line_id.startswith("grl:") or not self.receipt_id.startswith("gr:"):
+            raise ValueError("invalid goods receipt line identity")
+        if not self.purchase_order_line_id.startswith("pol:") or not self.product_key.strip():
+            raise ValueError("invalid purchase order line or product")
+        if isinstance(self.received_quantity, bool) or not isinstance(self.received_quantity, int) or self.received_quantity <= 0:
+            raise ValueError("received_quantity must be a positive integer")
+
+@dataclass(frozen=True)
+class GoodsReceipt:
+    receipt_id: str
+    purchase_order_id: str
+    status: GoodsReceiptStatus = GoodsReceiptStatus.DRAFT
+    received_at: str = field(default_factory=utc_now)
+    received_by: str = "authenticated"
+    notes: str = ""
+    created_at: str = field(default_factory=utc_now)
+    applied_at: str | None = None
+    idempotency_key: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.receipt_id.startswith("gr:") or not self.purchase_order_id.startswith("po:"):
+            raise ValueError("invalid goods receipt identity")
+        object.__setattr__(self, "status", GoodsReceiptStatus(self.status))
+
 
 @dataclass(frozen=True)
 class PurchaseOrderLine:
