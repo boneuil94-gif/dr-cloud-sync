@@ -180,8 +180,13 @@ class CatalogueRehydrationService:
 
     def _invariants(self):
         products = self.repository.all()
-        stock = self.repository.db.execute("SELECT COUNT(*) FROM stock_movements").fetchone()[0] if self._table("stock_movements") else 0
-        return (len(products), tuple(sorted(p.drcloud_product_key for p in products)), stock)
+        protected_tables = ("stock_movements", "sessions", "counts", "history",
+                            "inventory_stock_proposals", "inventory_stock_proposal_lines",
+                            "purchase_orders", "purchase_order_lines", "goods_receipts",
+                            "goods_receipt_lines")
+        preserved = tuple((name, self.repository.db.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0])
+                          for name in protected_tables if self._table(name))
+        return (len(products), tuple(sorted(p.drcloud_product_key for p in products)), preserved)
 
     def _table(self, name):
         return bool(self.repository.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone())

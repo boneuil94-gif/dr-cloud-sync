@@ -22,6 +22,7 @@ from .media import (MAX_FILE_SIZE, LocalMediaStorage, MediaError, ProductMediaSe
                     SQLiteProductMediaRepository)
 from .domain import MediaVariantKind
 from .hydration import ProductHydrationService
+from .admin_rehydration import AdminCatalogueRehydration, RehydrationConflict
 
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
@@ -61,6 +62,12 @@ class InventoryApp:
         self.media=ProductMediaService(SQLiteProductMediaRepository(service.repo.path),LocalMediaStorage(media_root),self.os_repository,self.os_repository)
         self.hydration=ProductHydrationService(self.os_repository)
         self.admin_status.media_diagnostics=self.media.diagnostics
+        self.catalogue_rehydration = AdminCatalogueRehydration(
+            service.repo.path,
+            Path(os.environ.get("DRCLOUD_REHYDRATION_SNAPSHOT", (settings.data_dir if settings else service.repo.path.parent) / "catalogue-prestashop-reconstruit.json")),
+            Path(os.environ.get("DRCLOUD_BACKUP_DIR", (settings.data_dir if settings else service.repo.path.parent) / "backups")),
+            environment=settings.environment if settings else "development",
+            safe_mode=settings.safe_mode if settings else True)
 
     def __call__(self, env, start):
         request_id=env.get("HTTP_X_REQUEST_ID") or str(uuid.uuid4()); path=env.get("PATH_INFO", "/"); method=env.get("REQUEST_METHOD", "GET")
@@ -161,6 +168,18 @@ class InventoryApp:
             if path == "/api/state": return self._json(start,{"session":self.service.session(),"progress":self.service.progress(),"proposal":self.service.proposal()})
             if path == "/api/roadmap": return self._json(start,self.roadmap_service.load())
             if path == "/api/admin/status": return self._json(start,self.admin_status.collect(),headers=[("X-Request-ID",request_id)])
+            if path == "/api/admin/catalogue-rehydration/status" and method == "GET":
+                return self._json(start,self.catalogue_rehydration.status())
+            if path == "/api/admin/catalogue-rehydration/preview" and method == "POST":
+                return self._json(start,self.catalogue_rehydration.request_preview(session.get("u","authenticated")),"202 Accepted")
+            if path == "/api/admin/catalogue-rehydration/report" and method == "GET":
+                q=parse_qs(env.get("QUERY_STRING","")); page=max(1,int(q.get("page",[1])[0])); per_page=min(100,max(1,int(q.get("per_page",[25])[0])))
+                classification=q.get("classification",["ALL"])[0]
+                if classification not in {"ALL","SAFE","AMBIGUOUS","NO_DATA"}: raise ValueError("Filtre invalide")
+                return self._json(start,self.catalogue_rehydration.report(q.get("report_id",[None])[0],page=page,per_page=per_page,classification=classification,search=q.get("search",[""])[0]))
+            if path == "/api/admin/catalogue-rehydration/apply" and method == "POST":
+                report_id=str(self._body(env).get("report_id") or "")
+                return self._json(start,self.catalogue_rehydration.request_apply(report_id,session.get("u","authenticated")),"202 Accepted")
             if path == "/api/security/change-password" and method == "POST":
                 return self._change_password(env,start,session,request_id)
             if path == "/api/stock":
@@ -221,6 +240,7 @@ class InventoryApp:
             return self._error(start,404,request_id)
         except PermissionError: return self._error(start,403,request_id)
         except KeyError as exc: return self._json(start,{"error":str(exc).strip(chr(39))},"404 Not Found")
+        except RehydrationConflict as exc: return self._json(start,{"error":str(exc)},"409 Conflict")
         except (InventoryError,BarcodeError,MediaError,ValueError,json.JSONDecodeError) as exc: return self._json(start,{"error":str(exc)},"400 Bad Request")
         except Exception:
             LOG.exception("request_failed request_id=%s path=%s",request_id,path); return self._error(start,500,request_id)

@@ -25,7 +25,7 @@ def configured(tmp_path):
     return app,settings
 
 def request(app,path,method='GET',body=None,cookie=None,headers=None):
-    env={};setup_testing_defaults(env);env['PATH_INFO']=path;env['REQUEST_METHOD']=method
+    env={};setup_testing_defaults(env);path,_,query=path.partition('?');env['PATH_INFO']=path;env['QUERY_STRING']=query;env['REQUEST_METHOD']=method
     raw=(body.encode() if isinstance(body,str) else json.dumps(body).encode() if body is not None else b'');env['wsgi.input']=io.BytesIO(raw);env['CONTENT_LENGTH']=str(len(raw))
     if cookie:env['HTTP_COOKIE']=cookie
     for k,v in (headers or {}).items():env['HTTP_'+k.upper().replace('-','_')]=v
