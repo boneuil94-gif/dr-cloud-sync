@@ -70,7 +70,7 @@ def test_inventory_to_stock_api_and_read_only_ui(tmp_path):
     html=request(app,"/stock")[1].decode()
     assert "Vue consolidée" in html and 'aria-current="page"' in html
     assert html.count("Stock</span><small>À venir") == 0
-    assert "Achats</span><small>À venir" in html
+    assert "href=\"/achats\"" in html
 
 
 def test_stock_module_requires_authentication(tmp_path):

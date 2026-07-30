@@ -5,7 +5,7 @@ import hashlib, hmac, json, logging, os, secrets, time, uuid
 from pathlib import Path
 from urllib.parse import parse_qs
 from .connectors import DisabledConnector
-from .domain import Product, ProductStatus
+from .domain import Product, ProductStatus, SupplierStatus
 from .inventory import InventoryError, InventoryRepository, InventoryService
 from .os_config import OSSettings
 from .repositories import SQLiteOSRepository
@@ -14,6 +14,7 @@ from .services import AssignBarcodeService, BarcodeError, StockProjectionService
 from .admin_status import AdminStatusService, application_metadata
 from .modules import available_pages, render_navigation
 from .external_stock import ExternalStockQueryService
+from .purchasing import SQLiteSupplierRepository, SupplierService
 
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
@@ -33,6 +34,7 @@ class InventoryApp:
         self.admin_status=AdminStatusService(service.repo.path)
         self.stock=StockProjectionService(service.repo,self.os_repository)
         self.external_stock=ExternalStockQueryService(service.repo.path,self.os_repository.all(),service.repo)
+        self.suppliers=SupplierService(SQLiteSupplierRepository(service.repo.path),self.os_repository)
 
     def __call__(self, env, start):
         request_id=env.get("HTTP_X_REQUEST_ID") or str(uuid.uuid4()); path=env.get("PATH_INFO", "/"); method=env.get("REQUEST_METHOD", "GET")
@@ -41,7 +43,7 @@ class InventoryApp:
                 try: self.service.repo.db.execute("SELECT 1"); database="ok"; status="ok"
                 except Exception: database="error"; status="degraded"
                 return self._json(start,{"status":status,"application":"drcloud-os",**application_metadata(),"database":database}, headers=[("X-Request-ID",request_id)])
-            if path in {"/manifest.webmanifest","/icon.svg","/drcloud-logo.png","/inventory.css","/inventory.js","/roadmap.js","/dashboard.js","/administration.js","/stock.js"}:
+            if path in {"/manifest.webmanifest","/icon.svg","/drcloud-logo.png","/inventory.css","/inventory.js","/roadmap.js","/dashboard.js","/administration.js","/stock.js","/purchasing.js"}:
                 file={"/manifest.webmanifest":"manifest.webmanifest"}.get(path,path[1:]); kind="application/manifest+json" if path.endswith("webmanifest") else "image/svg+xml" if path.endswith("svg") else "text/css; charset=utf-8" if path.endswith("css") else "text/javascript; charset=utf-8"
                 if path.endswith(".png"): kind="image/png"
                 return self._send(start,(ROOT/file).read_bytes(),kind,headers=[("X-Request-ID",request_id)])
@@ -57,6 +59,28 @@ class InventoryApp:
             if path == "/roadmap": return self._html(start,"roadmap.html",session,request_id)
             if path == "/administration": return self._html(start,"administration.html",session,request_id)
             if path == "/stock": return self._html(start,"stock.html",session,request_id)
+            if path == "/achats": return self._html(start,"purchasing.html",session,request_id)
+            if path.startswith("/achats/fournisseurs/"):
+                return self._html(start,"purchasing.html",session,request_id)
+            if path == "/api/suppliers" and method == "GET":
+                q=parse_qs(env.get("QUERY_STRING","")); status=q.get("status",[None])[0]
+                rows=self.suppliers.list(q.get("q",[""])[0],SupplierStatus(status) if status else None)
+                return self._json(start,{"suppliers":[asdict(row) for row in rows]})
+            if path == "/api/suppliers" and method == "POST":
+                row,duplicates=self.suppliers.create(self._body(env),session.get("u","authenticated"))
+                return self._json(start,{"supplier":asdict(row),"possible_duplicates":[asdict(x) for x in duplicates]},"201 Created")
+            if path.startswith("/api/suppliers/"):
+                tail=path.removeprefix("/api/suppliers/"); is_status=tail.endswith("/status")
+                supplier_id=tail.removesuffix("/status")
+                if is_status and method == "POST":
+                    return self._json(start,asdict(self.suppliers.transition(supplier_id,self._body(env)["status"],session.get("u","authenticated"))))
+                if method == "GET":
+                    row=self.suppliers.get(supplier_id)
+                    if not row: return self._json(start,{"error":"Fournisseur introuvable"},"404 Not Found")
+                    return self._json(start,{"supplier":asdict(row),"activities":[asdict(a) for a in self.suppliers.activities(supplier_id)]})
+                if method == "PATCH":
+                    row,duplicates=self.suppliers.update(supplier_id,self._body(env),session.get("u","authenticated"))
+                    return self._json(start,{"supplier":asdict(row),"possible_duplicates":[asdict(x) for x in duplicates]})
             if path == "/api/dashboard":
                 road=self.roadmap_service.load(); return self._json(start,{"progress_percent":road["global_progress_percent"],"next":next((m["next"] for m in road["modules"] if m.get("next")),None),"catalogue":len(self.service.items),"inventory":{"session":self.service.session(),"progress":self.service.progress()},"systems":self.admin_status.collect()},headers=[("X-Request-ID",request_id)])
             if path == "/api/state": return self._json(start,{"session":self.service.session(),"progress":self.service.progress(),"proposal":self.service.proposal()})
@@ -105,7 +129,8 @@ class InventoryApp:
             if path == "/api/export.csv": return self._send(start,self.service.csv().encode(),"text/csv; charset=utf-8",headers=[("Content-Disposition","attachment; filename=inventaire-drcloud.csv")])
             return self._error(start,404,request_id)
         except PermissionError: return self._error(start,403,request_id)
-        except (InventoryError,BarcodeError,KeyError,ValueError,json.JSONDecodeError) as exc: return self._json(start,{"error":str(exc)},"400 Bad Request")
+        except KeyError as exc: return self._json(start,{"error":str(exc).strip(chr(39))},"404 Not Found")
+        except (InventoryError,BarcodeError,ValueError,json.JSONDecodeError) as exc: return self._json(start,{"error":str(exc)},"400 Bad Request")
         except Exception:
             LOG.exception("request_failed request_id=%s path=%s",request_id,path); return self._error(start,500,request_id)
 
