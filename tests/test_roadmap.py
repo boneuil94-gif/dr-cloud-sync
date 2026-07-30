@@ -89,8 +89,8 @@ def test_dashboard_loads_dynamic_roadmap_and_keeps_existing_routes(service):
     app = InventoryApp(service, roadmap_service=RoadmapService(ROADMAP))
     status, body = request(app, "/")
     assert status == "200 OK"
-    assert b'id="progressHero"' in body
-    assert b'id="moduleGrid"' in body
+    assert b'class="dashboard-kpis"' in body
+    assert b'id="systemStatusList"' in body
     assert b"29.7" not in body  # progress must only come from the API
 
     roadmap_status, roadmap_body = request(app, "/api/roadmap")

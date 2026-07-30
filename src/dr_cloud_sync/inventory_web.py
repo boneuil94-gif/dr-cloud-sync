@@ -33,7 +33,7 @@ class InventoryApp:
                 try: self.service.repo.db.execute("SELECT 1"); database="ok"; status="ok"
                 except Exception: database="error"; status="degraded"
                 return self._json(start,{"status":status,"application":"drcloud-os",**application_metadata(),"database":database}, headers=[("X-Request-ID",request_id)])
-            if path in {"/manifest.webmanifest","/icon.svg","/inventory.css","/inventory.js","/roadmap.js","/dashboard.js","/administration.js"}:
+            if path in {"/manifest.webmanifest","/icon.svg","/drcloud-logo.svg","/inventory.css","/inventory.js","/roadmap.js","/dashboard.js","/administration.js"}:
                 file={"/manifest.webmanifest":"manifest.webmanifest"}.get(path,path[1:]); kind="application/manifest+json" if path.endswith("webmanifest") else "image/svg+xml" if path.endswith("svg") else "text/css; charset=utf-8" if path.endswith("css") else "text/javascript; charset=utf-8"
                 return self._send(start,(ROOT/file).read_bytes(),kind,headers=[("X-Request-ID",request_id)])
             session=self._session(env)
@@ -49,7 +49,7 @@ class InventoryApp:
             if path == "/administration": return self._html(start,"administration.html",session,request_id)
             if path.startswith("/modules/"): return self._html(start,"coming-soon.html",session,request_id)
             if path == "/api/dashboard":
-                road=self.roadmap_service.load(); return self._json(start,{"progress_percent":road["global_progress_percent"],"next":next((m["next"] for m in road["modules"] if m.get("next")),None),"catalogue":len(self.service.items),"inventory":{"session":self.service.session(),"progress":self.service.progress()},"synchronizations":"non configurées"},headers=[("X-Request-ID",request_id)])
+                road=self.roadmap_service.load(); return self._json(start,{"progress_percent":road["global_progress_percent"],"next":next((m["next"] for m in road["modules"] if m.get("next")),None),"catalogue":len(self.service.items),"inventory":{"session":self.service.session(),"progress":self.service.progress()},"systems":self.admin_status.collect()},headers=[("X-Request-ID",request_id)])
             if path == "/api/state": return self._json(start,{"session":self.service.session(),"progress":self.service.progress()})
             if path == "/api/roadmap": return self._json(start,self.roadmap_service.load())
             if path == "/api/admin/status": return self._json(start,self.admin_status.collect(),headers=[("X-Request-ID",request_id)])
