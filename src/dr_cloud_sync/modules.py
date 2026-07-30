@@ -32,7 +32,7 @@ MODULES = (
     Module("inventory", "Inventaire", "Opérations", 20, "✓", "03-inventory", "/inventaire", "inventory.html", "inventory.js"),
     Module("stock", "Stock", "Opérations", 30, "≋", "04-stock", "/stock", "stock.html", "stock.js"),
     Module("purchasing", "Achats", "Opérations", 40, "↓", "05-purchasing", "/achats", "purchasing.html", "purchasing.js"),
-    Module("sales", "Ventes", "Opérations", 50, "↑", "06-sales"),
+    Module("sales", "Ventes", "Opérations", 50, "↑", "06-sales", "/ventes", "sales.html", "sales.js"),
     Module("finance", "Finance", "Pilotage", 10, "◫", "07-finance"),
     Module("customers", "Clients", "Pilotage", 20, "♙", "08-customers"),
     Module("marketing", "Marketing", "Pilotage", 30, "◎", "09-marketing"),

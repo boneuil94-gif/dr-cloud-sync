@@ -380,24 +380,24 @@
       "id": "06-sales",
       "name": "Ventes",
       "weight": 8,
-      "progress_percent": 5.0,
-      "weighted_progress": 0.4,
+      "progress_percent": 35.0,
+      "weighted_progress": 2.8,
       "status": "IN_PROGRESS",
       "milestones": [
         {
           "id": "06-sales-m01",
           "name": "Frontière domaine documentée",
-          "status": "IN_PROGRESS"
+          "status": "DONE"
         },
         {
           "id": "06-sales-m02",
           "name": "Modèles vente unifiés",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "06-sales-m03",
           "name": "Import ShopCaisse",
-          "status": "TODO"
+          "status": "IN_PROGRESS"
         },
         {
           "id": "06-sales-m04",
@@ -432,14 +432,14 @@
         {
           "id": "06-sales-m10",
           "name": "Tests bout en bout",
-          "status": "TODO"
+          "status": "DONE"
         }
       ],
-      "completed": [],
+      "completed": ["Frontière domaine documentée", "Modèles vente unifiés", "Tests du ledger et des analytics"],
       "in_progress": [
-        "Frontière domaine documentée"
+        "Imports ShopCaisse et PrestaShop en attente de contrats API ventes fiables"
       ],
-      "next": "Modèles vente unifiés",
+      "next": "Valider les contrats API orders/tickets puis brancher les imports JobRunner",
       "blocked": []
     },
     {

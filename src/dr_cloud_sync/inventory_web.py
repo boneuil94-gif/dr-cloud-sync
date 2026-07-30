@@ -1,6 +1,8 @@
 """WSGI application for the unified, authenticated DrCloud OS interface."""
 from __future__ import annotations
 from dataclasses import asdict
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 import hashlib, hmac, json, logging, os, secrets, time, uuid
 from pathlib import Path
 from urllib.parse import parse_qs, unquote
@@ -21,6 +23,7 @@ from .security import CredentialStore
 from .media import (MAX_FILE_SIZE, LocalMediaStorage, MediaError, ProductMediaService,
                     SQLiteProductMediaRepository)
 from .domain import MediaVariantKind
+from .sales import SQLiteSalesRepository, SalesService
 
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
@@ -48,6 +51,7 @@ class InventoryApp:
         media_root=(settings.data_dir if settings else service.repo.path.parent)/"media"/"products"
         self.media=ProductMediaService(SQLiteProductMediaRepository(service.repo.path),LocalMediaStorage(media_root),self.os_repository,self.os_repository)
         self.admin_status.media_diagnostics=self.media.diagnostics
+        self.sales=SalesService(SQLiteSalesRepository(service.repo.path))
 
     def __call__(self, env, start):
         request_id=env.get("HTTP_X_REQUEST_ID") or str(uuid.uuid4()); path=env.get("PATH_INFO", "/"); method=env.get("REQUEST_METHOD", "GET")
@@ -65,7 +69,7 @@ class InventoryApp:
                 "/inventory.css": ("inventory.css", "text/css; charset=utf-8"),
                 **{f"/{name}": (name, "text/javascript; charset=utf-8") for name in (
                     "app-shell.js", "inventory.js", "roadmap.js", "dashboard.js",
-                    "administration.js", "stock.js", "purchasing.js", "security.js",
+                    "administration.js", "stock.js", "purchasing.js", "security.js", "sales.js",
                 )},
             }
             if path in public_assets:
@@ -90,6 +94,7 @@ class InventoryApp:
             if path == "/securite": return self._html(start,"security.html",session,request_id)
             if path == "/stock": return self._html(start,"stock.html",session,request_id)
             if path == "/achats": return self._html(start,"purchasing.html",session,request_id)
+            if path == "/ventes": return self._html(start,"sales.html",session,request_id)
             if path.startswith("/achats/fournisseurs/"):
                 return self._html(start,"purchasing.html",session,request_id)
             if path.startswith("/achats/commandes"):
@@ -144,7 +149,10 @@ class InventoryApp:
                     row,duplicates=self.suppliers.update(supplier_id,self._body(env),session.get("u","authenticated"))
                     return self._json(start,{"supplier":asdict(row),"possible_duplicates":[asdict(x) for x in duplicates]})
             if path == "/api/dashboard":
-                road=self.roadmap_service.load(); return self._json(start,{"progress_percent":road["global_progress_percent"],"next":next((m["next"] for m in road["modules"] if m.get("next")),None),"catalogue":len(self.service.items),"inventory":{"session":self.service.session(),"progress":self.service.progress()},"systems":self.admin_status.collect()},headers=[("X-Request-ID",request_id)])
+                road=self.roadmap_service.load(); now=datetime.now(timezone.utc); start_period=(now-timedelta(days=30)).isoformat(); sales=self.sales.statistics(start_period,now.isoformat()); top=self.sales.top_products(start_period,now.isoformat(),limit=5)
+                return self._json(start,{"progress_percent":road["global_progress_percent"],"next":next((m["next"] for m in road["modules"] if m.get("next")),None),"catalogue":len(self.service.items),"inventory":{"session":self.service.session(),"progress":self.service.progress()},"sales":sales,"top_products":top,"systems":self.admin_status.collect()},headers=[("X-Request-ID",request_id)])
+            if path.startswith("/api/sales"):
+                return self._sales_api(path,parse_qs(env.get("QUERY_STRING","")),start)
             if path == "/api/state": return self._json(start,{"session":self.service.session(),"progress":self.service.progress(),"proposal":self.service.proposal()})
             if path == "/api/roadmap": return self._json(start,self.roadmap_service.load())
             if path == "/api/admin/status": return self._json(start,self.admin_status.collect(),headers=[("X-Request-ID",request_id)])
@@ -281,6 +289,31 @@ class InventoryApp:
             row["ean_status"]="CONFLICT" if p.drcloud_product_key in conflicts else "WITH_EAN" if p.ean else "WITHOUT_EAN"; count=counts.get(p.prestashop_key); row["physical_quantity"]=count["physical_quantity"] if count else None; rows.append(row)
             self._with_media(row,p.drcloud_product_key)
         return rows
+    def _sales_api(self,path,q,start):
+        start_at=q.get("start",[None])[0]; end_at=q.get("end",[None])[0]; channel=q.get("channel",[None])[0]
+        if path == "/api/sales/stats": return self._json(start,self.sales.statistics(start_at,end_at,channel))
+        if path == "/api/sales/top-products":
+            rows=self.sales.top_products(start_at,end_at,channel,q.get("sort",["units"])[0],min(int(q.get("limit",[10])[0]),100))
+            return self._json(start,{"products":[self._with_media(row,row["product_key"]) for row in rows]})
+        if path == "/api/sales/series": return self._json(start,{"series":self.sales.daily_series(start_at,end_at,channel)})
+        if path == "/api/sales/quality": return self._json(start,{"sources":self.sales.repository.source_states()})
+        if path.startswith("/api/sales/products/"):
+            key=unquote(path.removeprefix("/api/sales/products/")); rows=self.sales.repository.sales_for_product(key,start_at,end_at)
+            return self._json(start,{"sales":[self._sale_json(x) for x in rows]})
+        if path == "/api/sales":
+            page=max(1,int(q.get("page",[1])[0])); per=min(100,max(1,int(q.get("per_page",[25])[0])))
+            rows,total=self.sales.repository.list(start=start_at,end=end_at,channel=channel,search=q.get("q",[""])[0],page=page,per_page=per)
+            return self._json(start,{"sales":[self._sale_json(x) for x in rows],"pagination":{"page":page,"per_page":per,"total":total}})
+        sale_id=unquote(path.removeprefix("/api/sales/")); sale=self.sales.repository.get(sale_id)
+        if not sale: return self._json(start,{"error":"Vente introuvable"},"404 Not Found")
+        lines=[self._with_media(self._line_json(x),x.product_key) if x.product_key else self._line_json(x) for x in self.sales.repository.lines_for_sale(sale_id)]
+        return self._json(start,{"sale":self._sale_json(sale),"lines":lines})
+    @staticmethod
+    def _sale_json(sale):
+        row=asdict(sale); return {k:(v.value if hasattr(v,"value") else str(v) if isinstance(v,Decimal) else v) for k,v in row.items()}
+    @staticmethod
+    def _line_json(line):
+        row=asdict(line); return {k:(str(v) if isinstance(v,Decimal) else v) for k,v in row.items()}
     def _with_media(self,row,key,display=False):
         media=self.media.primary(key); row["media_url"]=self.media.url(media,MediaVariantKind.DISPLAY if display else MediaVariantKind.THUMBNAIL); row["media_width"]=(media.width if media else None); row["media_height"]=(media.height if media else None); return row
     def _media_json(self,media):
