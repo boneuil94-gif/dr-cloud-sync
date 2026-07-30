@@ -22,14 +22,14 @@ def test_administration_page_and_api_require_authentication(configured):
     assert status == "200 OK" and b'id="adminHero"' in html
     status, _, body = request(app, "/api/admin/status", cookie=cookie)
     assert status == "200 OK"
-    assert set(json.loads(body)) == {"status", "checked_at", "application", "database", "deployment", "backup", "system"}
+    assert set(json.loads(body)) == {"status", "checked_at", "application", "database", "deployment", "backup", "system", "media"}
 
 
 def test_healthy_application_database_metadata_and_no_secrets(configured, monkeypatch, tmp_path):
     app, settings = configured
     marker = tmp_path / ".last-successful-commit"; marker.write_text("a" * 40)
     backups = tmp_path / "backups"; backup = backups / "backup-1"; backup.mkdir(parents=True); (backup / "drcloud.db").write_bytes(b"db")
-    (backup / "metadata.json").write_text(json.dumps({"created_at": "20260729T110000Z"}))
+    (backup / "metadata.json").write_text(json.dumps({"created_at": "20260729T110000Z", "media":{"included":True,"files":[]}}))
     monkeypatch.setenv("DRCLOUD_BUILD_COMMIT", "a" * 40); monkeypatch.setenv("DRCLOUD_BUILD_DATE", "2026-07-29T10:00:00Z")
     app.admin_status = AdminStatusService(settings.database, backup_root=backups, deployment_marker=marker, now=lambda: NOW)
     _, cookie = login(app); payload = json.loads(request(app, "/api/admin/status", cookie=cookie)[2])

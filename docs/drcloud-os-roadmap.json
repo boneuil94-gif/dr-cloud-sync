@@ -7,8 +7,8 @@
     "TODO": 0,
     "BLOCKED": 0
   },
-  "global_progress_percent": 46.63,
-  "remaining_percent": 53.37,
+  "global_progress_percent": 47.43,
+  "remaining_percent": 52.57,
   "modules": [
     {
       "id": "01-core",
@@ -574,14 +574,14 @@
       "id": "09-marketing",
       "name": "Marketing + réseaux sociaux",
       "weight": 8,
-      "progress_percent": 0.0,
-      "weighted_progress": 0.0,
-      "status": "TODO",
+      "progress_percent": 10.0,
+      "weighted_progress": 0.8,
+      "status": "IN_PROGRESS",
       "milestones": [
         {
           "id": "09-marketing-m01",
-          "name": "Frontière domaine",
-          "status": "TODO"
+          "name": "Frontière ProductMedia → MarketingAsset",
+          "status": "DONE"
         },
         {
           "id": "09-marketing-m02",
@@ -629,9 +629,11 @@
           "status": "TODO"
         }
       ],
-      "completed": [],
+      "completed": [
+        "Frontière ProductMedia → MarketingAsset"
+      ],
       "in_progress": [],
-      "next": "Frontière domaine",
+      "next": "MarketingAsset et Opportunity sur faits de ventes réels",
       "blocked": []
     },
     {
