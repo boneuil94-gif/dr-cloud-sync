@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 script_dir="$(cd -P -- "$(dirname "$0")" && pwd)"
 repo="$(git -C "$script_dir" rev-parse --show-toplevel)"
+source "$script_dir/deployment-environment.sh"
 cd "$script_dir"
 env_file=drcloud.env
 [[ -f "$env_file" ]] || { echo "ERREUR: créer $PWD/$env_file depuis drcloud.env.example." >&2; exit 1; }
@@ -16,14 +17,6 @@ export DRCLOUD_BUILD_COMMIT="${DRCLOUD_BUILD_COMMIT:-$(git -C "$repo" rev-parse 
 export DRCLOUD_BUILD_DATE="${DRCLOUD_BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 # Only this small runtime directory is shared with the container.  The mount is
 # read-only there; update.sh publishes its marker atomically after validation.
-export DRCLOUD_DEPLOYMENT_STATE_DIR="${DRCLOUD_DEPLOYMENT_STATE_DIR:-$script_dir/.deployment-state}"
-[[ "$DRCLOUD_DEPLOYMENT_STATE_DIR" == /* ]] || DRCLOUD_DEPLOYMENT_STATE_DIR="$repo/$DRCLOUD_DEPLOYMENT_STATE_DIR"
-[[ -d "$DRCLOUD_DEPLOYMENT_STATE_DIR" ]] || {
-  echo "ERREUR: préparer $DRCLOUD_DEPLOYMENT_STATE_DIR avec prepare-deployment-state.sh." >&2
-  exit 1
-}
-DRCLOUD_DEPLOYMENT_STATE_DIR="$(cd -P -- "$DRCLOUD_DEPLOYMENT_STATE_DIR" && pwd)"
-export DRCLOUD_DEPLOYMENT_STATE_DIR
 docker compose config --quiet
 docker compose build --pull
 docker compose up -d --remove-orphans
