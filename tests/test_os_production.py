@@ -1,4 +1,4 @@
-import io, json, os, subprocess
+import io, json, os, shutil, subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlencode
@@ -161,3 +161,43 @@ def test_deployment_state_is_canonical_and_independent_from_working_directory(tm
     invocations = docker_log.read_text().splitlines()
     assert invocations and all(line.startswith(f"{expected}|") for line in invocations)
     assert not accidental.exists()
+
+
+def test_compose_validation_requires_an_explicit_absolute_state_directory():
+    if shutil.which("docker") is None:
+        pytest.skip("Docker Compose is not available")
+
+    root = Path(__file__).parents[1]
+    compose_file = root / "deploy/ovh/docker-compose.yml"
+    env_file = root / "deploy/ovh/drcloud.env"
+    original_env = env_file.read_bytes() if env_file.exists() else None
+    env_file.write_text("")
+    environment = os.environ.copy()
+    environment.pop("DRCLOUD_DEPLOYMENT_STATE_DIR", None)
+    command = ["docker", "compose", "-f", str(compose_file), "config", "--quiet"]
+    try:
+        missing = subprocess.run(command, cwd=root, env=environment, capture_output=True, text=True)
+        assert missing.returncode != 0
+        assert "DRCLOUD_DEPLOYMENT_STATE_DIR" in missing.stderr
+
+        state_dir = (root / "deploy/ovh/.deployment-state").resolve()
+        configured = subprocess.run(
+            command,
+            cwd=root,
+            env={**environment, "DRCLOUD_DEPLOYMENT_STATE_DIR": str(state_dir)},
+            capture_output=True,
+            text=True,
+        )
+        assert configured.returncode == 0, configured.stderr
+    finally:
+        if original_env is None:
+            env_file.unlink()
+        else:
+            env_file.write_bytes(original_env)
+
+
+def test_ci_provides_absolute_state_directory_when_validating_compose():
+    root = Path(__file__).parents[1]
+    workflow = (root / ".github/workflows/drcloud-os-ci.yml").read_text()
+    assert 'DRCLOUD_DEPLOYMENT_STATE_DIR="${{ github.workspace }}/deploy/ovh/.deployment-state"' in workflow
+    assert "docker compose -f deploy/ovh/docker-compose.yml config --quiet" in workflow
