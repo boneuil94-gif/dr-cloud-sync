@@ -9,6 +9,7 @@ import pytest
 from dr_cloud_sync.config import ConfigurationError, Settings
 from dr_cloud_sync.prestashop import PrestaShopClient
 from dr_cloud_sync.store import SnapshotStore
+from dr_cloud_sync.jobs import JobStatus, SqliteJobRepository
 from dr_cloud_sync.sync import synchronize
 
 
@@ -46,7 +47,42 @@ def test_fetches_all_resources_and_paginates(tmp_path: Path):
     assert all("super-secret" not in call.full_url for call in calls)
     with SnapshotStore(database).connect() as connection:
         assert connection.execute("SELECT COUNT(*) FROM prestashop_entities").fetchone()[0] == 5
-        assert connection.execute("SELECT status FROM sync_runs").fetchone()[0] == "completed"
+        assert connection.execute("SELECT status FROM sync_runs").fetchone()[0] == "SUCCEEDED"
+
+
+def test_failed_sync_keeps_previous_snapshot_and_resumes_same_job(tmp_path: Path):
+    database = tmp_path / "snapshot.sqlite3"
+    store = SnapshotStore(database)
+    with store.connect() as connection:
+        connection.execute("INSERT INTO prestashop_entities VALUES ('products',99,'{\"id\":99}','old')")
+        connection.commit()
+
+    class FailingClient:
+        RESOURCES = ("products", "combinations")
+        def iter_resource(self, resource):
+            if resource == "combinations":
+                raise RuntimeError("token=private upstream failure")
+            return iter(({"id": 1},))
+
+    with pytest.raises(RuntimeError):
+        synchronize(FailingClient(), store, job_id="presta-retry", max_attempts=2)
+    failed = SqliteJobRepository(database).get("presta-retry")
+    assert failed and failed.status == JobStatus.RETRYABLE and failed.attempt == 1
+    assert "private" not in (failed.error_message or "")
+    with store.connect() as connection:
+        assert connection.execute("SELECT source_id FROM prestashop_entities").fetchall() == [(99,)]
+
+    class WorkingClient:
+        RESOURCES = ("products", "combinations")
+        def iter_resource(self, resource):
+            return iter(({"id": 1},))
+
+    assert synchronize(WorkingClient(), store, job_id="presta-retry", max_attempts=2) == {
+        "products": 1, "combinations": 1}
+    recovered = SqliteJobRepository(database).get("presta-retry")
+    assert recovered and recovered.status == JobStatus.SUCCEEDED and recovered.attempt == 2
+    with store.connect() as connection:
+        assert connection.execute("SELECT COUNT(*) FROM prestashop_entities").fetchone()[0] == 2
 
 
 def test_accepts_wrapped_single_resource():
