@@ -4,6 +4,10 @@ target="${1:-}"
 [[ "$target" =~ ^[0-9a-f]{40}$ ]] || { echo "Usage: $0 <sha-commit-40-caractères>" >&2; exit 2; }
 repo="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 state_dir="${DRCLOUD_DEPLOYMENT_STATE_DIR:-$repo/deploy/ovh/.deployment-state}"
+[[ "$state_dir" == /* ]] || state_dir="$repo/$state_dir"
+install -d -m 0755 "$state_dir"
+state_dir="$(cd -P -- "$state_dir" && pwd)"
+export DRCLOUD_DEPLOYMENT_STATE_DIR="$state_dir"
 legacy_marker="$repo/deploy/ovh/.last-successful-commit"
 
 record_successful_commit() {
@@ -21,7 +25,6 @@ record_successful_commit() {
   mv -f "$legacy_tmp" "$legacy_marker"
 }
 
-install -d -m 0755 "$state_dir"
 exec 9>"${DRCLOUD_DEPLOY_LOCK:-/tmp/drcloud-os-deploy.lock}"
 flock -n 9 || { echo "ERREUR: un déploiement est déjà en cours." >&2; exit 1; }
 [[ -z "$(git -C "$repo" status --porcelain)" ]] || { echo "ERREUR: arbre Git non propre; mise à jour refusée." >&2; exit 1; }
@@ -32,7 +35,7 @@ echo "Déploiement demandé: previous=$previous target=$target"
 git -C "$repo" fetch --no-tags origin main
 git -C "$repo" merge-base --is-ancestor "$target" origin/main || { echo "ERREUR: la cible n'appartient pas à origin/main." >&2; exit 1; }
 git -C "$repo" checkout --detach "$target"
-if DRCLOUD_BUILD_COMMIT="$target" "$repo/deploy/ovh/deploy.sh" && \
+if DRCLOUD_DEPLOYMENT_STATE_DIR="$state_dir" DRCLOUD_BUILD_COMMIT="$target" "$repo/deploy/ovh/deploy.sh" && \
    DRCLOUD_HTTPS_URL="${DRCLOUD_HTTPS_URL:-https://osdrcloud.fr}" EXPECTED_COMMIT="$target" "$repo/deploy/ovh/check.sh"; then
   record_successful_commit "$target"
   echo "SUCCÈS: commit déployé et HTTPS validé: $target"
@@ -40,7 +43,7 @@ if DRCLOUD_BUILD_COMMIT="$target" "$repo/deploy/ovh/deploy.sh" && \
 fi
 echo "ERREUR: déploiement de $target; rollback applicatif vers $previous (aucune restauration de données)." >&2
 git -C "$repo" checkout --detach "$previous"
-if DRCLOUD_BUILD_COMMIT="$previous" "$repo/deploy/ovh/deploy.sh" && \
+if DRCLOUD_DEPLOYMENT_STATE_DIR="$state_dir" DRCLOUD_BUILD_COMMIT="$previous" "$repo/deploy/ovh/deploy.sh" && \
    DRCLOUD_HTTPS_URL="${DRCLOUD_HTTPS_URL:-https://osdrcloud.fr}" EXPECTED_COMMIT="$previous" "$repo/deploy/ovh/check.sh"; then
   record_successful_commit "$previous"
   echo "ROLLBACK RÉUSSI: commit=$previous. La sauvegarde n'a pas été restaurée." >&2

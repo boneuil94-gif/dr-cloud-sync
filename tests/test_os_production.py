@@ -1,4 +1,4 @@
-import io, json, os
+import io, json, os, subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlencode
@@ -86,7 +86,7 @@ def test_deployment_metadata_mount_is_minimal_and_read_only():
     root = Path(__file__).parents[1]
     compose = (root / "deploy/ovh/docker-compose.yml").read_text()
     dockerfile = (root / "Dockerfile").read_text()
-    assert ".deployment-state}:/run/drcloud-deployment:ro" in compose
+    assert "${DRCLOUD_DEPLOYMENT_STATE_DIR:?set by deploy.sh}:/run/drcloud-deployment:ro" in compose
     assert "DRCLOUD_DEPLOYMENT_MARKER: /run/drcloud-deployment/last-successful-commit" in compose
     assert "/opt/drcloud-os" not in compose
     assert "/.git" not in compose and "docker.sock" not in compose
@@ -109,3 +109,55 @@ def test_first_install_creates_state_directory_without_claiming_success():
     deploy = (root / "deploy/ovh/deploy.sh").read_text()
     assert 'install -d -m 0755 "$DRCLOUD_DEPLOYMENT_STATE_DIR"' in deploy
     assert "record_successful_commit" not in deploy
+
+
+def test_deployment_state_is_canonical_and_independent_from_working_directory(tmp_path):
+    root = Path(__file__).parents[1]
+    update = (root / "deploy/ovh/update.sh").read_text()
+    deploy = (root / "deploy/ovh/deploy.sh").read_text()
+    compose = (root / "deploy/ovh/docker-compose.yml").read_text()
+
+    assert 'export DRCLOUD_DEPLOYMENT_STATE_DIR="$state_dir"' in update
+    assert update.count('DRCLOUD_DEPLOYMENT_STATE_DIR="$state_dir" DRCLOUD_BUILD_COMMIT=') == 2
+    assert '${DRCLOUD_DEPLOYMENT_STATE_DIR:-$PWD/' not in deploy
+    assert "DRCLOUD_DEPLOYMENT_STATE_DIR:-./" not in compose
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    docker_log = tmp_path / "docker.log"
+    (fake_bin / "docker").write_text(
+        '#!/bin/sh\nprintf "%s|%s\\n" "$DRCLOUD_DEPLOYMENT_STATE_DIR" "$*" >> "$DOCKER_LOG"\n'
+    )
+    (fake_bin / "curl").write_text(
+        '#!/bin/sh\nprintf \'{"status":"ok","commit":"%s"}\\n\' "$DRCLOUD_BUILD_COMMIT"\n'
+    )
+    for executable in (fake_bin / "docker", fake_bin / "curl"):
+        executable.chmod(0o755)
+
+    env_file = root / "deploy/ovh/drcloud.env"
+    original_env = env_file.read_bytes() if env_file.exists() else None
+    env_file.write_text(
+        "DRCLOUD_SAFE_MODE=true\nBARCODE_SYNC_MODE=dry-run\n"
+        "DRCLOUD_SECRET_KEY=test\nDRCLOUD_ADMIN_USERNAME=test\nDRCLOUD_ADMIN_PASSWORD=test\n"
+    )
+    accidental = tmp_path / "elsewhere" / ".deployment-state"
+    cwd = accidental.parent
+    cwd.mkdir()
+    try:
+        result = subprocess.run(
+            [root / "deploy/ovh/deploy.sh"], cwd=cwd, check=False, text=True,
+            capture_output=True,
+            env={**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                 "DOCKER_LOG": str(docker_log), "DRCLOUD_BUILD_COMMIT": "a" * 40},
+        )
+    finally:
+        if original_env is None:
+            env_file.unlink()
+        else:
+            env_file.write_bytes(original_env)
+
+    assert result.returncode == 0, result.stderr
+    expected = str((root / "deploy/ovh/.deployment-state").resolve())
+    invocations = docker_log.read_text().splitlines()
+    assert invocations and all(line.startswith(f"{expected}|") for line in invocations)
+    assert not accidental.exists()

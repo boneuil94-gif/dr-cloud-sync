@@ -85,8 +85,12 @@ ni privilège supplémentaire n'est utilisé.
 
 ### Publication atomique du dernier succès
 
-`deploy.sh` crée un petit répertoire d'état dédié, ignoré par Git, puis Docker Compose
-monte uniquement ce répertoire sous `/run/drcloud-deployment:ro`. Il ne monte ni le
+`update.sh` détermine une fois le chemin canonique absolu du petit répertoire d'état
+(`deploy/ovh/.deployment-state` par défaut), le crée, puis transmet explicitement cette
+même valeur à `deploy.sh` et à Docker Compose. Une valeur personnalisée relative est
+résolue depuis la racine du dépôt, jamais depuis le répertoire courant. Compose exige
+la variable et n'a aucun fallback relatif. Il monte uniquement ce répertoire sous
+`/run/drcloud-deployment:ro`. Il ne monte ni le
 checkout `/opt/drcloud-os`, ni `.git`, ni `docker.sock`. L'application s'exécute
 toujours avec l'utilisateur non privilégié `drcloud` et ne peut donc pas modifier le
 marqueur. Le fichier historique `deploy/ovh/.last-successful-commit` reste disponible
