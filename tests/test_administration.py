@@ -1,5 +1,6 @@
 import json
 import subprocess
+import time
 import pytest
 from collections import namedtuple
 from datetime import datetime, timedelta, timezone
@@ -23,6 +24,67 @@ def test_administration_page_and_api_require_authentication(configured):
     status, _, body = request(app, "/api/admin/status", cookie=cookie)
     assert status == "200 OK"
     assert set(json.loads(body)) == {"status", "checked_at", "application", "database", "deployment", "backup", "system", "media"}
+    assert request(app, "/api/admin/catalogue-rehydration/status")[0] == "303 See Other"
+
+
+def _wait_job(app, cookie):
+    for _ in range(100):
+        status = json.loads(request(app, "/api/admin/catalogue-rehydration/status", cookie=cookie)[2])
+        if status["state"] not in {"PENDING", "RUNNING"}:
+            return status
+        time.sleep(.02)
+    raise AssertionError("rehydration job did not finish")
+
+
+def test_catalogue_rehydration_admin_preview_report_apply_and_csrf(configured, tmp_path):
+    app, settings = configured
+    snapshot = tmp_path / "snapshot.json"
+    snapshot.write_text(json.dumps({"catalogue": [{"id": str(i), "nom": f"Produit {i}",
+        "reference": f"REF-{i}"} for i in range(478)]}))
+    from dr_cloud_sync.admin_rehydration import AdminCatalogueRehydration
+    app.catalogue_rehydration = AdminCatalogueRehydration(settings.database, snapshot,
+        tmp_path / "backups", environment="test", safe_mode=True)
+    _, cookie = login(app); csrf = app._session({"HTTP_COOKIE": cookie})["csrf"]
+    assert request(app, "/api/admin/catalogue-rehydration/preview", "POST", {}, cookie)[0] == "403 Forbidden"
+    status = request(app, "/api/admin/catalogue-rehydration/preview", "POST", {}, cookie,
+                     {"X-CSRF-Token": csrf})[0]
+    assert status == "202 Accepted"
+    completed = _wait_job(app, cookie)
+    assert completed["state"] == "SUCCEEDED"
+    report_id = completed["last_preview"]["metrics"]["report_id"]
+    report = json.loads(request(app,
+        f"/api/admin/catalogue-rehydration/report?report_id={report_id}&page=1&per_page=25&classification=SAFE&search=Produit",
+        cookie=cookie)[2])
+    assert report["summary"]["processed"] == 478 and len(report["items"]) == 25
+    body = {"report_id": report_id}
+    assert request(app, "/api/admin/catalogue-rehydration/apply", "POST", body, cookie,
+                   {"X-CSRF-Token": csrf})[0] == "202 Accepted"
+    applied = _wait_job(app, cookie)
+    assert applied["last_apply"]["status"] == "SUCCEEDED"
+    assert applied["last_apply"]["metrics"]["backup"].startswith("drcloud-os-backup-")
+    duplicate = json.loads(request(app, "/api/admin/catalogue-rehydration/apply", "POST", body, cookie,
+                   {"X-CSRF-Token": csrf})[2])
+    assert duplicate["reused"] is True
+
+
+def test_catalogue_rehydration_rejects_missing_and_stale_preview(configured, tmp_path):
+    app, settings = configured
+    snapshot = tmp_path / "snapshot.json"; snapshot.write_text('{"catalogue":[]}')
+    from dr_cloud_sync.admin_rehydration import AdminCatalogueRehydration
+    app.catalogue_rehydration = AdminCatalogueRehydration(settings.database, snapshot,
+        tmp_path / "backups", environment="test", safe_mode=True)
+    _, cookie = login(app); csrf = app._session({"HTTP_COOKIE": cookie})["csrf"]
+    headers = {"X-CSRF-Token": csrf}
+    assert request(app, "/api/admin/catalogue-rehydration/apply", "POST",
+                   {"report_id": "missing"}, cookie, headers)[0] == "409 Conflict"
+    request(app, "/api/admin/catalogue-rehydration/preview", "POST", {}, cookie, headers)
+    report_id = _wait_job(app, cookie)["last_preview"]["metrics"]["report_id"]
+    product = app.os_repository.all()[0]
+    app.os_repository.apply_commercial_changes(product.drcloud_product_key,
+        {"base_name": ("Modification manuelle", "MANUAL")}, [])
+    status, _, body = request(app, "/api/admin/catalogue-rehydration/apply", "POST",
+                              {"report_id": report_id}, cookie, headers)
+    assert status == "409 Conflict" and "obsolète" in body.decode()
 
 
 def test_healthy_application_database_metadata_and_no_secrets(configured, monkeypatch, tmp_path):
