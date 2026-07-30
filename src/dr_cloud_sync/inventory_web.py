@@ -16,6 +16,7 @@ from .modules import available_pages, render_navigation
 from .external_stock import ExternalStockQueryService
 from .purchasing import (PurchaseOrderService, SQLitePurchaseOrderRepository,
                          SQLiteSupplierRepository, SupplierService)
+from .security import CredentialStore
 
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
@@ -37,6 +38,8 @@ class InventoryApp:
         self.external_stock=ExternalStockQueryService(service.repo.path,self.os_repository.all(),service.repo)
         self.suppliers=SupplierService(SQLiteSupplierRepository(service.repo.path),self.os_repository)
         self.purchase_orders=PurchaseOrderService(SQLitePurchaseOrderRepository(service.repo.path),self.suppliers,self.os_repository,self.os_repository)
+        self.credentials=CredentialStore(service.repo.path,settings.admin_password) if settings else None
+        self.password_failures={}
 
     def __call__(self, env, start):
         request_id=env.get("HTTP_X_REQUEST_ID") or str(uuid.uuid4()); path=env.get("PATH_INFO", "/"); method=env.get("REQUEST_METHOD", "GET")
@@ -45,7 +48,7 @@ class InventoryApp:
                 try: self.service.repo.db.execute("SELECT 1"); database="ok"; status="ok"
                 except Exception: database="error"; status="degraded"
                 return self._json(start,{"status":status,"application":"drcloud-os",**application_metadata(),"database":database}, headers=[("X-Request-ID",request_id)])
-            if path in {"/manifest.webmanifest","/icon.svg","/drcloud-logo.png","/inventory.css","/app-shell.js","/inventory.js","/roadmap.js","/dashboard.js","/administration.js","/stock.js","/purchasing.js"}:
+            if path in {"/manifest.webmanifest","/icon.svg","/drcloud-logo.png","/inventory.css","/app-shell.js","/inventory.js","/roadmap.js","/dashboard.js","/administration.js","/stock.js","/purchasing.js","/security.js"}:
                 file={"/manifest.webmanifest":"manifest.webmanifest"}.get(path,path[1:]); kind="application/manifest+json" if path.endswith("webmanifest") else "image/svg+xml" if path.endswith("svg") else "text/css; charset=utf-8" if path.endswith("css") else "text/javascript; charset=utf-8"
                 if path.endswith(".png"): kind="image/png"
                 return self._send(start,(ROOT/file).read_bytes(),kind,headers=[("X-Request-ID",request_id)])
@@ -60,6 +63,7 @@ class InventoryApp:
             if path == "/inventaire": return self._html(start,"inventory.html",session,request_id)
             if path == "/roadmap": return self._html(start,"roadmap.html",session,request_id)
             if path == "/administration": return self._html(start,"administration.html",session,request_id)
+            if path == "/securite": return self._html(start,"security.html",session,request_id)
             if path == "/stock": return self._html(start,"stock.html",session,request_id)
             if path == "/achats": return self._html(start,"purchasing.html",session,request_id)
             if path.startswith("/achats/fournisseurs/"):
@@ -109,6 +113,8 @@ class InventoryApp:
             if path == "/api/state": return self._json(start,{"session":self.service.session(),"progress":self.service.progress(),"proposal":self.service.proposal()})
             if path == "/api/roadmap": return self._json(start,self.roadmap_service.load())
             if path == "/api/admin/status": return self._json(start,self.admin_status.collect(),headers=[("X-Request-ID",request_id)])
+            if path == "/api/security/change-password" and method == "POST":
+                return self._change_password(env,start,session,request_id)
             if path == "/api/stock":
                 return self._json(start,{"positions":[asdict(p) for p in self.stock.positions()],"statistics":self.service.repo.aggregate_statistics(),"comparison_statistics":self.external_stock.statistics()})
             if path == "/api/stock/comparison":
@@ -163,10 +169,33 @@ class InventoryApp:
         remote=env.get("REMOTE_ADDR",""); now=time.monotonic(); attempts=[x for x in self.failures.get(remote,[]) if now-x<300]; self.failures[remote]=attempts
         if len(attempts)>=5: return self._error(start,429,request_id)
         data=parse_qs(self._raw_body(env).decode("utf-8")); user=data.get("username",[""])[0]; password=data.get("password",[""])[0]
-        if not (hmac.compare_digest(user,self.settings.admin_username) and hmac.compare_digest(password,self.settings.admin_password)):
+        valid_password=bool(self.credentials and self.credentials.verify(password))
+        if not (hmac.compare_digest(user,self.settings.admin_username) and valid_password):
             attempts.append(now); LOG.warning("login_failed request_id=%s remote=%s",request_id,remote); return self._html(start,"login.html",None,request_id,status="401 Unauthorized")
-        self.failures.pop(remote,None); token={"u":user,"exp":int(time.time())+28800,"csrf":secrets.token_urlsafe(24)}; cookie=self._encode(token)
+        self.failures.pop(remote,None); credential=self.credentials.get(); token={"u":user,"exp":int(time.time())+28800,"csrf":secrets.token_urlsafe(24),"sv":credential.session_version}; cookie=self._encode(token)
         return self._redirect(start,"/",request_id,cookie=cookie)
+
+    def _change_password(self,env,start,session,request_id):
+        remote=env.get("REMOTE_ADDR",""); now=time.monotonic()
+        attempts=[x for x in self.password_failures.get(remote,[]) if now-x<300]
+        self.password_failures[remote]=attempts
+        if len(attempts)>=5: return self._error(start,429,request_id)
+        data=self._body(env); current=data.get("current_password",""); new=data.get("new_password","")
+        if new != data.get("new_password_confirmation",""):
+            return self._json(start,{"error":"La confirmation ne correspond pas."},"400 Bad Request")
+        if len(new) < 12:
+            return self._json(start,{"error":"Le nouveau mot de passe doit contenir au moins 12 caractères."},"400 Bad Request")
+        if new.casefold() in {"motdepasse123", "password1234", "administrateur", "drcloud123456"}:
+            return self._json(start,{"error":"Le nouveau mot de passe est trop facile à deviner."},"400 Bad Request")
+        if hmac.compare_digest(current,new):
+            return self._json(start,{"error":"Le nouveau mot de passe doit être différent."},"400 Bad Request")
+        try: self.credentials.change_password(current,new,session.get("u","authenticated"))
+        except PermissionError:
+            attempts.append(now)
+            return self._json(start,{"error":"Le mot de passe actuel est incorrect."},"400 Bad Request")
+        self.password_failures.pop(remote,None)
+        secure=self.settings.environment=="production"; attrs="; Path=/; HttpOnly; SameSite=Lax"+("; Secure" if secure else "")
+        return self._json(start,{"success":True,"reauthentication_required":True},headers=[("Set-Cookie",f"drcloud_session={attrs}; Max-Age=0"),("X-Request-ID",request_id)])
 
     def _session(self,env):
         if not self.settings: return {"u":"legacy-test","csrf":"test"}
@@ -176,7 +205,8 @@ class InventoryApp:
         try:
             payload,sig=raw.rsplit(".",1); expected=hmac.new(self.settings.secret_key.encode(),payload.encode(),hashlib.sha256).hexdigest()
             if not hmac.compare_digest(sig,expected): return None
-            data=json.loads(bytes.fromhex(payload)); return data if data["exp"]>time.time() else None
+            data=json.loads(bytes.fromhex(payload)); credential=self.credentials.get()
+            return data if data["exp"]>time.time() and credential and data.get("sv")==credential.session_version else None
         except (ValueError,KeyError,json.JSONDecodeError): return None
     def _encode(self,data):
         payload=json.dumps(data,separators=(",",":")).encode().hex(); return payload+"."+hmac.new(self.settings.secret_key.encode(),payload.encode(),hashlib.sha256).hexdigest()

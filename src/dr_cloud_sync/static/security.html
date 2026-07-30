@@ -1,0 +1,19 @@
+<main class="dc-main security-shell">
+  <header class="dc-page-header"><div><p class="dc-eyebrow">Sécurité + utilisateurs</p><h1>Sécurité</h1><p>Gérez le credential du compte administrateur local.</p></div></header>
+  <section class="dc-card security-card" aria-labelledby="password-title">
+    <h2 id="password-title">Mot de passe</h2>
+    <p>Après le changement, toutes les sessions sont invalidées et une reconnexion est demandée.</p>
+    <form id="passwordForm" autocomplete="off">
+      <label for="currentPassword">Mot de passe actuel</label>
+      <input id="currentPassword" name="current_password" type="password" autocomplete="current-password" required>
+      <label for="newPassword">Nouveau mot de passe</label>
+      <input id="newPassword" name="new_password" type="password" autocomplete="new-password" minlength="12" required>
+      <label for="newPasswordConfirmation">Confirmer le nouveau mot de passe</label>
+      <input id="newPasswordConfirmation" name="new_password_confirmation" type="password" autocomplete="new-password" minlength="12" required>
+      <p class="dc-help">12 caractères minimum, différent du mot de passe actuel et non trivial.</p>
+      <p id="passwordMessage" role="alert" hidden></p>
+      <button class="dc-button" type="submit">Changer le mot de passe</button>
+    </form>
+  </section>
+  <section class="dc-card security-card"><h2>Utilisateurs et autorisations</h2><p>Gestion multi-utilisateurs, rôles et permissions — À venir.</p></section>
+</main>

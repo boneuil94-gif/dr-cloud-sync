@@ -39,7 +39,7 @@ MODULES = (
     Module("synchronizations", "Synchronisations", "Automatisation", 10, "↻", "04-stock"),
     Module("automation", "Automatisations + IA", "Automatisation", 20, "✦", "10-automation"),
     Module("administration", "Administration", "Système", 10, "⚙", route="/administration", page_template="administration.html", script="administration.js"),
-    Module("security", "Sécurité + utilisateurs", "Système", 20, "◆", "12-security"),
+    Module("security", "Sécurité", "Système", 20, "◆", "12-security", "/securite", "security.html", "security.js"),
     Module("production", "Production", "Système", 30, "●", "13-production"),
 )
 
