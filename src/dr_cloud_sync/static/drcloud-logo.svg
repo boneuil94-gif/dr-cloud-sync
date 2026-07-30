@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 220" role="img" aria-labelledby="title description">
-<title id="title">Dr Cloud</title><desc id="description">Nuage blanc bordé de noir et vert avec le symbole Dr Cloud</desc>
-<path d="M76 145c-30 0-53-21-53-49 0-26 19-47 45-50C80 19 105 4 134 4c36 0 66 23 76 55 8-5 17-7 27-7 29 0 52 22 52 50s-23 50-52 50H76z" fill="#fff" stroke="#0b0d0c" stroke-width="8" stroke-linejoin="round"/>
-<path d="M76 138c-25 0-44-17-44-40 0-22 17-39 40-40 9-27 33-44 62-44 35 0 63 24 68 56 9-6 20-9 31-9 24 0 44 18 44 41s-20 41-44 41H76z" fill="none" stroke="#38b449" stroke-width="5" stroke-linejoin="round"/>
-<g fill="none" stroke="#0b0d0c" stroke-linecap="round" stroke-linejoin="round"><path d="M144 54h27v12c0 14-7 25-20 32v28" stroke-width="7"/><path d="M137 127h29l8 11h-45z" fill="#38b449" stroke-width="6"/><path d="M150 98c-15 3-23-5-23-16 12-2 20 2 23 11" stroke-width="5"/><path d="M172 60c15-10 29-4 29 8 0 10-8 16-19 16" stroke-width="6"/></g>
-<text x="8" y="207" font-family="Arial,Helvetica,sans-serif" font-size="64" font-weight="900" letter-spacing="-2" fill="#38b449">DR.CLOUD</text>
-</svg>
