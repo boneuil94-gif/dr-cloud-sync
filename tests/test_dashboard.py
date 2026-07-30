@@ -39,10 +39,11 @@ def test_official_logo_route_uses_png_mime(configured, tmp_path, monkeypatch):
 
 def test_dashboard_only_contains_real_routes_and_no_fictional_metrics():
     html = (STATIC / "dashboard.html").read_text(encoding="utf-8")
+    shell = (STATIC / "app-shell.html").read_text(encoding="utf-8")
     for route in ('href="/"', 'href="/roadmap"', 'href="/catalogue"',
                   'href="/inventaire"', 'href="/administration"'):
-        assert route in html
-    assert 'href="/modules/' not in html
+        assert route in shell
+    assert 'href="/modules/' not in shell
     for fictional in ("chiffre d’affaires", "marge", "ventes", "clients"):
         assert fictional not in html.casefold()
     assert "Données non disponibles pour le moment" in html
