@@ -136,3 +136,18 @@ def test_administration_html_contains_no_operational_values_or_unsafe_sink():
     script = (ROOT / "src/dr_cloud_sync/static/administration.js").read_text()
     assert "DRCLOUD_BUILD_COMMIT" not in html and "1.0.0" not in html
     assert "innerHTML" not in script and "textContent" in script and 'fetch("/api/admin/status"' in script
+
+
+def test_administration_uses_drcloud_shell_and_keeps_all_status_fields():
+    html = (ROOT / "src/dr_cloud_sync/static/administration.html").read_text()
+    css = (ROOT / "src/dr_cloud_sync/static/inventory.css").read_text()
+    assert 'class="dc-sidebar"' in html
+    assert 'href="/administration" aria-current="page"' in html
+    assert 'href="/"' in html and "Tableau de bord" in html
+    for section in ("application", "database", "backup", "deployment", "system"):
+        assert f'data-section="{section}"' in html
+    for status in ("status-ok", "status-warning", "status-error", "status-unknown"):
+        assert status in css
+    for token in ("--dc-green", "--dc-sidebar", "--dc-background", "--dc-surface",
+                  "--dc-success", "--dc-warning", "--dc-danger", "--dc-info"):
+        assert token in css
