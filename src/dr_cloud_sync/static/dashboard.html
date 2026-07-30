@@ -1,65 +1,26 @@
 <!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#103f4b">
-  <meta name="csrf-token" content="{{CSRF}}">
-  <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="icon" href="/icon.svg">
-  <link rel="stylesheet" href="/inventory.css">
-  <title>DrCloud OS — Tableau de bord</title>
-</head>
-<body class="dashboard-body">{{SAFE_BANNER}}
-  <header class="dashboard-header">
-    <div class="header-row">
-      <a class="brand" href="/" aria-label="DrCloud OS, accueil">DrCloud <b>OS</b></a>
-      <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{CSRF}}"><button class="logout">Déconnexion</button></form>
-    </div>
-    <nav class="osnav" aria-label="Navigation principale">
-      <a href="/" aria-current="page">Pilotage</a><a href="/roadmap">Roadmap</a><a href="/catalogue">Catalogue</a><a href="/inventaire">Inventaire</a><a href="/modules/stocks">Stocks</a><a href="/modules/achats">Achats</a><a href="/modules/ventes">Ventes</a><a href="/modules/clients">Clients</a><a href="/modules/finance">Finance</a><a href="/modules/reseaux-sociaux">Marketing</a><a href="/modules/automatisations">Automatisations + IA</a><a href="/administration">Administration</a>
-    </nav>
-  </header>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#101311"><meta name="csrf-token" content="{{CSRF}}"><link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/icon.svg"><link rel="stylesheet" href="/inventory.css"><title>DrCloud OS — Tableau de bord</title></head>
+<body class="dc-body dashboard-body">{{SAFE_BANNER}}<div class="dc-app">
+<aside class="dc-sidebar"><a class="dc-brand dc-brand-official" href="/" aria-label="DrCloud OS, accueil"><img src="/drcloud-logo.svg" alt="Logo officiel Dr Cloud" width="174" height="92"><span class="dc-os-mark">OS</span></a><nav class="dc-nav" aria-label="Navigation principale"><p class="dc-nav-label">Espace principal</p><a href="/" aria-current="page"><span aria-hidden="true">⌂</span>Tableau de bord</a><a href="/roadmap"><span aria-hidden="true">◇</span>Roadmap</a><a href="/catalogue"><span aria-hidden="true">▦</span>Catalogue</a><a href="/inventaire"><span aria-hidden="true">✓</span>Inventaire</a><p class="dc-nav-label">Système</p><a href="/administration"><span aria-hidden="true">⚙</span>Administration</a></nav><div class="dc-sidebar-footer"><span>Dr Cloud</span><small>DrCloud OS</small></div></aside>
+<div class="dc-workspace"><header class="dc-topbar"><div><span class="dc-context">DrCloud OS</span><span aria-hidden="true">/</span><strong>Tableau de bord</strong></div><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{CSRF}}"><button class="dc-button dc-button-secondary">Déconnexion</button></form></header>
+<main class="dc-main target-dashboard"><header class="dc-page-header"><div><p class="dc-eyebrow">Vue d’ensemble</p><h1>Bonjour, voici l’état de DrCloud.</h1><p>Les indicateurs essentiels de votre environnement, au même endroit.</p></div><p class="dc-updated" id="updatedAt">Dernière vérification —</p></header><p class="dc-alert dc-alert-danger" id="dashboardError" role="alert" hidden></p>
 
-  <main class="dashboard-shell">
-    <div class="page-heading"><div><p class="eyebrow">Centre de pilotage</p><h1>Bonjour, voici l’état de DrCloud.</h1></div><p class="updated" id="updatedAt">Mise à jour —</p></div>
+<section class="dashboard-kpis" aria-label="Indicateurs clés">
+<article class="dc-card kpi-card"><span class="kpi-icon" aria-hidden="true">▦</span><div><p>Produits catalogue</p><strong id="catalogueMetric">—</strong><small>Donnée du référentiel</small></div></article>
+<article class="dc-card kpi-card"><span class="kpi-icon" aria-hidden="true">✓</span><div><p>État inventaire</p><strong id="inventoryMetric">—</strong><small id="inventoryStatus">Chargement</small></div></article>
+<article class="dc-card kpi-card"><span class="kpi-icon" aria-hidden="true">↻</span><div><p>Sauvegardes</p><strong id="backupMetric">—</strong><small id="backupDetail">Chargement</small></div></article>
+<article class="dc-card kpi-card"><span class="kpi-icon" aria-hidden="true">◫</span><div><p>Stockage utilisé</p><strong id="storageMetric">—</strong><small id="storageDetail">Chargement</small></div></article>
+</section>
 
-    <p class="dashboard-alert" id="dashboardError" role="alert" hidden></p>
+<section class="dashboard-primary" aria-label="Synthèse opérationnelle">
+<article class="dc-card dashboard-panel system-panel"><header class="panel-heading"><div><p class="dc-eyebrow">Supervision</p><h2>État des systèmes</h2></div><a href="/administration" aria-label="Ouvrir l’administration">Voir tout</a></header><ul class="system-status-list" id="systemStatusList" aria-live="polite"><li>Collecte des états réels…</li></ul></article>
+<article class="dc-card dashboard-panel activity-panel"><header class="panel-heading"><div><p class="dc-eyebrow">Activité</p><h2>Évolution de l’activité</h2></div></header><div class="empty-state" id="activityState"><span aria-hidden="true">↗</span><h3>Données d’activité à venir</h3><p>Les données d’activité seront disponibles lorsque les synchronisations métier seront alimentées.</p></div><footer class="roadmap-foot"><span>Avancement réel de DrCloud OS</span><strong id="roadmapProgress">—</strong><div class="usage-track" role="progressbar" aria-label="Avancement de DrCloud OS" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="roadmapBar"></span></div></footer></article>
+<article class="dc-card dashboard-panel ranking-panel"><header class="panel-heading"><div><p class="dc-eyebrow">Synthèse métier</p><h2>Top produits</h2></div></header><div class="empty-state"><span aria-hidden="true">☆</span><h3>Aucun classement disponible</h3><p>Les performances produits apparaîtront ici dès que des données métier fiables seront disponibles.</p></div></article>
+</section>
 
-    <section class="progress-hero loading-card" id="progressHero" aria-labelledby="progressTitle" aria-busy="true">
-      <div class="hero-copy">
-        <p class="eyebrow">Développement produit</p>
-        <h2 id="progressTitle">Avancement de DrCloud OS</h2>
-        <p class="hero-description">Une lecture directe de la roadmap, pondérée selon l’importance de chaque domaine.</p>
-        <div class="status-line"><span class="status-badge status-loading" id="globalStatus">Chargement</span><span id="moduleCount">— modules</span></div>
-      </div>
-      <div class="progress-score"><strong id="globalProgress">—</strong><span>% réalisé</span></div>
-      <div class="progress-track progress-track-large" role="progressbar" aria-label="Avancement global" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="globalBar"></span></div>
-      <div class="progress-meta"><span>Fondations réalisées</span><strong id="remainingProgress">— % restant</strong></div>
-    </section>
-
-    <section class="dashboard-grid">
-      <article class="next-action loading-card" id="nextAction" aria-labelledby="nextTitle" aria-busy="true">
-        <div class="next-icon" aria-hidden="true">→</div><div><p class="eyebrow">Priorité roadmap</p><h2 id="nextTitle">Prochaine étape</h2><p id="nextText">Identification de la prochaine action…</p><span id="nextModule"></span></div>
-      </article>
-      <section class="operations" aria-labelledby="operationsTitle">
-        <div class="section-heading"><div><p class="eyebrow">Activité métier</p><h2 id="operationsTitle">Pilotage DrCloud</h2></div></div>
-        <div class="operation-cards">
-          <a class="operation-card" href="/catalogue"><span class="operation-icon">CA</span><span>Catalogue<small>Référentiel produits</small></span><strong id="catalogueMetric">—</strong></a>
-          <a class="operation-card" href="/inventaire"><span class="operation-icon">IN</span><span>Inventaire<small id="inventoryStatus">État de la session</small></span><strong id="inventoryMetric">—</strong></a>
-          <a class="operation-card" href="/modules/stocks"><span class="operation-icon">SY</span><span>Synchronisations<small>Connecteurs externes</small></span><strong class="metric-text" id="syncMetric">—</strong></a>
-        </div>
-      </section>
-    </section>
-
-    <section class="modules-section" aria-labelledby="modulesTitle">
-      <div class="section-heading"><div><p class="eyebrow">Roadmap pondérée</p><h2 id="modulesTitle">Progression par module</h2></div><a href="/roadmap">Voir la roadmap détaillée →</a></div>
-      <div class="status-legend" aria-label="Légende des statuts"><span class="status-done">Terminé</span><span class="status-in-progress">En cours</span><span class="status-todo">À faire</span><span class="status-blocked">Bloqué</span></div>
-      <div class="module-grid" id="moduleGrid" aria-live="polite" aria-busy="true">
-        <article class="module-card module-skeleton"></article><article class="module-card module-skeleton"></article><article class="module-card module-skeleton"></article>
-      </div>
-    </section>
-  </main>
-  <template id="dashboardModuleTemplate"><article class="module-card"><div class="module-card-head"><span class="module-index"></span><span class="status-badge module-status"></span></div><h3></h3><div class="module-score"><strong class="module-percent"></strong><span class="module-weight"></span></div><div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100"><span></span></div><div class="module-next"><span>Prochaine étape</span><strong></strong></div></article></template>
-  <script src="/dashboard.js"></script>
-</body></html>
+<section class="dashboard-secondary" aria-label="Activité récente et ressources">
+<article class="dc-card dashboard-panel orders-panel"><header class="panel-heading"><div><p class="dc-eyebrow">Activité récente</p><h2>Dernières commandes</h2></div></header><div class="empty-state empty-state-compact"><span aria-hidden="true">□</span><h3>Données non disponibles pour le moment</h3><p>DrCloud OS ne reçoit pas encore les commandes.</p></div></article>
+<article class="dc-card dashboard-panel alerts-panel"><header class="panel-heading"><div><p class="dc-eyebrow">À surveiller</p><h2>Alertes système</h2></div><span class="alert-count" id="alertCount">—</span></header><ul class="dashboard-alert-list" id="alertList" aria-live="polite"><li>Analyse des états système…</li></ul></article>
+<article class="dc-card dashboard-panel usage-panel"><header class="panel-heading"><div><p class="dc-eyebrow">Ressources</p><h2>Utilisation système</h2></div></header><div class="usage-value"><strong id="usagePercent">—</strong><span>d’espace disque utilisé</span></div><div class="usage-track" role="progressbar" aria-label="Espace disque utilisé" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="usageBar"></span></div><dl class="usage-details"><div><dt>Utilisé</dt><dd id="usedStorage">—</dd></div><div><dt>Disponible</dt><dd id="freeStorage">—</dd></div><div><dt>Capacité</dt><dd id="totalStorage">—</dd></div></dl></article>
+</section>
+</main></div></div><script src="/dashboard.js"></script></body></html>
