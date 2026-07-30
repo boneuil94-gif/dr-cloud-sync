@@ -1,0 +1,14 @@
+<main class="dc-main stock-page"><header class="dc-page-header"><div><p class="dc-eyebrow">Opérations</p><h1>Stock</h1><p>Vue consolidée des mouvements et positions de stock.</p></div></header>
+<p class="dc-alert dc-alert-danger" id="stockError" role="alert" hidden>Données de stock temporairement indisponibles.</p>
+<section class="dashboard-kpis" aria-label="Indicateurs de stock">
+<article class="dc-card kpi-card"><div><p>Produits suivis</p><strong id="trackedKpi">—</strong><small>Positions issues du ledger</small></div></article>
+<article class="dc-card kpi-card"><div><p>Unités en stock</p><strong id="unitsKpi">—</strong><small>Somme des mouvements appliqués</small></div></article>
+<article class="dc-card kpi-card"><div><p>Positions négatives</p><strong id="negativeKpi">—</strong><small>Points d’attention</small></div></article>
+<article class="dc-card kpi-card"><div><p>Mouvements aujourd’hui</p><strong id="todayKpi">—</strong><small>Écritures locales appliquées</small></div></article>
+</section>
+<section class="dc-card stock-panel"><header class="panel-heading"><div><p class="dc-eyebrow">Projection locale</p><h2>Positions</h2></div><label class="stock-search">Rechercher un produit<input id="stockSearch" type="search" autocomplete="off" placeholder="Nom ou référence"></label></header>
+<div class="stock-table-wrap"><table class="stock-table"><thead><tr><th><button data-sort="name">Produit</button></th><th><button data-sort="reference">Référence</button></th><th><button data-sort="quantity">Stock actuel</button></th><th>Dernier mouvement</th><th>Origine</th><th>État</th></tr></thead><tbody id="positionRows"></tbody></table></div>
+<div class="empty-state empty-state-compact" id="stockEmpty" hidden><h3>Aucun mouvement de stock enregistré.</h3><p>Les mouvements apparaîtront après la validation et l’application d’un inventaire.</p></div></section>
+<section class="dc-card stock-panel"><header class="panel-heading"><div><p class="dc-eyebrow">Ledger</p><h2 id="movementTitle">Mouvements récents</h2></div><button class="dc-button dc-button-secondary" id="clearProduct" hidden>Voir tous les mouvements</button></header>
+<div class="stock-table-wrap"><table class="stock-table"><thead><tr><th>Date</th><th>Produit</th><th>Delta</th><th>Type</th><th>Origine</th><th>Référence source</th></tr></thead><tbody id="movementRows"></tbody></table></div>
+<div class="empty-state empty-state-compact" id="movementEmpty" hidden><p>Aucun mouvement à afficher.</p></div></section></main>

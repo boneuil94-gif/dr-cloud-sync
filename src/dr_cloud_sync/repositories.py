@@ -58,6 +58,11 @@ class StockMovementRepository(Protocol):
     def get(self, identifier: str) -> StockMovement | None: ...
     def by_idempotency_key(self, source_type: str, key: str) -> StockMovement | None: ...
     def list(self) -> list[StockMovement]: ...
+    def current_quantity(self, product_id: str) -> int: ...
+    def current_positions(self) -> list[dict]: ...
+    def recent_movements(self, limit: int = 50) -> list[StockMovement]: ...
+    def movements_for_product(self, product_id: str) -> list[StockMovement]: ...
+    def aggregate_statistics(self) -> dict[str, int]: ...
 
 
 class DuplicateStockMovement(Exception):
@@ -108,6 +113,36 @@ class SQLiteStockMovementRepository:
 
     def list(self) -> list[StockMovement]:
         return [self._movement(row) for row in self.db.execute("SELECT * FROM stock_movements ORDER BY created_at,id")]  # type: ignore[misc]
+
+    def current_quantity(self, product_id: str) -> int:
+        row=self.db.execute("SELECT COALESCE(SUM(quantity_delta),0) FROM stock_movements WHERE drcloud_product_key=? AND status='APPLIED'",(product_id,)).fetchone()
+        return int(row[0])
+
+    def current_positions(self) -> list[dict]:
+        rows=self.db.execute("""WITH ranked AS (SELECT drcloud_product_key,source_type,
+          COALESCE(applied_at,created_at) occurred_at,
+          ROW_NUMBER() OVER (PARTITION BY drcloud_product_key ORDER BY COALESCE(applied_at,created_at) DESC,created_at DESC,id DESC) rank
+          FROM stock_movements WHERE status='APPLIED'), totals AS
+          (SELECT drcloud_product_key,SUM(quantity_delta) quantity,MAX(COALESCE(applied_at,created_at)) last_movement_at
+           FROM stock_movements WHERE status='APPLIED' GROUP BY drcloud_product_key)
+          SELECT totals.*,ranked.source_type last_source_type FROM totals JOIN ranked USING(drcloud_product_key)
+          WHERE ranked.rank=1 ORDER BY totals.drcloud_product_key""").fetchall()
+        return [dict(row) for row in rows]
+
+    def recent_movements(self, limit: int = 50) -> list[StockMovement]:
+        limit=max(0,min(int(limit),200))
+        return [self._movement(r) for r in self.db.execute("SELECT * FROM stock_movements WHERE status='APPLIED' ORDER BY COALESCE(applied_at,created_at) DESC,id DESC LIMIT ?",(limit,))]  # type: ignore[misc]
+
+    def movements_for_product(self, product_id: str) -> list[StockMovement]:
+        return [self._movement(r) for r in self.db.execute("SELECT * FROM stock_movements WHERE drcloud_product_key=? AND status='APPLIED' ORDER BY COALESCE(applied_at,created_at) DESC,id DESC",(product_id,))]  # type: ignore[misc]
+
+    def aggregate_statistics(self) -> dict[str, int]:
+        row=self.db.execute("""SELECT COUNT(DISTINCT drcloud_product_key),
+          COALESCE(SUM(quantity_delta),0), COUNT(*),
+          COALESCE(SUM(CASE WHEN date(COALESCE(applied_at,created_at))=date('now') THEN 1 ELSE 0 END),0)
+          FROM stock_movements WHERE status='APPLIED'""").fetchone()
+        negative=self.db.execute("SELECT COUNT(*) FROM (SELECT 1 FROM stock_movements WHERE status='APPLIED' GROUP BY drcloud_product_key HAVING SUM(quantity_delta)<0)").fetchone()[0]
+        return {"products_tracked":row[0],"total_units":row[1],"movements":row[2],"movements_today":row[3],"negative_positions":negative}
 
 
 class CatalogRepository(Protocol):

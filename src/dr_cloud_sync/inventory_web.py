@@ -10,7 +10,7 @@ from .inventory import InventoryError, InventoryRepository, InventoryService
 from .os_config import OSSettings
 from .repositories import SQLiteOSRepository
 from .roadmap import DEFAULT_ROADMAP, RoadmapService
-from .services import AssignBarcodeService, BarcodeError
+from .services import AssignBarcodeService, BarcodeError, StockProjectionService
 from .admin_status import AdminStatusService, application_metadata
 from .modules import available_pages, render_navigation
 
@@ -25,11 +25,12 @@ class InventoryApp:
     def __init__(self, service: InventoryService, report_output: Path | None = None, os_repository=None,
                  roadmap_service: RoadmapService | None = None, settings: OSSettings | None = None):
         self.service=service; self.report_output=report_output; self.settings=settings
-        products=[Product(i["drcloud_product_key"],i["prestashop_key"],i.get("product_id"),i.get("combination_id"),i["shopcaisse_item_id"],service._name(i),service._ean(i),None,i.get("stock_prestashop"),i.get("stock_shopcaisse")) for i in service.items]
+        products=[Product(i["drcloud_product_key"],i["prestashop_key"],i.get("product_id"),i.get("combination_id"),i["shopcaisse_item_id"],service._name(i),service._ean(i),None,i.get("stock_prestashop"),i.get("stock_shopcaisse"),str(i.get("reference") or i.get("référence") or "")) for i in service.items]
         self.os_repository=os_repository or SQLiteOSRepository(service.repo.path,products)
         self.barcodes=AssignBarcodeService(self.os_repository,self.os_repository,DisabledConnector(),DisabledConnector())
         self.roadmap_service=roadmap_service or RoadmapService(DEFAULT_ROADMAP); self.failures={}
         self.admin_status=AdminStatusService(service.repo.path)
+        self.stock=StockProjectionService(service.repo,self.os_repository)
 
     def __call__(self, env, start):
         request_id=env.get("HTTP_X_REQUEST_ID") or str(uuid.uuid4()); path=env.get("PATH_INFO", "/"); method=env.get("REQUEST_METHOD", "GET")
@@ -38,7 +39,7 @@ class InventoryApp:
                 try: self.service.repo.db.execute("SELECT 1"); database="ok"; status="ok"
                 except Exception: database="error"; status="degraded"
                 return self._json(start,{"status":status,"application":"drcloud-os",**application_metadata(),"database":database}, headers=[("X-Request-ID",request_id)])
-            if path in {"/manifest.webmanifest","/icon.svg","/drcloud-logo.png","/inventory.css","/inventory.js","/roadmap.js","/dashboard.js","/administration.js"}:
+            if path in {"/manifest.webmanifest","/icon.svg","/drcloud-logo.png","/inventory.css","/inventory.js","/roadmap.js","/dashboard.js","/administration.js","/stock.js"}:
                 file={"/manifest.webmanifest":"manifest.webmanifest"}.get(path,path[1:]); kind="application/manifest+json" if path.endswith("webmanifest") else "image/svg+xml" if path.endswith("svg") else "text/css; charset=utf-8" if path.endswith("css") else "text/javascript; charset=utf-8"
                 if path.endswith(".png"): kind="image/png"
                 return self._send(start,(ROOT/file).read_bytes(),kind,headers=[("X-Request-ID",request_id)])
@@ -53,11 +54,23 @@ class InventoryApp:
             if path == "/inventaire": return self._html(start,"inventory.html",session,request_id)
             if path == "/roadmap": return self._html(start,"roadmap.html",session,request_id)
             if path == "/administration": return self._html(start,"administration.html",session,request_id)
+            if path == "/stock": return self._html(start,"stock.html",session,request_id)
             if path == "/api/dashboard":
                 road=self.roadmap_service.load(); return self._json(start,{"progress_percent":road["global_progress_percent"],"next":next((m["next"] for m in road["modules"] if m.get("next")),None),"catalogue":len(self.service.items),"inventory":{"session":self.service.session(),"progress":self.service.progress()},"systems":self.admin_status.collect()},headers=[("X-Request-ID",request_id)])
             if path == "/api/state": return self._json(start,{"session":self.service.session(),"progress":self.service.progress(),"proposal":self.service.proposal()})
             if path == "/api/roadmap": return self._json(start,self.roadmap_service.load())
             if path == "/api/admin/status": return self._json(start,self.admin_status.collect(),headers=[("X-Request-ID",request_id)])
+            if path == "/api/stock":
+                return self._json(start,{"positions":[asdict(p) for p in self.stock.positions()],"statistics":self.service.repo.aggregate_statistics()})
+            if path == "/api/stock/movements":
+                q=parse_qs(env.get("QUERY_STRING","")); product=q.get("product",[None])[0]
+                movements=self.service.repo.movements_for_product(product) if product else self.service.repo.recent_movements(50)
+                return self._json(start,{"movements":[self._stock_movement(m) for m in movements]})
+            if path.startswith("/api/stock/products/"):
+                from urllib.parse import unquote
+                key=unquote(path.removeprefix("/api/stock/products/")); position=self.stock.position(key)
+                if position is None: return self._json(start,{"error":"Produit sans position de stock"},"404 Not Found")
+                return self._json(start,{"position":asdict(position),"movements":[self._stock_movement(m) for m in self.service.repo.movements_for_product(key)]})
             if path == "/api/catalogue": return self._json(start,self._catalogue(parse_qs(env.get("QUERY_STRING", ""))))
             if path == "/api/items":
                 q=parse_qs(env.get("QUERY_STRING", "")); return self._json(start,self.service.search(q.get("q",[""])[0],q.get("view",["ALL"])[0],q.get("without_ean",["0"])[0]=="1"))
@@ -134,6 +147,12 @@ class InventoryApp:
             if (selected=="WITH_EAN" and not p.ean) or (selected=="WITHOUT_EAN" and p.ean) or (selected=="CONFLICT" and p.drcloud_product_key not in conflicts): continue
             row=asdict(p); row["ean_status"]="CONFLICT" if p.drcloud_product_key in conflicts else "WITH_EAN" if p.ean else "WITHOUT_EAN"; count=counts.get(p.prestashop_key); row["physical_quantity"]=count["physical_quantity"] if count else None; rows.append(row)
         return rows
+    @staticmethod
+    def _stock_movement(movement):
+        labels={"INVENTORY":"Inventaire","LEGACY":"Historique"}
+        return {"id":movement.id,"product_id":movement.drcloud_product_key,"delta":movement.quantity_delta,
+          "type":movement.movement_type.value,"origin":labels.get(movement.source_type,movement.source_type.title()),
+          "source_reference":movement.source_id,"occurred_at":movement.applied_at or movement.created_at}
     def _error(self,start,code,request_id): return self._html(start,"error.html",{"csrf":""},request_id,status={401:"401 Unauthorized",403:"403 Forbidden",404:"404 Not Found",429:"429 Too Many Requests",500:"500 Internal Server Error"}[code])
     def _redirect(self,start,location,request_id,cookie=None,clear=False):
         headers=[("Location",location),("X-Request-ID",request_id)]; secure=self.settings and self.settings.environment=="production"; attrs="; Path=/; HttpOnly; SameSite=Lax"+("; Secure" if secure else "")
