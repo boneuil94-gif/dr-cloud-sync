@@ -105,6 +105,40 @@ def test_future_modules_are_non_interactive_and_explicitly_unavailable():
     assert navigation.count("<a href=") == 7
 
 
+def test_navigation_renders_every_registry_module_once_with_complete_items():
+    for active_module in (module for module in MODULES if module.available):
+        navigation = render_navigation(active_module.id)
+        for module in MODULES:
+            assert navigation.count(f"<span>{module.label}</span>") == 1
+            assert navigation.count(f'>{module.icon}</span>') == 1
+
+        active_item = navigation.split(' aria-current="page">', 1)[1].split("</a>", 1)[0]
+        assert f'<span>{active_module.label}</span>' in active_item
+        assert '<span class="dc-nav-icon"' in active_item
+
+        for module in (module for module in MODULES if not module.available):
+            after_label = navigation.split(f'<span>{module.label}</span>', 1)[1]
+            assert after_label.startswith("<small>À venir</small>")
+
+
+def test_mobile_drawer_css_keeps_items_compact_visible_and_navigation_scrollable():
+    css = (STATIC / "inventory.css").read_text(encoding="utf-8")
+    mobile_shell = css.split("/* Mobile application shell.", 1)[1]
+
+    assert ".dc-sidebar .dc-nav{display:block;flex:1 1 auto;min-height:0" in mobile_shell
+    assert "overflow-x:hidden;overflow-y:auto" in mobile_shell
+    assert ".dc-sidebar .dc-nav a,.dc-sidebar .dc-nav-future{display:flex;align-items:center;flex:none" in mobile_shell
+    assert "min-height:46px;height:auto" in mobile_shell
+    assert ".dc-sidebar .dc-nav a>span:not(.dc-nav-icon)" in mobile_shell
+    assert ".dc-sidebar .dc-nav-icon{display:grid" in mobile_shell
+    assert ".dc-sidebar-footer{display:grid;flex:0 0 auto}" in mobile_shell
+    item_rule = mobile_shell.split(
+        ".dc-sidebar .dc-nav a,.dc-sidebar .dc-nav-future{", 1
+    )[1].split("}", 1)[0]
+    assert "height:100%" not in item_rule
+    assert "flex-grow" not in item_rule
+
+
 def test_future_routes_are_not_registered_or_rendered(configured):
     app, _ = configured
     _, cookie = login(app)
