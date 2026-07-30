@@ -8,7 +8,7 @@ from .domain import ActivityLog, ProductStatus
 from .jobs import JobRunner, SqliteJobRepository
 
 
-SOURCES = {"DRCLOUD", "PRESTASHOP", "SHOPCAISSE", "MANUAL"}
+SOURCES = {"DRCLOUD", "PRESTASHOP", "SHOPCAISSE", "HISTORICAL_SNAPSHOT", "MANUAL"}
 PROTECTED_SOURCES = {"DRCLOUD", "MANUAL"}
 FIELDS = ("base_name", "variant_name", "reference", "ean")
 
@@ -138,7 +138,8 @@ def prestashop_observations(client, products) -> list[ProductObservation]:
     parents = {str(x.get("id")): x for x in client.iter_resource("products")}
     groups = {str(x.get("id")): _label(x.get("name")) for x in client.iter_resource("product_options")}
     values = {str(x.get("id")): (_label(x.get("name")), groups.get(str(x.get("id_attribute_group") or
-              x.get("id_product_option")), "Attribut")) for x in client.iter_resource("product_option_values")}
+              x.get("id_product_option")), "Attribut"), str(x.get("id_attribute_group") or x.get("id_product_option") or ""))
+              for x in client.iter_resource("product_option_values")}
     result = []
     for product in products:
         parent, combination = parents.get(str(product.product_id), {}), combinations.get(str(product.combination_id), {})
@@ -147,12 +148,18 @@ def prestashop_observations(client, products) -> list[ProductObservation]:
         if isinstance(associations, dict): associations = [associations]
         attributes = {values[str(x.get("id"))][1]: values[str(x.get("id"))][0]
                       for x in associations or [] if str(x.get("id")) in values}
-        image_ids = combination.get("associations", {}).get("images", [])
+        details = [{"groupe": values[str(x.get("id"))][1], "groupe_id": values[str(x.get("id"))][2],
+                    "valeur": values[str(x.get("id"))][0], "value_id": str(x.get("id"))}
+                   for x in associations or [] if str(x.get("id")) in values]
+        image_ids = _association_ids(combination.get("associations", {}).get("images", []), "image")
+        parent_images = _association_ids(parent.get("associations", {}).get("images", []), "image")
+        selected_images, scope = (image_ids, "COMBINATION_IMAGE") if image_ids else (parent_images, "PARENT_FALLBACK")
         result.append(ProductObservation(product.drcloud_product_key, "PRESTASHOP", str(product.combination_id or product.product_id),
           _label(parent.get("name")), variant_name(attributes), str(combination.get("reference") or parent.get("reference") or "").strip(),
           str(combination.get("ean13") or parent.get("ean13") or "").strip(), attributes,
-          image_scope="COMBINATION" if image_ids else "PARENT", raw={"upc": combination.get("upc"),
-          "isbn": combination.get("isbn"), "mpn": combination.get("mpn"), "active": parent.get("active")},))
+          image_scope=scope if selected_images else "", raw={"upc": combination.get("upc"),
+          "isbn": combination.get("isbn"), "mpn": combination.get("mpn"), "active": parent.get("active"),
+          "attributes": details, "image_ids": selected_images},))
     return result
 
 
@@ -160,6 +167,12 @@ def _label(value: Any) -> str:
     if isinstance(value, list):
         value = next((x.get("value") for x in value if isinstance(x, dict) and x.get("value")), "")
     return str(value or "").strip()
+
+
+def _association_ids(value: Any, singular: str) -> list[str]:
+    if isinstance(value, dict): value = value.get(singular, value)
+    if isinstance(value, dict): value = [value]
+    return [str(row.get("id")) for row in value or [] if isinstance(row, dict) and row.get("id")]
 
 
 def run_enrichment_job(database, repository, observations, *, idempotency_key: str):

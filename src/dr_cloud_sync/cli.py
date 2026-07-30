@@ -23,11 +23,17 @@ from .final_mapping import FinalMappingError, finalize_mapping
 from .inventory_web import serve as serve_inventory
 from .os_admin import backup, init_catalog
 from .os_config import OSSettings
+from .rehydration import (CatalogueRehydrationService, historical_observations,
+                          run_rehydration_job)
+from .repositories import SQLiteOSRepository
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Importe le catalogue maître PrestaShop")
-    parser.add_argument("command", choices=["pull", "shopcaisse-pull", "shopcaisse-import-dry-run", "shopcaisse-import-pilot", "shopcaisse-import-controlled", "shopcaisse-import-all", "build-catalog-mapping", "analyse-mapping-exceptions", "create-mapping-exceptions", "build-final-mapping", "inventory-serve", "os-serve", "os-init-catalog", "os-backup"], help="Commande DrCloud")
+    parser.add_argument("command", choices=["pull", "shopcaisse-pull", "shopcaisse-import-dry-run", "shopcaisse-import-pilot", "shopcaisse-import-controlled", "shopcaisse-import-all", "build-catalog-mapping", "analyse-mapping-exceptions", "create-mapping-exceptions", "build-final-mapping", "inventory-serve", "os-serve", "os-init-catalog", "os-backup", "catalogue-rehydrate"], help="Commande DrCloud")
+    parser.add_argument("--apply-safe", action="store_true", help="Applique explicitement les seuls enrichissements SAFE")
+    parser.add_argument("--snapshot", type=Path, default=Path("dist/catalogue-prestashop-reconstruit.json"))
+    parser.add_argument("--report", type=Path, default=Path("dist/rapport-rehydratation-catalogue.json"))
     args = parser.parse_args(argv)
     if args.command == "pull":
         try:
@@ -180,6 +186,20 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "os-backup":
         settings=OSSettings.from_env(require_secrets=False); target=backup(settings.database,Path(os.environ.get("DRCLOUD_BACKUP_DIR","backups")),environment=settings.environment,safe_mode=settings.safe_mode)
         print(json.dumps({"status":"backup-created","path":str(target)}))
+    elif args.command == "catalogue-rehydrate":
+        settings=OSSettings.from_env(require_secrets=False)
+        repository=SQLiteOSRepository(settings.database, [])
+        observations=historical_observations(args.snapshot, repository.all())
+        service=CatalogueRehydrationService(repository, backup=lambda: backup(
+          settings.database, Path(os.environ.get("DRCLOUD_BACKUP_DIR", settings.data_dir / "backups")),
+          environment=settings.environment, safe_mode=settings.safe_mode))
+        preview=service.preview(observations)
+        args.report.parent.mkdir(parents=True,exist_ok=True)
+        args.report.write_text(json.dumps(preview,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+        job=run_rehydration_job(settings.database,service,observations,apply=args.apply_safe,
+                                actor=os.environ.get("DRCLOUD_ACTOR","cli-admin"))
+        print(json.dumps({"status":"applied" if args.apply_safe else "dry-run",
+                          "job_id":job.job_id,"summary":job.summary,"report":str(args.report)},ensure_ascii=False))
     else:
         from waitress import serve
         from .inventory_web import create_app
