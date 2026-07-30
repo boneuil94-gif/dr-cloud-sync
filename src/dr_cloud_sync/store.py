@@ -21,6 +21,13 @@ CREATE TABLE IF NOT EXISTS prestashop_entities (
   synced_at TEXT NOT NULL, PRIMARY KEY (resource, source_id)
 );
 CREATE INDEX IF NOT EXISTS idx_entities_resource ON prestashop_entities(resource);
+CREATE TABLE IF NOT EXISTS external_stock_observations (
+  job_id TEXT NOT NULL, source TEXT NOT NULL,
+  source_product_id TEXT NOT NULL, source_combination_id TEXT NOT NULL,
+  quantity INTEGER NOT NULL, observed_at TEXT NOT NULL,
+  PRIMARY KEY(job_id, source, source_product_id, source_combination_id)
+);
+CREATE INDEX IF NOT EXISTS idx_stock_observation_job ON external_stock_observations(source, job_id);
 """
 
 
@@ -46,7 +53,8 @@ class SnapshotStore:
         return int(cursor.lastrowid)
 
     def replace_snapshot(
-        self, connection: sqlite3.Connection, run_id: int | None, resources: dict[str, list[dict[str, Any]]]
+        self, connection: sqlite3.Connection, run_id: int | None, resources: dict[str, list[dict[str, Any]]],
+        *, job_id: str | None = None
     ) -> dict[str, int]:
         counts = {name: len(rows) for name, rows in resources.items()}
         now = _now()
@@ -58,6 +66,14 @@ class SnapshotStore:
                     "INSERT INTO prestashop_entities(resource, source_id, payload_json, synced_at) VALUES (?, ?, ?, ?)",
                     [(resource, _source_id(row), json.dumps(row, ensure_ascii=False), now) for row in rows],
                 )
+            if job_id is not None:
+                stocks = resources.get("stock_availables")
+                if stocks is None:
+                    raise ValueError("Snapshot PrestaShop incomplet: stock_availables absent")
+                observations = [_stock_row(row, job_id, now) for row in stocks]
+                connection.executemany("""INSERT INTO external_stock_observations
+                    (job_id,source,source_product_id,source_combination_id,quantity,observed_at)
+                    VALUES (?,?,?,?,?,?)""", observations)
             if run_id is not None:
                 connection.execute(
                     "UPDATE sync_runs SET completed_at=?, status='completed', counts_json=? WHERE id=?",
@@ -82,6 +98,16 @@ def _source_id(row: dict[str, Any]) -> int:
         return int(row["id"])
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError("Entité PrestaShop sans identifiant valide") from exc
+
+
+def _stock_row(row: dict[str, Any], job_id: str, observed_at: str) -> tuple[Any, ...]:
+    try:
+        product_id = str(int(row["id_product"]))
+        combination_id = str(int(row.get("id_product_attribute") or 0))
+        quantity = int(row["quantity"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("Quantité PrestaShop non exploitable dans le snapshot complet") from exc
+    return job_id, "PRESTASHOP", product_id, combination_id, quantity, observed_at
 
 
 def _now() -> str:

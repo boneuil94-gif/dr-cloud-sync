@@ -274,7 +274,7 @@
         {
           "id": "04-stock-m08",
           "name": "Synchronisation contrôlée",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "04-stock-m09",
@@ -295,10 +295,11 @@
         "Validation mouvements",
         "Ledger permanent",
         "Projection stock",
-        "Tests bout en bout"
+        "Tests bout en bout",
+        "Synchronisation contrôlée"
       ],
       "in_progress": [],
-      "next": "Synchronisation contrôlée",
+      "next": "Alertes stock faible (après définition d’un seuil métier)",
       "blocked": []
     },
     {

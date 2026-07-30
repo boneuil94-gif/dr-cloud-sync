@@ -137,6 +137,31 @@ class StockCoherence(StrEnum):
     INCONSISTENT = "INCONSISTENT"
 
 
+class ObservationFreshness(StrEnum):
+    FRESH = "FRESH"
+    STALE = "STALE"
+    UNKNOWN = "UNKNOWN"
+
+
+class ComparisonStatus(StrEnum):
+    MATCH = "MATCH"
+    DIFFERENCE = "DIFFERENCE"
+    STALE = "STALE"
+    UNKNOWN = "UNKNOWN"
+    INCONSISTENT = "INCONSISTENT"
+
+
+@dataclass(frozen=True)
+class ExternalStockObservation:
+    """A dated, read-only reference; never a local stock authority."""
+    drcloud_product_key: str
+    source: str
+    quantity: int
+    observed_at: str
+    job_id: str
+    freshness: ObservationFreshness
+
+
 @dataclass(frozen=True)
 class StockPosition:
     """Read-only position reconstructed from applied ledger movements."""

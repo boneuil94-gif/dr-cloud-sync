@@ -23,7 +23,7 @@ def synchronize(client: PrestaShopClient, store: SnapshotStore, *, job_id: str |
             resource: list(client.iter_resource(resource)) for resource in client.RESOURCES
         }
         with store.connect() as connection:
-            return store.replace_snapshot(connection, None, resources)
+            return store.replace_snapshot(connection, None, resources, job_id=job.job_id)
 
     result: JobRun = JobRunner(repository).run(job, pull_and_replace,
                                                  retryable=lambda _: True)
