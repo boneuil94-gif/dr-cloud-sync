@@ -80,7 +80,8 @@ def test_roadmap_page_uses_service_and_has_no_hardcoded_percentage(service):
     assert status == "200 OK" and json.loads(body)["global_progress_percent"] == 12
     assert stub.called == 1
     html = (ROOT / "src/dr_cloud_sync/static/roadmap.html").read_text(encoding="utf-8")
-    assert 'href="/roadmap"' in html
+    shell = (ROOT / "src/dr_cloud_sync/static/app-shell.html").read_text(encoding="utf-8")
+    assert 'href="/roadmap"' in shell
     assert "%" not in html
     assert request(app, "/roadmap")[0] == "200 OK"
 

@@ -140,10 +140,11 @@ def test_administration_html_contains_no_operational_values_or_unsafe_sink():
 
 def test_administration_uses_drcloud_shell_and_keeps_all_status_fields():
     html = (ROOT / "src/dr_cloud_sync/static/administration.html").read_text()
+    shell = (ROOT / "src/dr_cloud_sync/static/app-shell.html").read_text()
     css = (ROOT / "src/dr_cloud_sync/static/inventory.css").read_text()
-    assert 'class="dc-sidebar"' in html
-    assert 'href="/administration" aria-current="page"' in html
-    assert 'href="/"' in html and "Tableau de bord" in html
+    assert 'class="dc-sidebar"' in shell
+    assert 'href="/administration"{{ACTIVE_administration}}' in shell
+    assert 'href="/"' in shell and "Tableau de bord" in shell
     for section in ("application", "database", "backup", "deployment", "system"):
         assert f'data-section="{section}"' in html
     for status in ("status-ok", "status-warning", "status-error", "status-unknown"):

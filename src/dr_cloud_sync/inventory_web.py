@@ -16,6 +16,16 @@ from .admin_status import AdminStatusService, application_metadata
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
 
+# One declaration drives the shared shell. Adding a real module only requires a
+# route, a content template and an entry here; pages never duplicate navigation.
+PAGES = {
+    "dashboard.html": ("Tableau de bord", "dashboard", "dashboard.js"),
+    "roadmap.html": ("Roadmap", "roadmap", "roadmap.js"),
+    "inventory.html": ("Inventaire", "inventory", "inventory.js"),
+    "catalogue.html": ("Catalogue", "catalogue", "inventory.js"),
+    "administration.html": ("Administration", "administration", "administration.js"),
+}
+
 class InventoryApp:
     def __init__(self, service: InventoryService, report_output: Path | None = None, os_repository=None,
                  roadmap_service: RoadmapService | None = None, settings: OSSettings | None = None):
@@ -44,11 +54,10 @@ class InventoryApp:
                 self._csrf(env,session); return self._redirect(start,"/login",request_id,clear=True)
             if method not in {"GET","HEAD","OPTIONS"}: self._csrf(env,session)
             if path == "/": return self._html(start,"dashboard.html",session,request_id)
-            if path == "/catalogue": return self._html(start,"inventory.html",session,request_id)
+            if path == "/catalogue": return self._html(start,"catalogue.html",session,request_id)
             if path == "/inventaire": return self._html(start,"inventory.html",session,request_id)
             if path == "/roadmap": return self._html(start,"roadmap.html",session,request_id)
             if path == "/administration": return self._html(start,"administration.html",session,request_id)
-            if path.startswith("/modules/"): return self._html(start,"coming-soon.html",session,request_id)
             if path == "/api/dashboard":
                 road=self.roadmap_service.load(); return self._json(start,{"progress_percent":road["global_progress_percent"],"next":next((m["next"] for m in road["modules"] if m.get("next")),None),"catalogue":len(self.service.items),"inventory":{"session":self.service.session(),"progress":self.service.progress()},"systems":self.admin_status.collect()},headers=[("X-Request-ID",request_id)])
             if path == "/api/state": return self._json(start,{"session":self.service.session(),"progress":self.service.progress()})
@@ -106,7 +115,15 @@ class InventoryApp:
         return env["drcloud.raw_body"]
     def _body(self,env): return json.loads(self._raw_body(env) or b"{}")
     def _html(self,start,name,session,request_id,status="200 OK"):
-        html=(ROOT/name).read_text(encoding="utf-8"); safe=self.settings.safe_mode if self.settings else True
+        content_name="inventory.html" if name == "catalogue.html" else name
+        html=(ROOT/content_name).read_text(encoding="utf-8"); safe=self.settings.safe_mode if self.settings else True
+        if name in PAGES:
+            title, active, script = PAGES[name]
+            shell=(ROOT/"app-shell.html").read_text(encoding="utf-8")
+            html=shell.replace("{{PAGE_CONTENT}}",html).replace("{{PAGE_TITLE}}",title).replace("{{PAGE_SCRIPT}}",script)
+            html=html.replace(f'{{{{ACTIVE_{active}}}}}', ' aria-current="page"')
+            for key in ("dashboard", "roadmap", "catalogue", "inventory", "administration"):
+                html=html.replace(f"{{{{ACTIVE_{key}}}}}", "")
         html=html.replace("{{SAFE_BANNER}}",'<div class="safe">Mode sécurisé — écritures externes désactivées</div>' if safe else "").replace("{{CSRF}}",session["csrf"] if session else "")
         return self._send(start,html.encode(),"text/html; charset=utf-8",status,[("X-Request-ID",request_id)])
     def _catalogue(self,query):

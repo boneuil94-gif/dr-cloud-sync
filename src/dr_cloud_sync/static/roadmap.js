@@ -19,4 +19,4 @@ fetch("/api/roadmap").then(response => {
     node.querySelector(".blocked").textContent = list(module.blocked);
     target.appendChild(node);
   });
-}).catch(error => { document.querySelector("#roadmapError").textContent = error.message; });
+}).catch(error => { const alert=document.querySelector("#roadmapError"); alert.hidden=false; alert.textContent=error.message; });
