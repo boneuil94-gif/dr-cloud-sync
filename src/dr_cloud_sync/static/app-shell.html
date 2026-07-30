@@ -1,7 +1,36 @@
 <!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#111513"><meta name="csrf-token" content="{{CSRF}}"><link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/icon.svg"><link rel="stylesheet" href="/inventory.css"><title>DrCloud OS — {{PAGE_TITLE}}</title></head>
-<body class="dc-body dashboard-body">{{SAFE_BANNER}}<div class="dc-app">
-<aside class="dc-sidebar"><a class="dc-brand dc-brand-official" href="/" aria-label="DrCloud OS, accueil"><img src="/drcloud-logo.png" alt="Logo officiel Dr Cloud" width="500" height="500"><span class="dc-os-mark">OS</span></a><nav class="dc-nav" aria-label="Navigation principale">{{NAVIGATION}}</nav><div class="dc-sidebar-footer"><span>Dr Cloud</span><small>DrCloud OS</small></div></aside>
-<div class="dc-workspace"><header class="dc-topbar"><div><span class="dc-context">DrCloud OS</span><span aria-hidden="true">/</span><strong>{{PAGE_TITLE}}</strong></div><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{CSRF}}"><button class="dc-button dc-button-secondary">Déconnexion</button></form></header>
-{{PAGE_CONTENT}}
-</div></div><script src="/{{PAGE_SCRIPT}}"></script></body></html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111513">
+  <meta name="csrf-token" content="{{CSRF}}">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg">
+  <link rel="stylesheet" href="/inventory.css">
+  <title>DrCloud OS — {{PAGE_TITLE}}</title>
+</head>
+<body class="dc-body dashboard-body">
+{{SAFE_BANNER}}
+<div class="dc-app">
+  <aside class="dc-sidebar" id="mobileDrawer" aria-label="Menu DrCloud OS">
+    <a class="dc-brand dc-brand-official" href="/" aria-label="DrCloud OS, accueil"><img src="/drcloud-logo.png" alt="Logo officiel Dr Cloud" width="500" height="500"><span class="dc-os-mark">OS</span></a>
+    <nav class="dc-nav" aria-label="Navigation principale">{{NAVIGATION}}</nav>
+    <div class="dc-sidebar-footer"><span>Dr Cloud</span><small>DrCloud OS</small></div>
+  </aside>
+  <button class="dc-drawer-overlay" type="button" aria-label="Fermer le menu" tabindex="-1"></button>
+  <div class="dc-workspace">
+    <header class="dc-topbar">
+      <div class="dc-topbar-title">
+        <button class="dc-menu-button" type="button" aria-label="Ouvrir le menu" aria-controls="mobileDrawer" aria-expanded="false"><span aria-hidden="true">☰</span></button>
+        <span class="dc-context">DrCloud OS</span><span class="dc-separator" aria-hidden="true">/</span><strong>{{PAGE_TITLE}}</strong>
+      </div>
+      <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{CSRF}}"><button class="dc-button dc-button-secondary">Déconnexion</button></form>
+    </header>
+    {{PAGE_CONTENT}}
+  </div>
+</div>
+<script src="/app-shell.js"></script>
+<script src="/{{PAGE_SCRIPT}}"></script>
+</body>
+</html>

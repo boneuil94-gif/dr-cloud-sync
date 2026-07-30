@@ -1,1 +1,1 @@
-{"name":"DrCloud OS","short_name":"DrCloud OS","start_url":"/","display":"standalone","background_color":"#f4f7fa","theme_color":"#173b57","icons":[{"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}
+{"name":"DrCloud OS","short_name":"DrCloud OS","start_url":"/","scope":"/","display":"standalone","background_color":"#f5f7f6","theme_color":"#111513","icons":[{"src":"/drcloud-logo.png","sizes":"500x500","type":"image/png","purpose":"any"}]}

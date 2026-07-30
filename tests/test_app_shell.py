@@ -32,6 +32,50 @@ def test_authenticated_pages_share_shell_brand_navigation_and_active_state(confi
         assert 'href="/modules/' not in html
 
 
+def test_shared_shell_exposes_accessible_mobile_drawer_contract(configured):
+    app, _ = configured
+    _, cookie = login(app)
+    status, _, body = request(app, "/inventaire", cookie=cookie)
+    html = body.decode()
+    assert status == "200 OK"
+    assert 'class="dc-sidebar" id="mobileDrawer"' in html
+    assert 'class="dc-menu-button" type="button"' in html
+    assert 'aria-label="Ouvrir le menu"' in html
+    assert 'aria-controls="mobileDrawer"' in html
+    assert 'aria-expanded="false"' in html
+    assert 'class="dc-drawer-overlay"' in html
+    assert '<script src="/app-shell.js"></script>' in html
+    assert '<link rel="manifest" href="/manifest.webmanifest">' in html
+
+
+def test_manifest_keeps_standalone_scope_and_official_icon(configured):
+    app, _ = configured
+    status, _, body = request(app, "/manifest.webmanifest")
+    manifest = __import__("json").loads(body)
+    assert status == "200 OK"
+    assert manifest["name"] == "DrCloud OS"
+    assert manifest["display"] == "standalone"
+    assert manifest["start_url"] == manifest["scope"] == "/"
+    assert manifest["icons"] == [{
+        "src": "/drcloud-logo.png", "sizes": "500x500",
+        "type": "image/png", "purpose": "any",
+    }]
+
+
+def test_inventory_mobile_scanner_has_manual_fallback_contract(configured):
+    app, _ = configured
+    _, cookie = login(app)
+    html = request(app, "/inventaire", cookie=cookie)[2].decode()
+    assert 'id="camera" type="button" aria-label="Scanner un EAN avec la caméra"' in html
+    assert '<span>Scanner</span>' in html
+    assert 'id="cameraPanel" class="camera-panel" hidden' in html
+    assert 'id="closeCamera" type="button"' in html
+    script = (STATIC / "inventory.js").read_text(encoding="utf-8")
+    assert "Permission caméra refusée" in script
+    assert "EAN non reconnu" in script
+    assert "getUserMedia" in script and "track.stop()" in script
+
+
 def test_registry_declares_every_target_and_stock_is_available():
     assert [module.label for module in MODULES] == [
         "Tableau de bord", "Roadmap", "Catalogue", "Inventaire", "Stock",
