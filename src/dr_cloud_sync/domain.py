@@ -65,6 +65,49 @@ class ProductStatus(StrEnum):
     ARCHIVED = "ARCHIVED"
 
 
+class SupplierStatus(StrEnum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    ARCHIVED = "ARCHIVED"
+
+
+@dataclass
+class Supplier:
+    """Canonical supplier, independent from every external connector."""
+    supplier_id: str
+    name: str
+    status: SupplierStatus = SupplierStatus.ACTIVE
+    email: str = ""
+    phone: str = ""
+    website: str = ""
+    address: str = ""
+    postal_code: str = ""
+    city: str = ""
+    country: str = ""
+    contact_name: str = ""
+    notes: str = ""
+    created_at: str = field(default_factory=utc_now)
+    updated_at: str = field(default_factory=utc_now)
+
+    def __post_init__(self) -> None:
+        if not self.supplier_id.strip():
+            raise ValueError("supplier_id is required")
+        self.status = SupplierStatus(self.status)
+
+    def transition_to(self, status: SupplierStatus) -> None:
+        target = SupplierStatus(status)
+        allowed = {
+            SupplierStatus.ACTIVE: {SupplierStatus.INACTIVE, SupplierStatus.ARCHIVED},
+            SupplierStatus.INACTIVE: {SupplierStatus.ACTIVE, SupplierStatus.ARCHIVED},
+            SupplierStatus.ARCHIVED: {SupplierStatus.INACTIVE},
+        }
+        if target != self.status and target not in allowed[self.status]:
+            raise ValueError(f"transition {self.status} -> {target} is forbidden")
+        if target != self.status:
+            self.status = target
+            self.updated_at = utc_now()
+
+
 class CatalogueCoherence(StrEnum):
     OK = "OK"
     WARNING = "ATTENTION"
