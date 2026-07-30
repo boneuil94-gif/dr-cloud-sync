@@ -29,11 +29,22 @@ LOG = logging.getLogger("drcloud.os")
 # route, a content template and an entry here; pages never duplicate navigation.
 PAGES = available_pages()
 
+def _commercial_attributes(value):
+    if isinstance(value, dict):
+        return value
+    result = {}
+    for item in value or []:
+        if isinstance(item, dict):
+            group=item.get("groupe") or item.get("group") or item.get("name")
+            label=item.get("nom") or item.get("value") or item.get("label")
+            if group and label: result[str(group)]=str(label)
+    return result
+
 class InventoryApp:
     def __init__(self, service: InventoryService, report_output: Path | None = None, os_repository=None,
                  roadmap_service: RoadmapService | None = None, settings: OSSettings | None = None):
         self.service=service; self.report_output=report_output; self.settings=settings
-        products=[Product(i["drcloud_product_key"],i["prestashop_key"],i.get("product_id"),i.get("combination_id"),i["shopcaisse_item_id"],service._name(i),service._ean(i),None,i.get("stock_prestashop"),i.get("stock_shopcaisse"),str(i.get("reference") or i.get("référence") or "")) for i in service.items]
+        products=[Product(i["drcloud_product_key"],i["prestashop_key"],i.get("product_id"),i.get("combination_id"),i["shopcaisse_item_id"],service._name(i),service._ean(i),None,i.get("stock_prestashop"),i.get("stock_shopcaisse"),str(i.get("reference") or i.get("référence") or ""),base_name=str(i.get("base_name") or service._name(i)),variant_name=str(i.get("variant_name") or i.get("variation_name") or i.get("declinaison") or ""),attributes=_commercial_attributes(i.get("attributes") or i.get("attributs")),name_source=str(i.get("name_source") or "PRESTASHOP"),variant_source="PRESTASHOP" if i.get("combination_id") and (i.get("attributes") or i.get("attributs") or i.get("variant_name")) else "",reference_source="PRESTASHOP" if i.get("reference") else "",ean_source=str(i.get("ean_source") or ("PRESTASHOP" if service._ean(i) else ""))) for i in service.items]
         self.os_repository=os_repository or SQLiteOSRepository(service.repo.path,products)
         self.barcodes=AssignBarcodeService(self.os_repository,self.os_repository,DisabledConnector(),DisabledConnector())
         self.roadmap_service=roadmap_service or RoadmapService(DEFAULT_ROADMAP); self.failures={}
@@ -271,9 +282,9 @@ class InventoryApp:
     def _catalogue(self,query):
         text=query.get("q",[""])[0].casefold(); selected=query.get("filter",["ALL"])[0]; conflicts={p.drcloud_product_key for p in self.os_repository.all() for other in self.os_repository.by_ean(p.ean) if p.ean and other.drcloud_product_key != p.drcloud_product_key}; counts=self.service.repo.counts(self.service.session()["id"]); rows=[]
         for p in self.os_repository.all():
-            if text and text not in f"{p.name} {p.ean} {p.reference} {p.prestashop_key} {p.shopcaisse_item_id}".casefold(): continue
+            if text and text not in f"{p.base_name} {p.variant_name} {p.display_name} {p.attributes} {p.ean} {p.reference} {p.prestashop_key} {p.shopcaisse_item_id}".casefold(): continue
             if (selected=="WITH_EAN" and not p.ean) or (selected=="WITHOUT_EAN" and p.ean) or (selected=="CONFLICT" and p.drcloud_product_key not in conflicts): continue
-            row=asdict(p); problems=[]
+            row=asdict(p); row["display_name"]=p.display_name; problems=[]
             if p.drcloud_product_key in conflicts: problems.append("EAN dupliqué")
             if not p.prestashop_key or not p.shopcaisse_item_id: problems.append("Référence externe requise absente")
             row["coherence"]="INCOHÉRENT" if problems else "ATTENTION" if not p.ean else "OK"
@@ -282,7 +293,7 @@ class InventoryApp:
             self._with_media(row,p.drcloud_product_key)
         return rows
     def _with_media(self,row,key,display=False):
-        media=self.media.primary(key); row["media_url"]=self.media.url(media,MediaVariantKind.DISPLAY if display else MediaVariantKind.THUMBNAIL); row["media_width"]=(media.width if media else None); row["media_height"]=(media.height if media else None); return row
+        media=self.media.primary(key); row["media_url"]=self.media.url(media,MediaVariantKind.DISPLAY if display else MediaVariantKind.THUMBNAIL); row["media_width"]=(media.width if media else None); row["media_height"]=(media.height if media else None); row["media_status"]="AVAILABLE" if media else "MISSING"; return row
     def _media_json(self,media):
         value=asdict(media); value.pop("storage_reference",None); value["url"]=self.media.url(media,MediaVariantKind.ORIGINAL); value["thumbnail_url"]=self.media.url(media); value["display_url"]=self.media.url(media,MediaVariantKind.DISPLAY); return value
     def _media_api(self,path,method,env,start,session):

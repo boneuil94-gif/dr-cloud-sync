@@ -174,7 +174,7 @@ class StockProjectionService:
             elif row["quantity"] < 0:
                 coherence=StockCoherence.WARNING; issue="Position négative"
             result.append(StockPosition(row["drcloud_product_key"], product.reference if product else "",
-              product.name if product else "Produit inconnu", int(row["quantity"]), row["last_movement_at"],
+              product.display_name if product else "Produit inconnu", int(row["quantity"]), row["last_movement_at"],
               row["last_source_type"], coherence, issue))
         return result
 

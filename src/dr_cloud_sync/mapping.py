@@ -143,8 +143,12 @@ def pull_prestashop(client: PrestaShopClient) -> list[dict[str, Any]]:
     products = list(client.iter_resource("products"))
     combinations = list(client.iter_resource("combinations"))
     stocks = list(client.iter_resource("stock_availables"))
-    values = {str(v.get("id")): _text(v.get("name"))
-              for v in client.iter_resource("product_option_values")}
+    options = {str(v.get("id")): _text(v.get("name"))
+               for v in client.iter_resource("product_options")}
+    raw_values = list(client.iter_resource("product_option_values"))
+    values = {str(v.get("id")): (_text(v.get("name")),
+              options.get(str(v.get("id_attribute_group") or v.get("id_product_option")), "Attribut"))
+              for v in raw_values}
     by_product: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for combination in combinations:
         by_product[str(combination.get("id_product"))].append(combination)
@@ -161,9 +165,13 @@ def pull_prestashop(client: PrestaShopClient) -> list[dict[str, Any]]:
                 associations = associations.get("product_option_value", associations)
             if isinstance(associations, dict):
                 associations = [associations]
-            attributes = [values.get(str(v.get("id")), str(v.get("id"))) for v in associations or []]
+            attributes = {values[str(v.get("id"))][1]: values[str(v.get("id"))][0]
+                          for v in associations or [] if str(v.get("id")) in values}
+            variant_name = " / ".join(attributes.values())
             units.append({"key": prestashop_key(pid, cid), "product_id": pid, "combination_id": cid,
-                          "name": _text(product.get("name")), "attributes": attributes,
+                          "name": _text(product.get("name")), "base_name": _text(product.get("name")),
+                          "variant_name": variant_name, "display_name": _text(product.get("name")) + (f" — {variant_name}" if variant_name else ""),
+                          "attributes": attributes,
                           "ean": _text((combination or product).get("ean13")),
                           "reference": _text((combination or {}).get("reference")) or _text(product.get("reference")),
                           "stock": stock_by_pair.get((str(pid), str(cid or 0)))})

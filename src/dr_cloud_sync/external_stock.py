@@ -59,7 +59,7 @@ class ExternalStockQueryService:
             elif observation.freshness is ObservationFreshness.STALE: status=ComparisonStatus.STALE
             elif quantity == observation.quantity: status=ComparisonStatus.MATCH
             else: status=ComparisonStatus.DIFFERENCE
-            rows.append({"drcloud_product_key":product.drcloud_product_key,"name":product.name,"reference":product.reference,
+            rows.append({"drcloud_product_key":product.drcloud_product_key,"name":product.display_name,"reference":product.reference,
               "local_quantity":quantity,"prestashop":asdict(observation) if observation else None,
               "shopcaisse":None,"difference_prestashop":quantity-observation.quantity if observation else None,
               "difference_shopcaisse":None,"status":status.value})

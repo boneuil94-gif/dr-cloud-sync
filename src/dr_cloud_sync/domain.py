@@ -300,6 +300,13 @@ class Product:
     status: ProductStatus = ProductStatus.ACTIVE
     created_at: str = field(default_factory=utc_now)
     updated_at: str = field(default_factory=utc_now)
+    base_name: str = ""
+    variant_name: str = ""
+    attributes: dict[str, str] = field(default_factory=dict)
+    name_source: str = "DRCLOUD"
+    variant_source: str = ""
+    reference_source: str = ""
+    ean_source: str = ""
 
     def __post_init__(self) -> None:
         """External references may change; the DrCloud key never does."""
@@ -307,6 +314,15 @@ class Product:
             if not str(getattr(self, field_name)).strip():
                 raise ValueError(f"{field_name} is required")
         self.status = ProductStatus(self.status)
+        self.base_name = self.base_name.strip() or self.name.strip()
+        self.variant_name = self.variant_name.strip()
+        self.attributes = {str(k).strip(): str(v).strip() for k, v in self.attributes.items()
+                           if str(k).strip() and str(v).strip()}
+
+    @property
+    def display_name(self) -> str:
+        """Central commercial label; it is deliberately unrelated to identity."""
+        return f"{self.base_name} — {self.variant_name}" if self.variant_name else self.base_name
 
     def transition_to(self, status: ProductStatus) -> None:
         """Apply the deliberately small, reversible lifecycle state machine."""

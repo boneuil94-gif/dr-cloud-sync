@@ -198,6 +198,9 @@ def finalize_mapping(mapping_path: Path, corrections_path: Path, creation_report
             inventory.append({
                 "prestashop_key": row["prestashop_key"], "product_id": row["product_id"],
                 "combination_id": row["combination_id"], "nom complet": row["name"],
+                "base_name": _ps(source).get("base_name") or _ps(source).get("name") or row["name"],
+                "variant_name": _ps(source).get("variant_name") or "",
+                "attributes": _ps(source).get("attributes") or {},
                 "EAN": row["ean"], "référence": row["reference"],
                 "shopcaisse_item_id": row["shopcaisse_item_id"],
                 "stock_prestashop": _ps(source).get("stock", _ps(source).get("quantity")),
