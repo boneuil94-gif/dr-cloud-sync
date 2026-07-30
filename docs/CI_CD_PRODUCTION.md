@@ -81,7 +81,28 @@ sauvegarde déclenche une attention. Le disque passe en attention à 85 % et en 
 section. `/health` reste public, minimal et inchangé pour la CI/CD.
 
 Le conteneur lit les sauvegardes via le montage `/backups` existant. Aucun socket Docker
-ni privilège supplémentaire n'est utilisé. Si le marqueur de déploiement n'est pas
-présent dans le conteneur, la cohérence de déploiement apparaît simplement comme
-inconnue ; une évolution du montage pourra être évaluée séparément sans exposer le
-checkout en écriture.
+ni privilège supplémentaire n'est utilisé.
+
+### Publication atomique du dernier succès
+
+`deploy.sh` crée un petit répertoire d'état dédié, ignoré par Git, puis Docker Compose
+monte uniquement ce répertoire sous `/run/drcloud-deployment:ro`. Il ne monte ni le
+checkout `/opt/drcloud-os`, ni `.git`, ni `docker.sock`. L'application s'exécute
+toujours avec l'utilisateur non privilégié `drcloud` et ne peut donc pas modifier le
+marqueur. Le fichier historique `deploy/ovh/.last-successful-commit` reste disponible
+sur l'hôte pour l'exploitation, mais n'est pas la source lue dans le conteneur.
+
+`update.sh` conserve la séquence suivante : build/recréation, health local, health
+HTTPS et validation du SHA attendu, puis seulement publication du SHA. La publication
+écrit un fichier temporaire de mode `0444` et effectue un renommage atomique. Pendant
+les contrôles, le marqueur contient donc encore le dernier succès précédent et
+l'Administration peut signaler une divergence. Après succès, les SHA servi et validé
+coïncident et la section passe à `ok`.
+
+Si la cible échoue, son SHA n'est jamais publié. Le checkout revient au SHA précédent,
+le service est reconstruit et les deux contrôles sont rejoués ; ce SHA n'est republié
+qu'après réussite du rollback. La base SQLite reste volontairement telle quelle. Si le
+rollback échoue, le marqueur n'est pas modifié et aucun faux état OK n'est créé. Sur
+une première installation, le répertoire vide est monté : l'API retourne `unknown`
+jusqu'au premier déploiement entièrement validé. Un fichier absent, vide ou invalide
+reste également `unknown` et n'interrompt pas la page Administration.

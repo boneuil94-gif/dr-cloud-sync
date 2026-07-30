@@ -19,3 +19,4 @@ build/
 
 # Runtime deployment state
 deploy/ovh/.last-successful-commit
+deploy/ovh/.deployment-state/

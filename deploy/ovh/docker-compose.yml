@@ -12,11 +12,14 @@ services:
     restart: unless-stopped
     env_file:
       - ./drcloud.env
+    environment:
+      DRCLOUD_DEPLOYMENT_MARKER: /run/drcloud-deployment/last-successful-commit
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
       - drcloud-data:/data
       - ${DRCLOUD_BACKUP_ROOT:-/var/backups/drcloud}:/backups
+      - ${DRCLOUD_DEPLOYMENT_STATE_DIR:-./.deployment-state}:/run/drcloud-deployment:ro
     logging:
       driver: json-file
       options:

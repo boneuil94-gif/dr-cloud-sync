@@ -80,3 +80,32 @@ def test_safe_defaults_block_mutations_but_allow_get(monkeypatch):
         for method in ('POST','PUT','PATCH','DELETE'):
             with pytest.raises(SafeModeViolation):assert_external_write_allowed(system,method)
         assert_external_write_allowed(system,'GET')
+
+
+def test_deployment_metadata_mount_is_minimal_and_read_only():
+    root = Path(__file__).parents[1]
+    compose = (root / "deploy/ovh/docker-compose.yml").read_text()
+    dockerfile = (root / "Dockerfile").read_text()
+    assert ".deployment-state}:/run/drcloud-deployment:ro" in compose
+    assert "DRCLOUD_DEPLOYMENT_MARKER: /run/drcloud-deployment/last-successful-commit" in compose
+    assert "/opt/drcloud-os" not in compose
+    assert "/.git" not in compose and "docker.sock" not in compose
+    assert "USER drcloud" in dockerfile
+
+
+def test_success_marker_is_published_only_after_checks_and_rollback_validation():
+    script = (Path(__file__).parents[1] / "deploy/ovh/update.sh").read_text()
+    success_check = script.index('EXPECTED_COMMIT="$target"')
+    success_publish = script.index('record_successful_commit "$target"')
+    rollback_check = script.index('EXPECTED_COMMIT="$previous"')
+    rollback_publish = script.index('record_successful_commit "$previous"')
+    assert success_check < success_publish < rollback_check < rollback_publish
+    assert "mv -f \"$state_tmp\"" in script  # Atomic rename, not in-place mutation.
+    assert "chmod 0444 \"$state_tmp\"" in script
+
+
+def test_first_install_creates_state_directory_without_claiming_success():
+    root = Path(__file__).parents[1]
+    deploy = (root / "deploy/ovh/deploy.sh").read_text()
+    assert 'install -d -m 0755 "$DRCLOUD_DEPLOYMENT_STATE_DIR"' in deploy
+    assert "record_successful_commit" not in deploy

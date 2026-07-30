@@ -33,7 +33,8 @@ class AdminStatusService:
         self.database = Path(database)
         self.backup_root = Path(backup_root or os.environ.get("DRCLOUD_BACKUP_ROOT", "/backups"))
         self.deployment_marker = Path(deployment_marker or os.environ.get(
-            "DRCLOUD_DEPLOYMENT_MARKER", "/app/deploy/ovh/.last-successful-commit"))
+            "DRCLOUD_DEPLOYMENT_MARKER",
+            "/run/drcloud-deployment/last-successful-commit"))
         self.now = now or (lambda: datetime.now(timezone.utc))
         self.disk_usage = disk_usage or shutil.disk_usage
 
@@ -104,12 +105,11 @@ class AdminStatusService:
                 "last_backup_at": latest.isoformat().replace("+00:00", "Z"), "age_seconds": age}
 
     def _deployment(self, metadata):
-        served = metadata["commit"]
+        served = self._valid_commit(metadata["commit"])
         successful = "unknown"
         try:
             candidate = self.deployment_marker.read_text(encoding="utf-8").strip()
-            if candidate and len(candidate) <= 64 and all(char in "0123456789abcdefABCDEF" for char in candidate):
-                successful = candidate
+            successful = self._valid_commit(candidate)
         except (OSError, UnicodeError):
             pass
         consistency = "unknown" if "unknown" in (served, successful) else "match" if served == successful else "mismatch"
@@ -117,6 +117,14 @@ class AdminStatusService:
         return {"status": status, "served_commit": served,
                 "last_successful_commit": successful, "consistency": consistency,
                 "build_date": metadata["build_date"], "runtime": "application"}
+
+    @staticmethod
+    def _valid_commit(value):
+        """Return a canonical full Git SHA, never unchecked marker contents."""
+        if isinstance(value, str) and len(value) == 40 and all(
+                char in "0123456789abcdefABCDEF" for char in value):
+            return value.lower()
+        return "unknown"
 
     def _system(self):
         target = self.database.parent if self.database.parent.exists() else Path.cwd()
