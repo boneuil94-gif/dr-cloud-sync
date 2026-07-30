@@ -25,7 +25,8 @@ jobs:
           bash -n deploy/ovh/*.sh
           cp deploy/ovh/drcloud.env.example deploy/ovh/drcloud.env
           sed -i 's/CHANGE_ME/generic-ci-value-long-enough-1234567890/g' deploy/ovh/drcloud.env
-          docker compose -f deploy/ovh/docker-compose.yml config --quiet
+          DRCLOUD_DEPLOYMENT_STATE_DIR="${{ github.workspace }}/deploy/ovh/.deployment-state" \
+            docker compose -f deploy/ovh/docker-compose.yml config --quiet
       - run: git diff --check
       - name: Build and inspect runtime image
         run: |

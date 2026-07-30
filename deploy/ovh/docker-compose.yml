@@ -19,7 +19,7 @@ services:
     volumes:
       - drcloud-data:/data
       - ${DRCLOUD_BACKUP_ROOT:-/var/backups/drcloud}:/backups
-      - ${DRCLOUD_DEPLOYMENT_STATE_DIR:-./.deployment-state}:/run/drcloud-deployment:ro
+      - ${DRCLOUD_DEPLOYMENT_STATE_DIR:?set by deploy.sh}:/run/drcloud-deployment:ro
     logging:
       driver: json-file
       options:
