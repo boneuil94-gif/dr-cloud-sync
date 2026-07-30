@@ -80,11 +80,29 @@ def _expected_name(row: dict[str, Any]) -> str:
 
 def _flat(row: dict[str, Any], item_id: str, *, correction: bool) -> dict[str, Any]:
     source = _ps(row)
+    attributes = source.get("attributes") or source.get("attributs") or []
+    values = []
+    if isinstance(attributes, dict):
+        values = [_text(value) for value in attributes.values() if _text(value)]
+    elif isinstance(attributes, list):
+        values = [_text(value.get("nom") or value.get("value") or value.get("label"))
+                  if isinstance(value, dict) else _text(value) for value in attributes]
+        values = [value for value in values if value]
+    variant = _text(source.get("variant_name")) or " · ".join(values)
+    base = _text(source.get("base_name") or source.get("name") or row.get("name"))
     return {
         "prestashop_key": _key(row),
         "product_id": source.get("product_id", row.get("product_id")),
         "combination_id": source.get("combination_id", row.get("combination_id")),
         "name": source.get("name", row.get("name")),
+        "base_name": base,
+        "variant_name": variant,
+        "display_name": base + (f" — {variant}" if variant else ""),
+        "attributes": attributes,
+        "shopcaisse_name": _text(row.get("shopcaisse_name") or _expected_name(row)),
+        "stock_source": source.get("stock", source.get("quantity")),
+        "price": source.get("price", source.get("price_ttc")),
+        "images": source.get("images") or source.get("image_ids") or [],
         "ean": source.get("ean", source.get("ean13", row.get("ean"))),
         "reference": source.get("reference", row.get("reference")),
         "shopcaisse_item_id": item_id,
