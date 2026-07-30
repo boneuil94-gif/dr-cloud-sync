@@ -126,6 +126,28 @@ class StockService:
                 raise
             return self._replay(existing, movement)
 
+    def apply(self, movement: StockMovement) -> RecordMovementResult:
+        """Append an already validated local movement to the ledger.
+
+        Transaction ownership deliberately remains with the caller so a workflow
+        can atomically append several movements and update its own aggregate.
+        """
+        if (movement.status != MovementStatus.APPLIED or movement.validated_at is None
+                or movement.applied_at is None):
+            raise ValueError("applied stock movements must be validated and dated")
+        existing = self.repository.by_idempotency_key(
+            movement.source_type, movement.idempotency_key)
+        if existing is not None:
+            return self._replay(existing, movement)
+        try:
+            self.repository.append(movement)
+            return RecordMovementResult(movement, True)
+        except DuplicateStockMovement:
+            existing = self.repository.by_idempotency_key(
+                movement.source_type, movement.idempotency_key)
+            if existing is None:
+                raise
+            return self._replay(existing, movement)
     @staticmethod
     def _replay(existing: StockMovement, candidate: StockMovement) -> RecordMovementResult:
         if existing.business_payload() != candidate.business_payload():

@@ -96,3 +96,95 @@ def test_web_api_and_no_secrets(service):
 def test_invalid_mapping_is_refused(tmp_path):
     cat=tmp_path/"c";cat.write_text("[]");rep=tmp_path/"r";rep.write_text('{"ready_for_inventory":false}')
     with pytest.raises(InventoryError): InventoryService(cat,rep,InventoryRepository(tmp_path/"d"))
+
+
+def complete_inventory(service, quantities=None):
+    quantities=quantities or {}
+    for i in range(478):
+        service.count(f"p:{i}",quantities.get(i,2),"MANUAL")
+    return service.complete()
+
+
+def test_inventory_workflow_persists_freezes_and_starts_fresh_session(service):
+    assert service.session()["status"] == "IN_PROGRESS"
+    assert service.complete()["completed"] is False
+    completed=complete_inventory(service,{0:5,1:0})
+    assert completed["completed"] is True
+    assert service.session()["status"] == "PROPOSED"
+    proposal=service.proposal()
+    assert proposal and proposal["id"] == completed["proposal_id"]
+    assert proposal["summary"] == {"lines":478,"increases":1,"decreases":1,"unchanged":476}
+    assert service.create_proposal()["id"] == proposal["id"]
+    with pytest.raises(InventoryError,match="gelée"):
+        service.count("p:0",9,"MANUAL","EDIT")
+    old_id=service.session()["id"]
+    fresh=service.new_session()
+    assert fresh["id"] != old_id and fresh["status"] == "IN_PROGRESS"
+    assert service.repo.proposal(old_id)["id"] == proposal["id"]
+
+
+def test_draft_starts_on_first_count(service):
+    identifier=service.session()["id"]
+    with service.repo.db:
+        service.repo.db.execute("UPDATE sessions SET status='DRAFT',started_at=NULL WHERE id=?",(identifier,))
+    service.count("p:0",1,"MANUAL")
+    assert service.session()["status"] == "IN_PROGRESS"
+    assert service.session()["started_at"] is not None
+
+
+def test_human_validation_application_and_idempotent_replay(service):
+    complete_inventory(service,{0:5,1:0})
+    proposal=service.proposal(); assert proposal["status"] == "PROPOSED"
+    with pytest.raises(InventoryError,match="validée"):
+        service.apply("alice")
+    validated=service.validate("alice")
+    assert validated["status"] == "VALIDATED" and validated["actor"] == "alice"
+    assert service.validate("bob")["actor"] == "alice"
+    applied=service.apply("alice")
+    assert applied["status"] == "APPLIED" and applied["movement_count"] == 2
+    movements=service.repo.list()
+    assert len(movements)==2 and all(m.status.value=="APPLIED" for m in movements)
+    assert {m.idempotency_key for m in movements} == {
+        f"inventory:{proposal['session_id']}:drc:p:0:v1",
+        f"inventory:{proposal['session_id']}:drc:p:1:v1"}
+    assert service.apply("alice")["movement_count"] == 2
+    assert len(service.repo.list()) == 2
+
+
+def test_application_rolls_back_and_retry_is_safe(service, monkeypatch):
+    from dr_cloud_sync.services import StockService
+    complete_inventory(service,{0:5,1:0}); service.validate("alice")
+    original=StockService.apply; calls=0
+    def fail_second(self,movement):
+        nonlocal calls; calls+=1
+        if calls == 2: raise RuntimeError("sqlite password=secret")
+        return original(self,movement)
+    monkeypatch.setattr(StockService,"apply",fail_second)
+    with pytest.raises(InventoryError,match="transactionnelle"):
+        service.apply("alice")
+    assert service.repo.list() == []
+    failed=service.proposal(); assert failed["status"] == "VALIDATED" and "secret" not in failed["error"]
+    monkeypatch.setattr(StockService,"apply",original)
+    retried=service.apply("alice")
+    assert retried["status"] == "APPLIED" and len(service.repo.list()) == 2 and retried["error"] is None
+
+
+def test_legacy_session_schema_is_migrated_without_data_loss(tmp_path):
+    import sqlite3
+    path=tmp_path/"legacy.sqlite3"; db=sqlite3.connect(path)
+    db.execute("CREATE TABLE sessions(id TEXT PRIMARY KEY,created_at TEXT NOT NULL,started_at TEXT,completed_at TEXT,status TEXT NOT NULL CHECK(status IN ('DRAFT','IN_PROGRESS','COMPLETED','VALIDATED')))")
+    db.execute("INSERT INTO sessions VALUES('old','2026-01-01','2026-01-01','2026-01-02','COMPLETED')"); db.commit(); db.close()
+    repo=InventoryRepository(path)
+    assert repo.db.execute("SELECT status FROM sessions WHERE id='old'").fetchone()[0] == "COMPLETED"
+    assert {r[1] for r in repo.db.execute("PRAGMA table_info(inventory_stock_proposals)")} >= {"source_checksum","error","actor"}
+
+
+def test_proposal_api_and_combined_csrf_action(service):
+    complete_inventory(service,{0:5})
+    app=InventoryApp(service)
+    status,data=request(app,"/api/inventory/proposal")
+    assert status=="200 OK" and json.loads(data)["status"]=="PROPOSED"
+    status,data=request(app,"/api/inventory/proposal/validate-and-apply","POST")
+    assert status=="200 OK" and json.loads(data)["status"]=="APPLIED"
+    html=request(app,"/inventaire")[1].decode()
+    assert "Proposition de mise à jour du stock" in html and "Valider et appliquer" in html
