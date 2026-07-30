@@ -22,7 +22,9 @@ La production conserve l'application et SQLite, mais utilise **Waitress**, `HOST
 | `PRESTASHOP_API_URL`, `PRESTASHOP_API_KEY` | connecteur serveur; clé GET seulement au premier lancement |
 | `SHOPCAISSE_API_KEY`, `SHOPCAISSE_COMPANY_ID` | connecteur serveur, facultatif; jamais côté navigateur |
 
-Ne pas inclure de `.env` dans l'image. En production, le cookie de session est `HttpOnly`, `Secure`, `SameSite=Lax`; HTTPS est donc obligatoire. La protection CSRF couvre les mutations. Le login est limité à cinq échecs par adresse sur cinq minutes. Les en-têtes CSP, anti-sniffing, anti-frame et Referrer-Policy sont activés. Activer HSTS **sur le reverse proxy seulement après validation HTTPS**, idéalement avec `max-age=31536000` sans `includeSubDomains` avant audit de tous les sous-domaines.
+Ne pas inclure de `.env` dans l'image. Au premier démarrage d'une base sans credential, `DRCLOUD_ADMIN_PASSWORD` sert uniquement à créer un hash salé PBKDF2-HMAC-SHA256 (200 000 itérations) dans `local_credentials`; le secret en clair n'est jamais écrit en SQLite. Les démarrages suivants utilisent ce credential durable, notamment après un changement depuis `/securite`. La variable historique reste requise pendant cette phase de migration compatible, mais n'écrase jamais un hash existant.
+
+En production, le cookie de session est `HttpOnly`, `Secure`, `SameSite=Lax`; HTTPS est donc obligatoire. La protection CSRF couvre les mutations. Le login et la vérification du mot de passe actuel sont chacun limités à cinq échecs par adresse sur cinq minutes. Un changement incrémente `session_version`, invalide toutes les sessions (y compris celle qui effectue l'action), puis exige une reconnexion. Les en-têtes CSP, anti-sniffing, anti-frame et Referrer-Policy sont activés. Activer HSTS **sur le reverse proxy seulement après validation HTTPS**, idéalement avec `max-age=31536000` sans `includeSubDomains` avant audit de tous les sous-domaines.
 
 ## Préparation des données (explicite et idempotente)
 
