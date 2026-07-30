@@ -70,6 +70,7 @@ class Product:
     physical_quantity: int | None = None
     stock_prestashop: int | None = None
     stock_shopcaisse: int | None = None
+    reference: str = ""
 
 
 @dataclass
@@ -128,3 +129,22 @@ class StockMovement:
         """Fields that must match when an idempotency key is replayed."""
         return (self.drcloud_product_key, self.quantity_delta, self.movement_type,
                 self.source_type, self.source_id)
+
+
+class StockCoherence(StrEnum):
+    OK = "OK"
+    WARNING = "WARNING"
+    INCONSISTENT = "INCONSISTENT"
+
+
+@dataclass(frozen=True)
+class StockPosition:
+    """Read-only position reconstructed from applied ledger movements."""
+    drcloud_product_key: str
+    reference: str
+    name: str
+    quantity: int
+    last_movement_at: str
+    last_source_type: str
+    coherence: StockCoherence = StockCoherence.OK
+    issue: str | None = None

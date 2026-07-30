@@ -7,8 +7,8 @@
     "TODO": 0,
     "BLOCKED": 0
   },
-  "global_progress_percent": 31.89,
-  "remaining_percent": 68.11,
+  "global_progress_percent": 36.89,
+  "remaining_percent": 63.11,
   "modules": [
     {
       "id": "01-core",
@@ -232,8 +232,8 @@
       "id": "04-stock",
       "name": "Stock + synchronisation",
       "weight": 10,
-      "progress_percent": 30.0,
-      "weighted_progress": 3.0,
+      "progress_percent": 80.0,
+      "weighted_progress": 8.0,
       "status": "IN_PROGRESS",
       "milestones": [
         {
@@ -254,22 +254,22 @@
         {
           "id": "04-stock-m04",
           "name": "Idempotency key persistée",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "04-stock-m05",
           "name": "Validation mouvements",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "04-stock-m06",
           "name": "Ledger permanent",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "04-stock-m07",
           "name": "Projection stock",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "04-stock-m08",
@@ -284,16 +284,21 @@
         {
           "id": "04-stock-m10",
           "name": "Tests bout en bout",
-          "status": "TODO"
+          "status": "DONE"
         }
       ],
       "completed": [
         "StockMovement défini",
         "Types de mouvements",
-        "Proposition inventaire"
+        "Proposition inventaire",
+        "Idempotency key persistée",
+        "Validation mouvements",
+        "Ledger permanent",
+        "Projection stock",
+        "Tests bout en bout"
       ],
       "in_progress": [],
-      "next": "Idempotency key persistée",
+      "next": "Synchronisation contrôlée",
       "blocked": []
     },
     {

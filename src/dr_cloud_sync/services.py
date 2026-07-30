@@ -6,7 +6,8 @@ from dataclasses import dataclass
 
 from .connectors import BarcodeConnector, prestashop_barcode_target, shopcaisse_barcode_target
 from .domain import (ActivityLog, AssignmentStatus, BarcodeAssignment, MovementStatus,
-                     MovementType, Product, RemoteStatus, StockMovement, utc_now)
+                     MovementType, Product, RemoteStatus, StockCoherence, StockMovement,
+                     StockPosition, utc_now)
 from .repositories import (AuditRepository, CatalogRepository, DuplicateStockMovement,
                            StockMovementRepository)
 
@@ -154,3 +155,28 @@ class StockService:
             raise StockMovementConflict(
                 "idempotency key already exists with a different stock movement payload")
         return RecordMovementResult(existing, False)
+
+
+class StockProjectionService:
+    """Build the local stock view exclusively from APPLIED ledger entries."""
+    def __init__(self, repository: StockMovementRepository, catalog: CatalogRepository):
+        self.repository, self.catalog = repository, catalog
+
+    def positions(self) -> list[StockPosition]:
+        products={p.drcloud_product_key:p for p in self.catalog.all()}
+        result=[]
+        for row in self.repository.current_positions():
+            product=products.get(row["drcloud_product_key"])
+            coherence=StockCoherence.OK
+            issue=None
+            if product is None:
+                coherence=StockCoherence.INCONSISTENT; issue="Produit absent du catalogue"
+            elif row["quantity"] < 0:
+                coherence=StockCoherence.WARNING; issue="Position négative"
+            result.append(StockPosition(row["drcloud_product_key"], product.reference if product else "",
+              product.name if product else "Produit inconnu", int(row["quantity"]), row["last_movement_at"],
+              row["last_source_type"], coherence, issue))
+        return result
+
+    def position(self, product_id: str) -> StockPosition | None:
+        return next((p for p in self.positions() if p.drcloud_product_key == product_id),None)

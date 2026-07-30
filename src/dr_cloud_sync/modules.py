@@ -30,7 +30,7 @@ MODULES = (
     Module("roadmap", "Roadmap", "Principal", 20, "◇", route="/roadmap", page_template="roadmap.html", script="roadmap.js"),
     Module("catalogue", "Catalogue", "Opérations", 10, "▦", "02-catalog", "/catalogue", "catalogue.html", "inventory.js"),
     Module("inventory", "Inventaire", "Opérations", 20, "✓", "03-inventory", "/inventaire", "inventory.html", "inventory.js"),
-    Module("stock", "Stock", "Opérations", 30, "≋", "04-stock"),
+    Module("stock", "Stock", "Opérations", 30, "≋", "04-stock", "/stock", "stock.html", "stock.js"),
     Module("purchasing", "Achats", "Opérations", 40, "↓", "05-purchasing"),
     Module("sales", "Ventes", "Opérations", 50, "↑", "06-sales"),
     Module("finance", "Finance", "Pilotage", 10, "◫", "07-finance"),

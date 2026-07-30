@@ -32,7 +32,7 @@ def test_authenticated_pages_share_shell_brand_navigation_and_active_state(confi
         assert 'href="/modules/' not in html
 
 
-def test_registry_declares_every_target_and_only_five_available_modules():
+def test_registry_declares_every_target_and_stock_is_available():
     assert [module.label for module in MODULES] == [
         "Tableau de bord", "Roadmap", "Catalogue", "Inventaire", "Stock",
         "Achats", "Ventes", "Finance", "Clients", "Marketing",
@@ -41,7 +41,7 @@ def test_registry_declares_every_target_and_only_five_available_modules():
     ]
     assert set(available_pages()) == {
         "dashboard.html", "roadmap.html", "catalogue.html", "inventory.html",
-        "administration.html",
+        "administration.html", "stock.html",
     }
     assert all(module.roadmap_id for module in MODULES if module.id not in {"roadmap", "administration"})
 
@@ -57,19 +57,19 @@ def test_future_modules_are_non_interactive_and_explicitly_unavailable():
             '<span class="dc-nav-future"', 1
         )[1]
         assert 'aria-disabled="true"' in item
-    assert navigation.count("À venir") == 10
-    assert navigation.count("<a href=") == 5
+    assert navigation.count("À venir") == 9
+    assert navigation.count("<a href=") == 6
 
 
 def test_future_routes_are_not_registered_or_rendered(configured):
     app, _ = configured
     _, cookie = login(app)
     future_routes = (
-        "/stock", "/achats", "/ventes", "/finance", "/clients", "/marketing",
+        "/achats", "/ventes", "/finance", "/clients", "/marketing",
         "/synchronisations", "/automatisations", "/securite", "/production",
     )
     navigation = render_navigation("stock")
-    assert 'aria-current="page"' not in navigation
+    assert '<a href="/stock" aria-current="page">' in navigation
     for route in future_routes:
         assert f'href="{route}"' not in navigation
         assert request(app, route, cookie=cookie)[0] == "404 Not Found"
