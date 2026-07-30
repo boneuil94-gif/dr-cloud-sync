@@ -44,6 +44,20 @@ class MovementType(StrEnum):
     MANUAL_ADJUSTMENT = "MANUAL_ADJUSTMENT"
 
 
+class MovementStatus(StrEnum):
+    """Lifecycle states for the append-only stock ledger.
+
+    This PR only creates ``PENDING`` movements.  Later workflows may validate,
+    apply, fail or cancel them without changing their immutable business payload.
+    """
+
+    PENDING = "PENDING"
+    VALIDATED = "VALIDATED"
+    APPLIED = "APPLIED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+
+
 @dataclass
 class Product:
     drcloud_product_key: str
@@ -89,7 +103,28 @@ class StockMovement:
     drcloud_product_key: str
     quantity_delta: int
     movement_type: MovementType
-    source_id: str
+    source_type: str
+    source_id: str | None
+    idempotency_key: str
+    status: MovementStatus = MovementStatus.PENDING
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: str = field(default_factory=utc_now)
     validated_at: str | None = None
+    applied_at: str | None = None
+    actor: str | None = None
+    result_message: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.drcloud_product_key.strip():
+            raise ValueError("drcloud_product_key is required")
+        if isinstance(self.quantity_delta, bool) or not isinstance(self.quantity_delta, int) or self.quantity_delta == 0:
+            raise ValueError("quantity_delta must be a non-zero integer")
+        if not self.source_type.strip():
+            raise ValueError("source_type is required")
+        if not self.idempotency_key.strip():
+            raise ValueError("idempotency_key is required")
+
+    def business_payload(self) -> tuple[str, int, MovementType, str, str | None]:
+        """Fields that must match when an idempotency key is replayed."""
+        return (self.drcloud_product_key, self.quantity_delta, self.movement_type,
+                self.source_type, self.source_id)
