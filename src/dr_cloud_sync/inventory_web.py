@@ -21,6 +21,7 @@ from .security import CredentialStore
 from .media import (MAX_FILE_SIZE, LocalMediaStorage, MediaError, ProductMediaService,
                     SQLiteProductMediaRepository)
 from .domain import MediaVariantKind
+from .hydration import ProductHydrationService
 
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
@@ -58,6 +59,7 @@ class InventoryApp:
         self.password_failures={}
         media_root=(settings.data_dir if settings else service.repo.path.parent)/"media"/"products"
         self.media=ProductMediaService(SQLiteProductMediaRepository(service.repo.path),LocalMediaStorage(media_root),self.os_repository,self.os_repository)
+        self.hydration=ProductHydrationService(self.os_repository)
         self.admin_status.media_diagnostics=self.media.diagnostics
 
     def __call__(self, env, start):
@@ -180,6 +182,17 @@ class InventoryApp:
             if path.startswith("/api/products/") and "/media" in path:
                 return self._media_api(path,method,env,start,session)
             if path == "/api/catalogue": return self._json(start,self._catalogue(parse_qs(env.get("QUERY_STRING", ""))))
+            if path == "/api/catalogue/quality": return self._json(start,self._catalogue_quality())
+            if path.startswith("/api/catalogue/products/") and path.endswith("/commercial"):
+                key=unquote(path.removeprefix("/api/catalogue/products/").removesuffix("/commercial"))
+                if method == "GET":
+                    product=self.os_repository.get(key)
+                    if product is None: raise KeyError(key)
+                    row=self._with_media(asdict(product),key,display=True); row["display_name"]=product.display_name
+                    row["observations"]=self.os_repository.observations(key); row["diagnostics"]=self.os_repository.diagnostics(key)
+                    return self._json(start,row)
+                if method == "POST":
+                    return self._json(start,asdict(self.hydration.update_manual(key,self._body(env),session.get("u","authenticated"))))
             if path.startswith("/api/catalogue/products/") and path.endswith("/status") and method == "POST":
                 from urllib.parse import unquote
                 key=unquote(path.removeprefix("/api/catalogue/products/").removesuffix("/status"))
@@ -283,15 +296,25 @@ class InventoryApp:
         text=query.get("q",[""])[0].casefold(); selected=query.get("filter",["ALL"])[0]; conflicts={p.drcloud_product_key for p in self.os_repository.all() for other in self.os_repository.by_ean(p.ean) if p.ean and other.drcloud_product_key != p.drcloud_product_key}; counts=self.service.repo.counts(self.service.session()["id"]); rows=[]
         for p in self.os_repository.all():
             if text and text not in f"{p.base_name} {p.variant_name} {p.display_name} {p.attributes} {p.ean} {p.reference} {p.prestashop_key} {p.shopcaisse_item_id}".casefold(): continue
-            if (selected=="WITH_EAN" and not p.ean) or (selected=="WITHOUT_EAN" and p.ean) or (selected=="CONFLICT" and p.drcloud_product_key not in conflicts): continue
+            primary=self.media.primary(p.drcloud_product_key); incomplete=not p.variant_name or not p.reference or not p.ean or not primary
+            if (selected=="WITH_EAN" and not p.ean) or (selected=="WITHOUT_EAN" and p.ean) or (selected=="CONFLICT" and p.drcloud_product_key not in conflicts) or (selected=="INCOMPLETE" and not incomplete) or (selected=="WITH_IMAGE" and not primary) or (selected=="WITHOUT_IMAGE" and primary) or (selected=="UNKNOWN_VARIANT" and p.variant_name): continue
             row=asdict(p); row["display_name"]=p.display_name; problems=[]
             if p.drcloud_product_key in conflicts: problems.append("EAN dupliqué")
-            if not p.prestashop_key or not p.shopcaisse_item_id: problems.append("Référence externe requise absente")
-            row["coherence"]="INCOHÉRENT" if problems else "ATTENTION" if not p.ean else "OK"
-            row["coherence_issues"]=problems or (["EAN absent"] if not p.ean else [])
+            problems.extend(x["reason"] for x in self.os_repository.diagnostics(p.drcloud_product_key))
+            if not p.variant_name and p.combination_id: problems.append("Variante inconnue")
+            if not p.reference: problems.append("Référence absente")
+            if not p.ean: problems.append("EAN absent")
+            if not primary: problems.append("Image absente")
+            row["coherence"]="INCOHÉRENT" if any("conflit" in x.casefold() or "diverg" in x.casefold() for x in problems) else "ATTENTION" if problems else "OK"
+            row["coherence_issues"]=problems
             row["ean_status"]="CONFLICT" if p.drcloud_product_key in conflicts else "WITH_EAN" if p.ean else "WITHOUT_EAN"; count=counts.get(p.prestashop_key); row["physical_quantity"]=count["physical_quantity"] if count else None; rows.append(row)
             self._with_media(row,p.drcloud_product_key)
         return rows
+    def _catalogue_quality(self):
+        products=self.os_repository.all(); total=len(products); pictured=sum(bool(self.media.primary(p.drcloud_product_key)) for p in products)
+        conflicts=sum(bool(self.os_repository.diagnostics(p.drcloud_product_key)) for p in products)
+        complete=sum(bool(p.variant_name and p.reference and p.ean and self.media.primary(p.drcloud_product_key)) for p in products)
+        return {"total":total,"with_variant":sum(bool(p.variant_name) for p in products),"missing_variant":sum(not p.variant_name for p in products),"with_ean":sum(bool(p.ean) for p in products),"without_ean":sum(not p.ean for p in products),"ean_conflict":conflicts,"with_image":pictured,"without_image":total-pictured,"complete":complete}
     def _with_media(self,row,key,display=False):
         media=self.media.primary(key); row["media_url"]=self.media.url(media,MediaVariantKind.DISPLAY if display else MediaVariantKind.THUMBNAIL); row["media_width"]=(media.width if media else None); row["media_height"]=(media.height if media else None); row["media_status"]="AVAILABLE" if media else "MISSING"; return row
     def _media_json(self,media):
