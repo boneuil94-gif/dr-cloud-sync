@@ -256,6 +256,8 @@ def test_update_preserves_state_environment_through_checks_and_rollback(
     marker = state / "last-successful-commit"
     marker.write_text(previous + "\n")
     marker.chmod(0o444)
+    backup_root = tmp_path / "backups"
+    backup_root.mkdir(mode=0o750)
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     compose_log = tmp_path / "compose.log"
@@ -283,6 +285,7 @@ def test_update_preserves_state_environment_through_checks_and_rollback(
         [repo / "deploy/ovh/update.sh", target], cwd=tmp_path, text=True, capture_output=True,
         env={**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}",
              "COMPOSE_LOG": str(compose_log), "STATE_DIR": str(state),
+             "DRCLOUD_BACKUP_ROOT": str(backup_root),
              "FAIL_TARGET": target if fail_target else "", "FAIL_ROLLBACK": "1" if fail_rollback else "0",
              "DRCLOUD_DEPLOY_USER": user, "DRCLOUD_DEPLOY_GROUP": group},
     )
