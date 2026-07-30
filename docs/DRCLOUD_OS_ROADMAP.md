@@ -1,6 +1,6 @@
 # Roadmap officielle DrCloud OS
 
-**Version :** 1.0.0 — **mise à jour :** 2026-07-29 — **progression pondérée calculée : 28,8 %** — **reste : 71,2 %**.
+**Version :** 1.0.0 — **mise à jour :** 2026-07-30 — **progression pondérée calculée : 31,89 %** — **reste : 68,11 %**.
 
 La mesure est fondée sur des jalons constatables dans le dépôt : `DONE = 100 %`, `IN_PROGRESS = 50 %`, `TODO/BLOCKED = 0 %` du jalon, puis moyenne des jalons et pondération du bloc. La source exécutable est [`drcloud-os-roadmap.json`](drcloud-os-roadmap.json) et `RoadmapService` recalcule les valeurs ; ce document explicite l'état, il ne pilote pas l'interface.
 
@@ -8,7 +8,7 @@ La mesure est fondée sur des jalons constatables dans le dépôt : `DONE = 100 
 |---|---:|---:|---:|---:|
 | 01 Core + architecture | IN_PROGRESS | 60 % | 10 | 6.0 |
 | 02 Catalogue + mapping | IN_PROGRESS | 80 % | 10 | 8.0 |
-| 03 Inventaire + EAN | IN_PROGRESS | 70 % | 10 | 7.0 |
+| 03 Inventaire + EAN | IN_PROGRESS | 80 % | 10 | 8.0 |
 | 04 Stock + synchronisation | IN_PROGRESS | 30 % | 10 | 3.0 |
 | 05 Achats + fournisseurs | IN_PROGRESS | 10 % | 10 | 1.0 |
 | 06 Ventes | IN_PROGRESS | 5 % | 8 | 0.4 |
@@ -19,7 +19,7 @@ La mesure est fondée sur des jalons constatables dans le dépôt : `DONE = 100 
 | 11 Dashboard | IN_PROGRESS | 10 % | 5 | 0.5 |
 | 12 Sécurité + utilisateurs | IN_PROGRESS | 10 % | 4 | 0.4 |
 | 13 Production + PWA | IN_PROGRESS | 70 % | 3 | 2.1 |
-| **Total** | **IN_PROGRESS** | **28,8 %** | **100** | **28.8** |
+| **Total** | **IN_PROGRESS** | **31,89 %** | **100** | **31.89** |
 
 ## État opérationnel par bloc
 
@@ -36,9 +36,9 @@ La mesure est fondée sur des jalons constatables dans le dépôt : `DONE = 100 
 - **Bloqué :** activation live volontairement exclue.
 
 ### 03 — Inventaire + EAN
-- **Terminé :** V1, interface OS V2, sessions SQLite, scan/comptage, progression/exports, préparation EAN et rapprochement.
+- **Terminé :** V1, interface OS V2, sessions SQLite, scan/comptage, progression/exports, préparation EAN, rapprochement et workflow validé Inventory → Stock local.
 - **En cours :** aucun jalon partiel comptabilisé.
-- **Prochaine étape :** workflow validé Inventory → proposition → Stock.
+- **Prochaine étape :** tests terrain EAN.
 - **Bloqué :** écriture EAN live non autorisée à ce stade.
 
 ### 04 — Stock + synchronisation

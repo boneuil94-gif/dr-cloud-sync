@@ -6,6 +6,7 @@ PrestaShop or ShopCaisse.
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import sqlite3
@@ -13,8 +14,9 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from .domain import drcloud_key
-from .repositories import ensure_stock_movements_schema
+from .domain import MovementStatus, MovementType, StockMovement, drcloud_key
+from .repositories import DuplicateStockMovement, SQLiteStockMovementRepository, ensure_stock_movements_schema
+from .services import StockService
 
 
 def now() -> str:
@@ -35,10 +37,20 @@ class InventoryRepository:
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys=ON")
-        self.db.executescript("""
-        CREATE TABLE IF NOT EXISTS sessions(
+        self.db.execute("""CREATE TABLE IF NOT EXISTS sessions(
           id TEXT PRIMARY KEY, created_at TEXT NOT NULL, started_at TEXT,
-          completed_at TEXT, status TEXT NOT NULL CHECK(status IN ('DRAFT','IN_PROGRESS','COMPLETED','VALIDATED')));
+          completed_at TEXT, status TEXT NOT NULL)""")
+        # Older databases constrained the unused VALIDATED state. Rebuilding the
+        # table preserves every row while allowing the explicit PR D lifecycle.
+        sql=(self.db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='sessions'").fetchone()[0] or "")
+        if "CHECK(status" in sql:
+            self.db.executescript("""PRAGMA foreign_keys=OFF;
+            ALTER TABLE sessions RENAME TO sessions_legacy;
+            CREATE TABLE sessions(id TEXT PRIMARY KEY, created_at TEXT NOT NULL, started_at TEXT,
+              completed_at TEXT, status TEXT NOT NULL);
+            INSERT INTO sessions SELECT * FROM sessions_legacy;
+            DROP TABLE sessions_legacy; PRAGMA foreign_keys=ON;""")
+        self.db.executescript("""
         CREATE TABLE IF NOT EXISTS counts(
           session_id TEXT NOT NULL, prestashop_key TEXT NOT NULL, shopcaisse_item_id TEXT NOT NULL,
           physical_quantity INTEGER NOT NULL CHECK(physical_quantity >= 0), counted INTEGER NOT NULL DEFAULT 1,
@@ -48,18 +60,41 @@ class InventoryRepository:
           id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL, session_id TEXT NOT NULL,
           prestashop_key TEXT NOT NULL, old_quantity INTEGER, new_quantity INTEGER NOT NULL,
           source TEXT NOT NULL, action TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS inventory_stock_proposals(
+          id TEXT PRIMARY KEY, session_id TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL,
+          status TEXT NOT NULL, source_version INTEGER NOT NULL, source_checksum TEXT NOT NULL,
+          actor TEXT, validated_at TEXT, applied_at TEXT, movement_count INTEGER NOT NULL DEFAULT 0,
+          idempotent_count INTEGER NOT NULL DEFAULT 0, error TEXT,
+          FOREIGN KEY(session_id) REFERENCES sessions(id));
+        CREATE TABLE IF NOT EXISTS inventory_stock_proposal_lines(
+          proposal_id TEXT NOT NULL, drcloud_product_key TEXT NOT NULL,
+          physical_quantity INTEGER NOT NULL, reference_quantity INTEGER NOT NULL,
+          quantity_delta INTEGER NOT NULL, movement_type TEXT, idempotency_key TEXT,
+          movement_id TEXT, PRIMARY KEY(proposal_id,drcloud_product_key),
+          FOREIGN KEY(proposal_id) REFERENCES inventory_stock_proposals(id));
         """)
         ensure_stock_movements_schema(self.db)
         self.db.commit()
 
     def active_session(self) -> dict[str, Any]:
-        row = self.db.execute("SELECT * FROM sessions ORDER BY created_at DESC LIMIT 1").fetchone()
+        row = self.db.execute("SELECT * FROM sessions WHERE status IN ('DRAFT','IN_PROGRESS') ORDER BY created_at DESC LIMIT 1").fetchone()
         if not row:
             stamp = now(); identifier = str(uuid.uuid4())
             self.db.execute("INSERT INTO sessions VALUES(?,?,?,?,?)", (identifier, stamp, stamp, None, "IN_PROGRESS"))
             self.db.commit()
             row = self.db.execute("SELECT * FROM sessions WHERE id=?", (identifier,)).fetchone()
         return dict(row)
+
+    def latest_session(self) -> dict[str, Any]:
+        row=self.db.execute("SELECT * FROM sessions ORDER BY created_at DESC LIMIT 1").fetchone()
+        return dict(row) if row else self.active_session()
+
+    def new_session(self) -> dict[str, Any]:
+        active=self.db.execute("SELECT * FROM sessions WHERE status IN ('DRAFT','IN_PROGRESS') ORDER BY created_at DESC LIMIT 1").fetchone()
+        if active: return dict(active)
+        stamp=now(); identifier=str(uuid.uuid4())
+        with self.db: self.db.execute("INSERT INTO sessions VALUES(?,?,?,?,?)",(identifier,stamp,stamp,None,"IN_PROGRESS"))
+        return dict(self.db.execute("SELECT * FROM sessions WHERE id=?",(identifier,)).fetchone())
 
     def counts(self, session_id: str) -> dict[str, dict[str, Any]]:
         return {r["prestashop_key"]: dict(r) for r in self.db.execute("SELECT * FROM counts WHERE session_id=?", (session_id,))}
@@ -69,10 +104,14 @@ class InventoryRepository:
             raise InventoryError("La quantité doit être un entier positif ou nul")
         if source not in {"SCAN", "SEARCH", "MANUAL"} or action not in {"COUNT", "INCREMENT", "DECREMENT", "EDIT", "RESET"}:
             raise InventoryError("Opération de comptage invalide")
+        status=self.db.execute("SELECT status FROM sessions WHERE id=?",(session_id,)).fetchone()
+        if not status or status[0] not in {"DRAFT","IN_PROGRESS"}:
+            raise InventoryError("Cette session clôturée est gelée; créez une nouvelle session")
         old = self.db.execute("SELECT physical_quantity,counted_at FROM counts WHERE session_id=? AND prestashop_key=?",
                               (session_id, item["prestashop_key"])).fetchone()
         stamp = now(); counted_at = old["counted_at"] if old else stamp
         with self.db:
+            self.db.execute("UPDATE sessions SET status='IN_PROGRESS',started_at=COALESCE(started_at,?) WHERE id=? AND status='DRAFT'",(stamp,session_id))
             self.db.execute("""INSERT INTO counts VALUES(?,?,?,?,?,?,?,?)
               ON CONFLICT(session_id,prestashop_key) DO UPDATE SET physical_quantity=excluded.physical_quantity,
               counted=1,updated_at=excluded.updated_at,source=excluded.source""",
@@ -86,7 +125,31 @@ class InventoryRepository:
 
     def complete(self, session_id: str) -> None:
         with self.db:
-            self.db.execute("UPDATE sessions SET status='COMPLETED',completed_at=? WHERE id=?", (now(), session_id))
+            changed=self.db.execute("UPDATE sessions SET status='COMPLETED',completed_at=? WHERE id=? AND status='IN_PROGRESS'", (now(), session_id))
+            if changed.rowcount != 1: raise InventoryError("Transition de clôture interdite")
+
+    def append(self, movement: StockMovement) -> None:
+        try:
+            self.db.execute("""INSERT INTO stock_movements(id,drcloud_product_key,quantity_delta,movement_type,
+              source_type,source_id,idempotency_key,status,created_at,validated_at,applied_at,actor,result_message)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",(movement.id,movement.drcloud_product_key,movement.quantity_delta,
+              movement.movement_type.value,movement.source_type,movement.source_id,movement.idempotency_key,
+              movement.status.value,movement.created_at,movement.validated_at,movement.applied_at,movement.actor,movement.result_message))
+        except sqlite3.IntegrityError as exc: raise DuplicateStockMovement from exc
+
+    def get(self, identifier: str) -> StockMovement | None:
+        return SQLiteStockMovementRepository._movement(self.db.execute("SELECT * FROM stock_movements WHERE id=?",(identifier,)).fetchone())
+    def by_idempotency_key(self, source_type: str, key: str) -> StockMovement | None:
+        return SQLiteStockMovementRepository._movement(self.db.execute("SELECT * FROM stock_movements WHERE source_type=? AND idempotency_key=?",(source_type,key)).fetchone())
+    def list(self) -> list[StockMovement]:
+        return [SQLiteStockMovementRepository._movement(r) for r in self.db.execute("SELECT * FROM stock_movements ORDER BY created_at,id")]  # type: ignore[misc]
+
+    def proposal(self, session_id: str) -> dict[str, Any] | None:
+        row=self.db.execute("SELECT * FROM inventory_stock_proposals WHERE session_id=?",(session_id,)).fetchone()
+        if not row: return None
+        value=dict(row); value["lines"]=[dict(r) for r in self.db.execute("SELECT * FROM inventory_stock_proposal_lines WHERE proposal_id=? ORDER BY drcloud_product_key",(row["id"],))]
+        value["summary"]={"lines":len(value["lines"]),"increases":sum(x["quantity_delta"]>0 for x in value["lines"]),"decreases":sum(x["quantity_delta"]<0 for x in value["lines"]),"unchanged":sum(x["quantity_delta"]==0 for x in value["lines"])}
+        return value
 
 
 class InventoryService:
@@ -104,7 +167,8 @@ class InventoryService:
         if len({i["drcloud_product_key"] for i in self.items}) != len(self.items):
             raise InventoryError("drcloud_product_key dupliquée")
 
-    def session(self) -> dict[str, Any]: return self.repo.active_session()
+    def session(self) -> dict[str, Any]: return self.repo.latest_session()
+    def new_session(self) -> dict[str, Any]: return self.repo.new_session()
 
     @staticmethod
     def _ean(item: dict[str, Any]) -> str: return str(item.get("ean") or item.get("EAN") or "").strip()
@@ -154,7 +218,67 @@ class InventoryService:
     def complete(self) -> dict[str, Any]:
         progress=self.progress()
         if progress["remaining"]: return {"completed": False, **progress}
-        self.repo.complete(self.session()["id"]); return {"completed": True, **progress}
+        session_id=self.session()["id"]; self.repo.complete(session_id)
+        proposal=self.create_proposal(session_id)
+        return {"completed": True, "proposal_id":proposal["id"], **progress}
+
+    def proposal(self, session_id: str | None = None) -> dict[str, Any] | None:
+        return self.repo.proposal(session_id or self.session()["id"])
+
+    def create_proposal(self, session_id: str | None = None) -> dict[str, Any]:
+        session_id=session_id or self.session()["id"]
+        existing=self.repo.proposal(session_id)
+        if existing: return existing
+        session=self.repo.db.execute("SELECT status FROM sessions WHERE id=?",(session_id,)).fetchone()
+        if not session or session[0] != "COMPLETED": raise InventoryError("La proposition exige un inventaire terminé")
+        counts=self.repo.counts(session_id)
+        if len(counts) != len(self.items): raise InventoryError("L'inventaire doit être complet")
+        if any(i.get("stock_prestashop") is None for i in self.items):
+            raise InventoryError("Le stock de référence validé est indisponible")
+        snapshot=[(i["drcloud_product_key"],counts[i["prestashop_key"]]["physical_quantity"],int(i["stock_prestashop"])) for i in self.items]
+        checksum=hashlib.sha256(json.dumps(snapshot,separators=(",",":"),ensure_ascii=True).encode()).hexdigest()
+        identifier=str(uuid.uuid5(uuid.NAMESPACE_URL,f"drcloud:inventory:{session_id}:v1")); stamp=now()
+        with self.repo.db:
+            self.repo.db.execute("INSERT INTO inventory_stock_proposals(id,session_id,created_at,status,source_version,source_checksum) VALUES(?,?,?,?,?,?)",(identifier,session_id,stamp,"PROPOSED",1,checksum))
+            for key,physical,reference in snapshot:
+                delta=physical-reference
+                self.repo.db.execute("INSERT INTO inventory_stock_proposal_lines VALUES(?,?,?,?,?,?,?,?)",(identifier,key,physical,reference,delta,MovementType.INVENTORY_CORRECTION.value if delta else None,f"inventory:{session_id}:{key}:v1" if delta else None,None))
+            self.repo.db.execute("UPDATE sessions SET status='PROPOSED' WHERE id=? AND status='COMPLETED'",(session_id,))
+        return self.repo.proposal(session_id)  # type: ignore[return-value]
+
+    def validate(self, actor: str) -> dict[str, Any]:
+        proposal=self.proposal()
+        if not proposal: raise InventoryError("Aucune proposition à valider")
+        if proposal["status"] in {"VALIDATED","APPLIED"}: return proposal
+        if proposal["status"] != "PROPOSED": raise InventoryError("État incompatible avec la validation")
+        stamp=now()
+        with self.repo.db:
+            self.repo.db.execute("UPDATE inventory_stock_proposals SET status='VALIDATED',actor=?,validated_at=?,error=NULL WHERE id=?",(actor,stamp,proposal["id"]))
+            self.repo.db.execute("UPDATE sessions SET status='VALIDATED' WHERE id=? AND status='PROPOSED'",(proposal["session_id"],))
+        return self.repo.proposal(proposal["session_id"])  # type: ignore[return-value]
+
+    def apply(self, actor: str) -> dict[str, Any]:
+        proposal=self.proposal()
+        if not proposal: raise InventoryError("Aucune proposition à appliquer")
+        if proposal["status"] == "APPLIED": return proposal
+        if proposal["status"] != "VALIDATED": raise InventoryError("La proposition doit être validée")
+        stamp=now(); created=0; replayed=0; movement_ids=[]
+        try:
+            self.repo.db.execute("BEGIN IMMEDIATE")
+            for line in proposal["lines"]:
+                if not line["quantity_delta"]: continue
+                movement=StockMovement(drcloud_product_key=line["drcloud_product_key"],quantity_delta=line["quantity_delta"],movement_type=MovementType.INVENTORY_CORRECTION,source_type="INVENTORY",source_id=proposal["session_id"],idempotency_key=line["idempotency_key"],status=MovementStatus.APPLIED,validated_at=proposal["validated_at"],applied_at=stamp,actor=actor,result_message="Inventaire validé et appliqué localement")
+                result=StockService(self.repo).apply(movement); created+=result.created; replayed+=not result.created; movement_ids.append(result.movement.id)
+                self.repo.db.execute("UPDATE inventory_stock_proposal_lines SET movement_id=? WHERE proposal_id=? AND drcloud_product_key=?",(result.movement.id,proposal["id"],line["drcloud_product_key"]))
+            self.repo.db.execute("UPDATE inventory_stock_proposals SET status='APPLIED',applied_at=?,movement_count=?,idempotent_count=?,error=NULL WHERE id=?",(stamp,len(movement_ids),replayed,proposal["id"]))
+            self.repo.db.execute("UPDATE sessions SET status='APPLIED' WHERE id=? AND status='VALIDATED'",(proposal["session_id"],))
+            self.repo.db.commit()
+        except Exception as exc:
+            self.repo.db.rollback()
+            clean="L'application transactionnelle a échoué; vous pouvez réessayer."
+            with self.repo.db: self.repo.db.execute("UPDATE inventory_stock_proposals SET error=? WHERE id=?",(clean,proposal["id"]))
+            raise InventoryError(clean) from exc
+        return self.repo.proposal(proposal["session_id"])  # type: ignore[return-value]
 
     def report(self, output_path: Path | None = None) -> dict[str, Any]:
         rows=self.results(); progress=self.progress()

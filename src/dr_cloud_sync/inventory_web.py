@@ -55,7 +55,7 @@ class InventoryApp:
             if path == "/administration": return self._html(start,"administration.html",session,request_id)
             if path == "/api/dashboard":
                 road=self.roadmap_service.load(); return self._json(start,{"progress_percent":road["global_progress_percent"],"next":next((m["next"] for m in road["modules"] if m.get("next")),None),"catalogue":len(self.service.items),"inventory":{"session":self.service.session(),"progress":self.service.progress()},"systems":self.admin_status.collect()},headers=[("X-Request-ID",request_id)])
-            if path == "/api/state": return self._json(start,{"session":self.service.session(),"progress":self.service.progress()})
+            if path == "/api/state": return self._json(start,{"session":self.service.session(),"progress":self.service.progress(),"proposal":self.service.proposal()})
             if path == "/api/roadmap": return self._json(start,self.roadmap_service.load())
             if path == "/api/admin/status": return self._json(start,self.admin_status.collect(),headers=[("X-Request-ID",request_id)])
             if path == "/api/catalogue": return self._json(start,self._catalogue(parse_qs(env.get("QUERY_STRING", ""))))
@@ -69,6 +69,13 @@ class InventoryApp:
             if path == "/api/barcodes/confirm" and method == "POST": return self._json(start,asdict(self.barcodes.confirm(self._body(env)["id"])))
             if path == "/api/history": return self._json(start,self.service.repo.history(self.service.session()["id"]))
             if path == "/api/complete" and method == "POST": return self._json(start,self.service.complete())
+            if path == "/api/inventory/session" and method == "POST": return self._json(start,self.service.new_session())
+            if path == "/api/inventory/proposal": return self._json(start,self.service.proposal())
+            if path == "/api/inventory/proposal/validate" and method == "POST": return self._json(start,self.service.validate(session.get("u") or "authenticated"))
+            if path == "/api/inventory/proposal/apply" and method == "POST": return self._json(start,self.service.apply(session.get("u") or "authenticated"))
+            if path == "/api/inventory/proposal/validate-and-apply" and method == "POST":
+                self.service.validate(session.get("u") or "authenticated")
+                return self._json(start,self.service.apply(session.get("u") or "authenticated"))
             if path == "/api/report": return self._json(start,self.service.report(self.report_output))
             if path == "/api/export.csv": return self._send(start,self.service.csv().encode(),"text/csv; charset=utf-8",headers=[("Content-Disposition","attachment; filename=inventaire-drcloud.csv")])
             return self._error(start,404,request_id)

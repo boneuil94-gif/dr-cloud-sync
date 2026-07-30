@@ -7,8 +7,8 @@
     "TODO": 0,
     "BLOCKED": 0
   },
-  "global_progress_percent": 30.89,
-  "remaining_percent": 69.11,
+  "global_progress_percent": 31.89,
+  "remaining_percent": 68.11,
   "modules": [
     {
       "id": "01-core",
@@ -159,8 +159,8 @@
       "id": "03-inventory",
       "name": "Inventaire + EAN",
       "weight": 10,
-      "progress_percent": 70.0,
-      "weighted_progress": 7.0,
+      "progress_percent": 80.0,
+      "weighted_progress": 8.0,
       "status": "IN_PROGRESS",
       "milestones": [
         {
@@ -201,7 +201,7 @@
         {
           "id": "03-inventory-m08",
           "name": "Workflow validation stock",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "03-inventory-m09",
@@ -221,10 +221,11 @@
         "Comptage et scan",
         "Progression et exports",
         "EAN pendant inventaire préparé",
-        "Rapprochement proposé"
+        "Rapprochement proposé",
+        "Workflow validation stock"
       ],
       "in_progress": [],
-      "next": "Workflow validation stock",
+      "next": "Tests terrain EAN",
       "blocked": []
     },
     {
