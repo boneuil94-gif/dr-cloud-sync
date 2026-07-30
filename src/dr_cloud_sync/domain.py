@@ -58,6 +58,19 @@ class MovementStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
+class ProductStatus(StrEnum):
+    """Minimal product lifecycle: usable, paused, or history-only."""
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    ARCHIVED = "ARCHIVED"
+
+
+class CatalogueCoherence(StrEnum):
+    OK = "OK"
+    WARNING = "ATTENTION"
+    INCONSISTENT = "INCOHÉRENT"
+
+
 @dataclass
 class Product:
     drcloud_product_key: str
@@ -71,6 +84,29 @@ class Product:
     stock_prestashop: int | None = None
     stock_shopcaisse: int | None = None
     reference: str = ""
+    status: ProductStatus = ProductStatus.ACTIVE
+    created_at: str = field(default_factory=utc_now)
+    updated_at: str = field(default_factory=utc_now)
+
+    def __post_init__(self) -> None:
+        """External references may change; the DrCloud key never does."""
+        for field_name in ("drcloud_product_key", "prestashop_key", "shopcaisse_item_id"):
+            if not str(getattr(self, field_name)).strip():
+                raise ValueError(f"{field_name} is required")
+        self.status = ProductStatus(self.status)
+
+    def transition_to(self, status: ProductStatus) -> None:
+        """Apply the deliberately small, reversible lifecycle state machine."""
+        target = ProductStatus(status)
+        allowed = {
+            ProductStatus.ACTIVE: {ProductStatus.INACTIVE, ProductStatus.ARCHIVED},
+            ProductStatus.INACTIVE: {ProductStatus.ACTIVE, ProductStatus.ARCHIVED},
+            ProductStatus.ARCHIVED: {ProductStatus.INACTIVE},
+        }
+        if target != self.status and target not in allowed[self.status]:
+            raise ValueError(f"transition {self.status} -> {target} is forbidden")
+        self.status = target
+        self.updated_at = utc_now()
 
 
 @dataclass
