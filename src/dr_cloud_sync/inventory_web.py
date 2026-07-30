@@ -48,10 +48,24 @@ class InventoryApp:
                 try: self.service.repo.db.execute("SELECT 1"); database="ok"; status="ok"
                 except Exception: database="error"; status="degraded"
                 return self._json(start,{"status":status,"application":"drcloud-os",**application_metadata(),"database":database}, headers=[("X-Request-ID",request_id)])
-            if path in {"/manifest.webmanifest","/icon.svg","/drcloud-logo.png","/inventory.css","/app-shell.js","/inventory.js","/roadmap.js","/dashboard.js","/administration.js","/stock.js","/purchasing.js","/security.js"}:
-                file={"/manifest.webmanifest":"manifest.webmanifest"}.get(path,path[1:]); kind="application/manifest+json" if path.endswith("webmanifest") else "image/svg+xml" if path.endswith("svg") else "text/css; charset=utf-8" if path.endswith("css") else "text/javascript; charset=utf-8"
-                if path.endswith(".png"): kind="image/png"
-                return self._send(start,(ROOT/file).read_bytes(),kind,headers=[("X-Request-ID",request_id)])
+            public_assets = {
+                "/manifest.webmanifest": ("manifest.webmanifest", "application/manifest+json"),
+                "/service-worker.js": ("service-worker.js", "text/javascript; charset=utf-8"),
+                "/pwa.js": ("pwa.js", "text/javascript; charset=utf-8"),
+                "/icon.svg": ("icon.svg", "image/svg+xml"),
+                "/drcloud-logo.png": ("drcloud-logo.png", "image/png"),
+                "/inventory.css": ("inventory.css", "text/css; charset=utf-8"),
+                **{f"/{name}": (name, "text/javascript; charset=utf-8") for name in (
+                    "app-shell.js", "inventory.js", "roadmap.js", "dashboard.js",
+                    "administration.js", "stock.js", "purchasing.js", "security.js",
+                )},
+            }
+            if path in public_assets:
+                file, kind = public_assets[path]
+                headers = [("X-Request-ID", request_id)]
+                if path == "/service-worker.js":
+                    headers.append(("Service-Worker-Allowed", "/"))
+                return self._send(start, (ROOT / file).read_bytes(), kind, headers=headers)
             session=self._session(env)
             if path == "/login": return self._login(env,start,method,session,request_id)
             if not session: return self._redirect(start,"/login",request_id)

@@ -1,3 +1,5 @@
+import json
+import struct
 from pathlib import Path
 
 from dr_cloud_sync.modules import GROUPS, MODULES, available_pages, render_navigation
@@ -49,18 +51,75 @@ def test_shared_shell_exposes_accessible_mobile_drawer_contract(configured):
     assert '<link rel="manifest" href="/manifest.webmanifest">' in html
 
 
-def test_manifest_keeps_standalone_scope_and_official_icon(configured):
+def test_public_manifest_is_valid_installable_metadata(configured):
     app, _ = configured
-    status, _, body = request(app, "/manifest.webmanifest")
-    manifest = __import__("json").loads(body)
+    status, headers, body = request(app, "/manifest.webmanifest")
+    manifest = json.loads(body)
     assert status == "200 OK"
+    assert headers["Content-Type"] == "application/manifest+json"
     assert manifest["name"] == "DrCloud OS"
+    assert manifest["short_name"] == "DrCloud OS"
     assert manifest["display"] == "standalone"
     assert manifest["start_url"] == manifest["scope"] == "/"
+    assert manifest["background_color"] == "#f5f7f6"
+    assert manifest["theme_color"] == "#111513"
     assert manifest["icons"] == [{
-        "src": "/drcloud-logo.png", "sizes": "500x500",
-        "type": "image/png", "purpose": "any",
+        "src": "/drcloud-logo.png",
+        "sizes": "500x500",
+        "type": "image/png",
+        "purpose": "any",
     }]
+
+
+def test_pwa_runtime_and_icons_are_public_with_correct_types(configured):
+    app, _ = configured
+    status, headers, body = request(app, "/drcloud-logo.png")
+    assert status == "200 OK"
+    assert headers["Content-Type"] == "image/png"
+    assert body.startswith(b"\x89PNG\r\n\x1a\n")
+
+    for path in ("/pwa.js", "/service-worker.js"):
+        status, headers, body = request(app, path)
+        assert status == "200 OK"
+        assert headers["Content-Type"] == "text/javascript; charset=utf-8"
+        assert not body.lstrip().lower().startswith(b"<!doctype html")
+    assert request(app, "/service-worker.js")[1]["Service-Worker-Allowed"] == "/"
+
+
+def test_official_icon_has_its_declared_500_pixel_dimensions():
+    def png_dimensions(path):
+        data = path.read_bytes()
+        return struct.unpack(">II", data[16:24])
+
+    assert png_dimensions(STATIC / "drcloud-logo.png") == (500, 500)
+
+
+def test_service_worker_is_registered_and_strictly_network_only(configured):
+    app, _ = configured
+    registration = (STATIC / "pwa.js").read_text(encoding="utf-8")
+    worker = (STATIC / "service-worker.js").read_text(encoding="utf-8")
+    assert "register('/service-worker.js', { scope: '/' })" in registration
+    assert ".catch(" in registration
+    assert "respondWith(fetch(event.request))" in worker
+    assert "caches" not in worker
+    assert "cache.put" not in worker.lower()
+
+    login_html = request(app, "/login")[2].decode()
+    assert '<link rel="manifest" href="/manifest.webmanifest">' in login_html
+    assert '<script src="/pwa.js"></script>' in login_html
+
+    _, cookie = login(app)
+    app_html = request(app, "/", cookie=cookie)[2].decode()
+    assert '<link rel="manifest" href="/manifest.webmanifest">' in app_html
+    assert '<script src="/pwa.js"></script>' in app_html
+
+
+def test_unauthenticated_start_url_still_redirects_to_public_login(configured):
+    app, _ = configured
+    status, headers, _ = request(app, "/")
+    assert status == "303 See Other"
+    assert headers["Location"] == "/login"
+    assert request(app, "/login")[0] == "200 OK"
 
 
 def test_inventory_mobile_scanner_has_manual_fallback_contract(configured):
