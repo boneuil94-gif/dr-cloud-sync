@@ -7,14 +7,14 @@
     "TODO": 0,
     "BLOCKED": 0
   },
-  "global_progress_percent": 29.7,
-  "remaining_percent": 70.3,
+  "global_progress_percent": 29.89,
+  "remaining_percent": 70.11,
   "modules": [
     {
       "id": "01-core",
       "name": "Core + architecture",
       "weight": 10,
-      "progress_percent": 60,
+      "progress_percent": 60.0,
       "weighted_progress": 6.0,
       "status": "IN_PROGRESS",
       "milestones": [
@@ -85,7 +85,7 @@
       "id": "02-catalog",
       "name": "Catalogue + mapping",
       "weight": 10,
-      "progress_percent": 80,
+      "progress_percent": 80.0,
       "weighted_progress": 8.0,
       "status": "IN_PROGRESS",
       "milestones": [
@@ -158,7 +158,7 @@
       "id": "03-inventory",
       "name": "Inventaire + EAN",
       "weight": 10,
-      "progress_percent": 70,
+      "progress_percent": 70.0,
       "weighted_progress": 7.0,
       "status": "IN_PROGRESS",
       "milestones": [
@@ -230,7 +230,7 @@
       "id": "04-stock",
       "name": "Stock + synchronisation",
       "weight": 10,
-      "progress_percent": 30,
+      "progress_percent": 30.0,
       "weighted_progress": 3.0,
       "status": "IN_PROGRESS",
       "milestones": [
@@ -298,7 +298,7 @@
       "id": "05-purchasing",
       "name": "Achats + fournisseurs",
       "weight": 10,
-      "progress_percent": 10,
+      "progress_percent": 10.0,
       "weighted_progress": 1.0,
       "status": "IN_PROGRESS",
       "milestones": [
@@ -364,7 +364,7 @@
       "id": "06-sales",
       "name": "Ventes",
       "weight": 8,
-      "progress_percent": 5,
+      "progress_percent": 5.0,
       "weighted_progress": 0.4,
       "status": "IN_PROGRESS",
       "milestones": [
@@ -430,7 +430,7 @@
       "id": "07-finance",
       "name": "Finance + pilotage",
       "weight": 8,
-      "progress_percent": 0,
+      "progress_percent": 0.0,
       "weighted_progress": 0.0,
       "status": "TODO",
       "milestones": [
@@ -494,7 +494,7 @@
       "id": "08-customers",
       "name": "Clients + fidélité",
       "weight": 6,
-      "progress_percent": 0,
+      "progress_percent": 0.0,
       "weighted_progress": 0.0,
       "status": "TODO",
       "milestones": [
@@ -558,7 +558,7 @@
       "id": "09-marketing",
       "name": "Marketing + réseaux sociaux",
       "weight": 8,
-      "progress_percent": 0,
+      "progress_percent": 0.0,
       "weighted_progress": 0.0,
       "status": "TODO",
       "milestones": [
@@ -622,7 +622,7 @@
       "id": "10-automation-ai",
       "name": "Automatisations + IA",
       "weight": 8,
-      "progress_percent": 5,
+      "progress_percent": 5.0,
       "weighted_progress": 0.4,
       "status": "IN_PROGRESS",
       "milestones": [
@@ -688,7 +688,7 @@
       "id": "11-dashboard",
       "name": "Dashboard",
       "weight": 5,
-      "progress_percent": 20,
+      "progress_percent": 20.0,
       "weighted_progress": 1.0,
       "status": "IN_PROGRESS",
       "milestones": [
@@ -755,8 +755,8 @@
       "id": "12-security",
       "name": "Sécurité + utilisateurs",
       "weight": 4,
-      "progress_percent": 10,
-      "weighted_progress": 0.4,
+      "progress_percent": 20.0,
+      "weighted_progress": 0.8,
       "status": "IN_PROGRESS",
       "milestones": [
         {
@@ -821,8 +821,8 @@
       "id": "13-production",
       "name": "Production + PWA",
       "weight": 3,
-      "progress_percent": 70,
-      "weighted_progress": 2.1,
+      "progress_percent": 76.47,
+      "weighted_progress": 2.29,
       "status": "IN_PROGRESS",
       "milestones": [
         {
@@ -863,7 +863,7 @@
         {
           "id": "13-production-m08",
           "name": "Déploiement production",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "13-production-m09",
@@ -873,7 +873,7 @@
         {
           "id": "13-production-m10",
           "name": "HTTPS vérifié réellement",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "13-production-m11",
@@ -883,7 +883,7 @@
         {
           "id": "13-production-m12",
           "name": "CD main avec verrou et commit exact",
-          "status": "IN_PROGRESS"
+          "status": "DONE"
         },
         {
           "id": "13-production-m13",
@@ -893,6 +893,21 @@
         {
           "id": "13-production-m14",
           "name": "État système Administration",
+          "status": "DONE"
+        },
+        {
+          "id": "13-production-m15",
+          "name": "Vue Administration authentifiée en lecture seule",
+          "status": "DONE"
+        },
+        {
+          "id": "13-production-m16",
+          "name": "Alerting et monitoring externe",
+          "status": "TODO"
+        },
+        {
+          "id": "13-production-m17",
+          "name": "Actions de restauration et rollback dans l’interface",
           "status": "TODO"
         }
       ],
@@ -903,12 +918,16 @@
         "Sauvegardes et restauration",
         "Observabilité et health check",
         "Déploiement reproductible documenté",
-        "Tests production"
+        "Tests production",
+        "Déploiement production",
+        "HTTPS vérifié réellement",
+        "CI complète sur pull requests",
+        "CD main avec verrou et commit exact",
+        "État système Administration",
+        "Vue Administration authentifiée en lecture seule"
       ],
-      "in_progress": [
-        "VPS OVH en cours de provisionnement"
-      ],
-      "next": "Valider le VPS et exécuter la checklist de déploiement contrôlé",
+      "in_progress": [],
+      "next": "Mettre en place le monitoring externe et l’alerting",
       "blocked": []
     }
   ]

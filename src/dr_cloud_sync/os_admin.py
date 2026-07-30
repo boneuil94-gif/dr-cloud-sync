@@ -5,8 +5,8 @@ import os
 import shutil
 import sqlite3
 from datetime import datetime, timezone
-from importlib.metadata import version
 from pathlib import Path
+from .admin_status import application_metadata
 
 
 def init_catalog(source: Path, report: Path, database: Path) -> int:
@@ -39,7 +39,7 @@ def backup(database: Path, destination: Path, *, environment: str, safe_mode: bo
     source = sqlite3.connect(database); copy = sqlite3.connect(target / "drcloud.db")
     with copy: source.backup(copy)
     source.close(); copy.close()
-    metadata = {"application":"drcloud-os", "version":version("dr-cloud-sync"),
+    metadata = {"application":"drcloud-os", "version":application_metadata()["version"],
                 "commit":os.environ.get("DRCLOUD_BUILD_COMMIT", "unknown"), "created_at":stamp,
                 "configuration":{"DRCLOUD_ENV":environment,"DRCLOUD_SAFE_MODE":safe_mode,"BARCODE_SYNC_MODE":"dry-run"}}
     (target / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")

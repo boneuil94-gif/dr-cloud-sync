@@ -61,3 +61,27 @@ Une restauration de données ne doit être entreprise qu'après arrêt des écri
 ## Fondations d'observabilité
 
 Le health public ne contient aucun secret et expose `status`, l'état SQLite, la version du paquet, le commit et la date de build. Ces données constituent le socle d'une future vue Administration. L'espace disque et l'état du conteneur sont déjà contrôlés par `check.sh`; dernière sauvegarde, jobs, synchronisations, connecteurs et erreurs récentes devront être ajoutés derrière une route authentifiée, sans transformer `/health` en système de monitoring.
+
+## Vue Administration authentifiée
+
+`/administration` est le centre de supervision interne, alimenté en lecture seule par
+`/api/admin/status`. Ces deux routes exigent la session DrCloud OS. L'API expose une
+liste fermée d'informations non sensibles : version, commit et build servis, contrôle
+SQLite léger (`quick_check(1)`), taille de la base, inventaire et ancienneté des
+sauvegardes, cohérence avec `.last-successful-commit`, et occupation du disque obtenue
+avec `shutil.disk_usage`. Elle ne retourne ni chemins internes, ni configuration, ni
+variables d'environnement, ni secrets, et ne donne accès à aucune action de
+restauration, rollback, déploiement ou commande système.
+
+Les statuts sont `ok`, `warning`, `error` et `unknown`. Une sauvegarde de 24 heures au
+plus est OK, de 24 à 48 heures déclenche une attention, et au-delà une erreur ; un
+répertoire inaccessible reste inconnu tandis qu'un répertoire accessible sans
+sauvegarde déclenche une attention. Le disque passe en attention à 85 % et en erreur à
+95 %. Une collecte défaillante est journalisée côté serveur et dégrade uniquement sa
+section. `/health` reste public, minimal et inchangé pour la CI/CD.
+
+Le conteneur lit les sauvegardes via le montage `/backups` existant. Aucun socket Docker
+ni privilège supplémentaire n'est utilisé. Si le marqueur de déploiement n'est pas
+présent dans le conteneur, la cohérence de déploiement apparaît simplement comme
+inconnue ; une évolution du montage pourra être évaluée séparément sans exposer le
+checkout en écriture.
