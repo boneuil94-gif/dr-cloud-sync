@@ -152,3 +152,20 @@ up to `max_attempts`; a completed job replay returns its persisted summary witho
 call. ShopCaisse clients already have bounded sanitized HTTP retries, but their multiple manual
 read/import workflows are intentionally not migrated here: the generic connector/operation job
 contract can host a later, separately scoped migration without changing safe-mode permissions.
+
+## Observations externes de stock (lecture seule)
+
+La projection des mouvements `APPLIED` du ledger reste l'unique stock local DrCloud OS.
+Chaque pull PrestaShop complet conserve, dans la même transaction que le snapshot, les
+quantités `stock_availables`, leur date et le `job_id`. La comparaison n'utilise que la
+dernière observation dont le job persistant est `SUCCEEDED`; un échec ou un snapshot
+partiel laisse donc la précédente observation valide disponible. L'identité repose
+exclusivement sur `(product_id, combination_id)` puis sur la clé DrCloud mappée.
+
+Une observation est `FRESH` pendant 24 heures (seuil centralisé dans
+`external_stock.DEFAULT_STALE_AFTER`), puis `STALE`. Les états de comparaison sont
+`MATCH`, `DIFFERENCE`, `STALE`, `UNKNOWN` et `INCONSISTENT`. ShopCaisse reste affiché
+comme indisponible : ses exports actuels ne constituent pas un snapshot transactionnel
+persistant, daté et relié à un `JobRun`. Les endpoints et la page Stock ne font aucun
+appel HTTP et ne créent aucun mouvement ; le rafraîchissement contrôlé reste la commande
+read-only existante `dr-cloud-sync pull`.

@@ -9,6 +9,14 @@
 <section class="dc-card stock-panel"><header class="panel-heading"><div><p class="dc-eyebrow">Projection locale</p><h2>Positions</h2></div><label class="stock-search">Rechercher un produit<input id="stockSearch" type="search" autocomplete="off" placeholder="Nom ou référence"></label></header>
 <div class="stock-table-wrap"><table class="stock-table"><thead><tr><th><button data-sort="name">Produit</button></th><th><button data-sort="reference">Référence</button></th><th><button data-sort="quantity">Stock actuel</button></th><th>Dernier mouvement</th><th>Origine</th><th>État</th></tr></thead><tbody id="positionRows"></tbody></table></div>
 <div class="empty-state empty-state-compact" id="stockEmpty" hidden><h3>Aucun mouvement de stock enregistré.</h3><p>Les mouvements apparaîtront après la validation et l’application d’un inventaire.</p></div></section>
+<section class="dashboard-kpis" aria-label="Indicateurs de comparaison">
+<article class="dc-card kpi-card"><div><p>Produits conformes</p><strong id="matchingKpi">—</strong><small>Dernière observation valide</small></div></article>
+<article class="dc-card kpi-card"><div><p>Produits avec écart</p><strong id="differenceKpi">—</strong><small>Aucune correction automatique</small></div></article>
+<article class="dc-card kpi-card"><div><p>Observations anciennes</p><strong id="staleKpi">—</strong><small>Seuil documenté : 24 heures</small></div></article>
+<article class="dc-card kpi-card"><div><p>Non observables</p><strong id="unknownKpi">—</strong><small>ShopCaisse non disponible</small></div></article>
+</section>
+<section class="dc-card stock-panel"><header class="panel-heading"><div><p class="dc-eyebrow">Observation read-only</p><h2>Comparaison des sources</h2><p>La projection du ledger DrCloud reste la seule source de vérité locale.</p></div><label>Filtrer<select id="comparisonFilter"><option value="ALL">Tous</option><option value="DIFFERENCE">Avec écart</option><option value="STALE">Observation ancienne</option><option value="UNKNOWN">Donnée inconnue</option></select></label></header>
+<div class="stock-table-wrap"><table class="stock-table"><thead><tr><th>Produit</th><th>DrCloud OS</th><th>PrestaShop</th><th>Écart</th><th>ShopCaisse</th><th>Fraîcheur</th><th>Statut</th></tr></thead><tbody id="comparisonRows"></tbody></table></div></section>
 <section class="dc-card stock-panel"><header class="panel-heading"><div><p class="dc-eyebrow">Ledger</p><h2 id="movementTitle">Mouvements récents</h2></div><button class="dc-button dc-button-secondary" id="clearProduct" hidden>Voir tous les mouvements</button></header>
 <div class="stock-table-wrap"><table class="stock-table"><thead><tr><th>Date</th><th>Produit</th><th>Delta</th><th>Type</th><th>Origine</th><th>Référence source</th></tr></thead><tbody id="movementRows"></tbody></table></div>
 <div class="empty-state empty-state-compact" id="movementEmpty" hidden><p>Aucun mouvement à afficher.</p></div></section></main>

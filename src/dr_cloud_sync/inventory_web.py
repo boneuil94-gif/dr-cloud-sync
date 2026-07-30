@@ -13,6 +13,7 @@ from .roadmap import DEFAULT_ROADMAP, RoadmapService
 from .services import AssignBarcodeService, BarcodeError, StockProjectionService
 from .admin_status import AdminStatusService, application_metadata
 from .modules import available_pages, render_navigation
+from .external_stock import ExternalStockQueryService
 
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
@@ -31,6 +32,7 @@ class InventoryApp:
         self.roadmap_service=roadmap_service or RoadmapService(DEFAULT_ROADMAP); self.failures={}
         self.admin_status=AdminStatusService(service.repo.path)
         self.stock=StockProjectionService(service.repo,self.os_repository)
+        self.external_stock=ExternalStockQueryService(service.repo.path,self.os_repository.all(),service.repo)
 
     def __call__(self, env, start):
         request_id=env.get("HTTP_X_REQUEST_ID") or str(uuid.uuid4()); path=env.get("PATH_INFO", "/"); method=env.get("REQUEST_METHOD", "GET")
@@ -61,7 +63,11 @@ class InventoryApp:
             if path == "/api/roadmap": return self._json(start,self.roadmap_service.load())
             if path == "/api/admin/status": return self._json(start,self.admin_status.collect(),headers=[("X-Request-ID",request_id)])
             if path == "/api/stock":
-                return self._json(start,{"positions":[asdict(p) for p in self.stock.positions()],"statistics":self.service.repo.aggregate_statistics()})
+                return self._json(start,{"positions":[asdict(p) for p in self.stock.positions()],"statistics":self.service.repo.aggregate_statistics(),"comparison_statistics":self.external_stock.statistics()})
+            if path == "/api/stock/comparison":
+                return self._json(start,{"comparisons":self.external_stock.comparisons(),"statistics":self.external_stock.statistics()})
+            if path == "/api/stock/sync-status":
+                return self._json(start,self.external_stock.sync_status())
             if path == "/api/stock/movements":
                 q=parse_qs(env.get("QUERY_STRING","")); product=q.get("product",[None])[0]
                 movements=self.service.repo.movements_for_product(product) if product else self.service.repo.recent_movements(50)
@@ -70,7 +76,8 @@ class InventoryApp:
                 from urllib.parse import unquote
                 key=unquote(path.removeprefix("/api/stock/products/")); position=self.stock.position(key)
                 if position is None: return self._json(start,{"error":"Produit sans position de stock"},"404 Not Found")
-                return self._json(start,{"position":asdict(position),"movements":[self._stock_movement(m) for m in self.service.repo.movements_for_product(key)]})
+                comparison=next((r for r in self.external_stock.comparisons() if r["drcloud_product_key"]==key),None)
+                return self._json(start,{"position":asdict(position),"observations":comparison,"movements":[self._stock_movement(m) for m in self.service.repo.movements_for_product(key)]})
             if path == "/api/catalogue": return self._json(start,self._catalogue(parse_qs(env.get("QUERY_STRING", ""))))
             if path == "/api/items":
                 q=parse_qs(env.get("QUERY_STRING", "")); return self._json(start,self.service.search(q.get("q",[""])[0],q.get("view",["ALL"])[0],q.get("without_ean",["0"])[0]=="1"))

@@ -35,7 +35,7 @@ def test_fetches_all_resources_and_paginates(tmp_path: Path):
         parsed = urlparse(request.full_url)
         resource = parsed.path.rsplit("/", 1)[-1]
         offset = int(parse_qs(parsed.query)["limit"][0].split(",")[0])
-        rows = [{"id": str(offset + 1), "ean13": "3760000000001"}] if offset == 0 else []
+        rows = ([{"id": str(offset + 1), "id_product": "1", "id_product_attribute": "0", "quantity": "4"}] if resource == "stock_availables" else [{"id": str(offset + 1), "ean13": "3760000000001"}]) if offset == 0 else []
         return Response({resource: rows})
 
     client = PrestaShopClient("https://example.test/api", "super-secret", page_size=1, opener=opener)
@@ -73,16 +73,18 @@ def test_failed_sync_keeps_previous_snapshot_and_resumes_same_job(tmp_path: Path
         assert connection.execute("SELECT source_id FROM prestashop_entities").fetchall() == [(99,)]
 
     class WorkingClient:
-        RESOURCES = ("products", "combinations")
+        RESOURCES = ("products", "combinations", "stock_availables")
         def iter_resource(self, resource):
+            if resource == "stock_availables":
+                return iter(({"id": 1, "id_product": 1, "id_product_attribute": 0, "quantity": 3},))
             return iter(({"id": 1},))
 
     assert synchronize(WorkingClient(), store, job_id="presta-retry", max_attempts=2) == {
-        "products": 1, "combinations": 1}
+        "products": 1, "combinations": 1, "stock_availables": 1}
     recovered = SqliteJobRepository(database).get("presta-retry")
     assert recovered and recovered.status == JobStatus.SUCCEEDED and recovered.attempt == 2
     with store.connect() as connection:
-        assert connection.execute("SELECT COUNT(*) FROM prestashop_entities").fetchone()[0] == 2
+        assert connection.execute("SELECT COUNT(*) FROM prestashop_entities").fetchone()[0] == 3
 
 
 def test_accepts_wrapped_single_resource():
