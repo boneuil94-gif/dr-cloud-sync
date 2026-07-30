@@ -12,6 +12,10 @@ for key in DRCLOUD_SECRET_KEY DRCLOUD_ADMIN_USERNAME DRCLOUD_ADMIN_PASSWORD; do
 done
 export DRCLOUD_BUILD_COMMIT="${DRCLOUD_BUILD_COMMIT:-$(git -C ../.. rev-parse HEAD)}"
 export DRCLOUD_BUILD_DATE="${DRCLOUD_BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+# Only this small runtime directory is shared with the container.  The mount is
+# read-only there; update.sh publishes its marker atomically after validation.
+export DRCLOUD_DEPLOYMENT_STATE_DIR="${DRCLOUD_DEPLOYMENT_STATE_DIR:-$PWD/.deployment-state}"
+install -d -m 0755 "$DRCLOUD_DEPLOYMENT_STATE_DIR"
 docker compose config --quiet
 docker compose build --pull
 docker compose up -d --remove-orphans

@@ -12,7 +12,7 @@ Ce kit prépare un futur VPS OVH Ubuntu 24.04. Il **ne déploie rien à distance
 6. `cp deploy/ovh/drcloud.env.example deploy/ovh/drcloud.env`, ou `deploy/ovh/generate-secrets.sh deploy/ovh/drcloud.env`; renseigner l'administrateur, conserver le fichier en mode `600`. Les placeholders connecteurs inutilisés peuvent rester présents car aucun connecteur live n'est activé.
 7. Lancer `deploy/ovh/deploy.sh`, puis `deploy/ovh/check.sh`. Installer le Caddyfile uniquement **après** la procédure DNS ci-dessous.
 
-Docker Compose lie Waitress à `127.0.0.1:8080`, conserve `/data` dans `drcloud-data`, monte `/var/backups/drcloud` hors volume et limite les logs Docker à 5 fichiers de 10 Mio. Caddy transmet les informations proxy sans dupliquer les protections HTTP de l'application.
+Docker Compose lie Waitress à `127.0.0.1:8080`, conserve `/data` dans `drcloud-data`, monte `/var/backups/drcloud` hors volume et limite les logs Docker à 5 fichiers de 10 Mio. Le seul état de déploiement transmis est le répertoire minimal `.deployment-state`, monté en lecture seule ; aucun checkout Git n'est exposé. Caddy transmet les informations proxy sans dupliquer les protections HTTP de l'application.
 
 ## Initialiser exactement 478 produits
 

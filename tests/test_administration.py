@@ -1,5 +1,6 @@
 import json
 import subprocess
+import pytest
 from collections import namedtuple
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -49,6 +50,47 @@ def test_missing_database_backup_and_build_metadata_are_tolerated(tmp_path, monk
     assert payload["backup"]["status"] == "warning" and payload["backup"]["count"] == 0
     assert payload["application"]["commit"] == payload["application"]["build_date"] == "unknown"
     assert payload["deployment"]["status"] == "unknown" and payload["status"] == "error"
+
+
+def test_deployment_mismatch_is_a_controlled_warning(configured, monkeypatch, tmp_path):
+    _, settings = configured
+    marker = tmp_path / "last-successful-commit"
+    marker.write_text("b" * 40 + "\n", encoding="utf-8")
+    monkeypatch.setenv("DRCLOUD_BUILD_COMMIT", "a" * 40)
+    deployment = AdminStatusService(
+        settings.database, backup_root=tmp_path, deployment_marker=marker
+    ).collect()["deployment"]
+    assert deployment == {
+        "status": "warning", "served_commit": "a" * 40,
+        "last_successful_commit": "b" * 40, "consistency": "mismatch",
+        "build_date": "unknown", "runtime": "application",
+    }
+
+
+@pytest.mark.parametrize("contents", ["", "not-a-sha", "a" * 39, "a" * 41, "../secret"])
+def test_empty_or_invalid_deployment_marker_is_unknown(
+        configured, monkeypatch, tmp_path, contents):
+    _, settings = configured
+    marker = tmp_path / "last-successful-commit"
+    marker.write_text(contents, encoding="utf-8")
+    monkeypatch.setenv("DRCLOUD_BUILD_COMMIT", "a" * 40)
+    deployment = AdminStatusService(
+        settings.database, backup_root=tmp_path, deployment_marker=marker
+    ).collect()["deployment"]
+    assert deployment["status"] == "unknown"
+    assert deployment["last_successful_commit"] == "unknown"
+    assert deployment["consistency"] == "unknown"
+
+
+def test_invalid_served_commit_cannot_create_false_consistency(configured, monkeypatch, tmp_path):
+    _, settings = configured
+    marker = tmp_path / "last-successful-commit"
+    marker.write_text("unknown", encoding="utf-8")
+    monkeypatch.setenv("DRCLOUD_BUILD_COMMIT", "unknown")
+    deployment = AdminStatusService(
+        settings.database, backup_root=tmp_path, deployment_marker=marker
+    ).collect()["deployment"]
+    assert deployment["status"] == deployment["consistency"] == "unknown"
 
 
 def test_invalid_backup_metadata_uses_file_timestamp(configured, tmp_path):
