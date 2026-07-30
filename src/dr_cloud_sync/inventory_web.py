@@ -2,7 +2,6 @@
 from __future__ import annotations
 from dataclasses import asdict
 import hashlib, hmac, json, logging, os, secrets, time, uuid
-from importlib.metadata import version
 from pathlib import Path
 from urllib.parse import parse_qs
 from .connectors import DisabledConnector
@@ -12,6 +11,7 @@ from .os_config import OSSettings
 from .repositories import SQLiteOSRepository
 from .roadmap import DEFAULT_ROADMAP, RoadmapService
 from .services import AssignBarcodeService, BarcodeError
+from .admin_status import AdminStatusService, application_metadata
 
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
@@ -24,6 +24,7 @@ class InventoryApp:
         self.os_repository=os_repository or SQLiteOSRepository(service.repo.path,products)
         self.barcodes=AssignBarcodeService(self.os_repository,self.os_repository,DisabledConnector(),DisabledConnector())
         self.roadmap_service=roadmap_service or RoadmapService(DEFAULT_ROADMAP); self.failures={}
+        self.admin_status=AdminStatusService(service.repo.path)
 
     def __call__(self, env, start):
         request_id=env.get("HTTP_X_REQUEST_ID") or str(uuid.uuid4()); path=env.get("PATH_INFO", "/"); method=env.get("REQUEST_METHOD", "GET")
@@ -31,8 +32,8 @@ class InventoryApp:
             if path == "/health":
                 try: self.service.repo.db.execute("SELECT 1"); database="ok"; status="ok"
                 except Exception: database="error"; status="degraded"
-                return self._json(start,{"status":status,"application":"drcloud-os","version":version("dr-cloud-sync"),"commit":os.environ.get("DRCLOUD_BUILD_COMMIT","unknown"),"build_date":os.environ.get("DRCLOUD_BUILD_DATE","unknown"),"database":database}, headers=[("X-Request-ID",request_id)])
-            if path in {"/manifest.webmanifest","/icon.svg","/inventory.css","/inventory.js","/roadmap.js","/dashboard.js"}:
+                return self._json(start,{"status":status,"application":"drcloud-os",**application_metadata(),"database":database}, headers=[("X-Request-ID",request_id)])
+            if path in {"/manifest.webmanifest","/icon.svg","/inventory.css","/inventory.js","/roadmap.js","/dashboard.js","/administration.js"}:
                 file={"/manifest.webmanifest":"manifest.webmanifest"}.get(path,path[1:]); kind="application/manifest+json" if path.endswith("webmanifest") else "image/svg+xml" if path.endswith("svg") else "text/css; charset=utf-8" if path.endswith("css") else "text/javascript; charset=utf-8"
                 return self._send(start,(ROOT/file).read_bytes(),kind,headers=[("X-Request-ID",request_id)])
             session=self._session(env)
@@ -45,11 +46,13 @@ class InventoryApp:
             if path == "/catalogue": return self._html(start,"inventory.html",session,request_id)
             if path == "/inventaire": return self._html(start,"inventory.html",session,request_id)
             if path == "/roadmap": return self._html(start,"roadmap.html",session,request_id)
+            if path == "/administration": return self._html(start,"administration.html",session,request_id)
             if path.startswith("/modules/"): return self._html(start,"coming-soon.html",session,request_id)
             if path == "/api/dashboard":
                 road=self.roadmap_service.load(); return self._json(start,{"progress_percent":road["global_progress_percent"],"next":next((m["next"] for m in road["modules"] if m.get("next")),None),"catalogue":len(self.service.items),"inventory":{"session":self.service.session(),"progress":self.service.progress()},"synchronizations":"non configurées"},headers=[("X-Request-ID",request_id)])
             if path == "/api/state": return self._json(start,{"session":self.service.session(),"progress":self.service.progress()})
             if path == "/api/roadmap": return self._json(start,self.roadmap_service.load())
+            if path == "/api/admin/status": return self._json(start,self.admin_status.collect(),headers=[("X-Request-ID",request_id)])
             if path == "/api/catalogue": return self._json(start,self._catalogue(parse_qs(env.get("QUERY_STRING", ""))))
             if path == "/api/items":
                 q=parse_qs(env.get("QUERY_STRING", "")); return self._json(start,self.service.search(q.get("q",[""])[0],q.get("view",["ALL"])[0],q.get("without_ean",["0"])[0]=="1"))
