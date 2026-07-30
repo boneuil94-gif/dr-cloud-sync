@@ -2,10 +2,13 @@
 from __future__ import annotations
 import os
 from dataclasses import asdict
+from dataclasses import dataclass
 
 from .connectors import BarcodeConnector, prestashop_barcode_target, shopcaisse_barcode_target
-from .domain import ActivityLog, AssignmentStatus, BarcodeAssignment, MovementType, Product, RemoteStatus, StockMovement, utc_now
-from .repositories import AuditRepository, CatalogRepository
+from .domain import (ActivityLog, AssignmentStatus, BarcodeAssignment, MovementStatus,
+                     MovementType, Product, RemoteStatus, StockMovement, utc_now)
+from .repositories import (AuditRepository, CatalogRepository, DuplicateStockMovement,
+                           StockMovementRepository)
 
 
 class BarcodeError(ValueError): pass
@@ -80,5 +83,52 @@ class AssignBarcodeService:
 class InventoryReconciliationService:
     """Propose local movements only; it has no connector dependency."""
     def propose(self, products: list[Product], source_id: str) -> list[StockMovement]:
-        return [StockMovement(p.drcloud_product_key,p.physical_quantity-p.stock_prestashop,MovementType.INVENTORY_CORRECTION,source_id)
+        return [StockMovement(
+                    drcloud_product_key=p.drcloud_product_key,
+                    quantity_delta=p.physical_quantity-p.stock_prestashop,
+                    movement_type=MovementType.INVENTORY_CORRECTION,
+                    source_type="INVENTORY", source_id=source_id,
+                    idempotency_key=f"{source_id}:{p.drcloud_product_key}")
                 for p in products if p.physical_quantity is not None and p.stock_prestashop is not None and p.physical_quantity != p.stock_prestashop]
+
+
+class StockMovementConflict(ValueError):
+    """An idempotency key was replayed with a different business payload."""
+
+
+@dataclass(frozen=True)
+class RecordMovementResult:
+    movement: StockMovement
+    created: bool
+
+
+class StockService:
+    """Record pending ledger entries without applying any stock projection."""
+    def __init__(self, repository: StockMovementRepository):
+        self.repository = repository
+
+    def record(self, movement: StockMovement) -> RecordMovementResult:
+        if (movement.status != MovementStatus.PENDING or movement.validated_at is not None
+                or movement.applied_at is not None):
+            raise ValueError("new stock movements must be pending and unapplied")
+        existing = self.repository.by_idempotency_key(
+            movement.source_type, movement.idempotency_key)
+        if existing is not None:
+            return self._replay(existing, movement)
+        try:
+            self.repository.append(movement)
+            return RecordMovementResult(movement, True)
+        except DuplicateStockMovement:
+            # Another SQLite connection may have won after our initial read.
+            existing = self.repository.by_idempotency_key(
+                movement.source_type, movement.idempotency_key)
+            if existing is None:
+                raise
+            return self._replay(existing, movement)
+
+    @staticmethod
+    def _replay(existing: StockMovement, candidate: StockMovement) -> RecordMovementResult:
+        if existing.business_payload() != candidate.business_payload():
+            raise StockMovementConflict(
+                "idempotency key already exists with a different stock movement payload")
+        return RecordMovementResult(existing, False)

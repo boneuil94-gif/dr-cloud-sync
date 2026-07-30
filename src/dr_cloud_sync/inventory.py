@@ -10,11 +10,11 @@ import io
 import json
 import sqlite3
 import uuid
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from .domain import drcloud_key
+from .repositories import ensure_stock_movements_schema
 
 
 def now() -> str:
@@ -23,18 +23,6 @@ def now() -> str:
 
 class InventoryError(ValueError):
     pass
-
-
-@dataclass(frozen=True)
-class StockMovement:
-    """Future, local movement contract. No movement is applied in inventory V1."""
-    id: str
-    prestashop_key: str
-    quantity_delta: int
-    movement_type: str
-    source_id: str
-    created_at: str
-    validated_at: str | None = None
 
 
 class InventoryRepository:
@@ -60,10 +48,8 @@ class InventoryRepository:
           id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL, session_id TEXT NOT NULL,
           prestashop_key TEXT NOT NULL, old_quantity INTEGER, new_quantity INTEGER NOT NULL,
           source TEXT NOT NULL, action TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS stock_movements(
-          id TEXT PRIMARY KEY, prestashop_key TEXT NOT NULL, quantity_delta INTEGER NOT NULL,
-          movement_type TEXT NOT NULL, source_id TEXT NOT NULL, created_at TEXT NOT NULL, validated_at TEXT);
         """)
+        ensure_stock_movements_schema(self.db)
         self.db.commit()
 
     def active_session(self) -> dict[str, Any]:

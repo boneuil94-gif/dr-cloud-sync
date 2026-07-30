@@ -107,3 +107,24 @@ Le [plan directeur DrCloud OS](docs/DRCLOUD_OS_ARCHITECTURE.md), la
 définissent les frontières du monolithe modulaire. La page **Roadmap** de DrCloud OS
 lit `docs/drcloud-os-roadmap.json` par l'intermédiaire de `RoadmapService` : les
 pourcentages affichés sont recalculés depuis les jalons, et non inscrits dans la vue.
+
+## Stock movement ledger
+
+`StockMovement` in `dr_cloud_sync.domain` is the single stock movement contract. New
+entries are append-only and start as `PENDING`: this foundation does not update a
+stock projection or call a remote system. A correction must therefore be represented
+by a later compensating movement, never by rewriting an existing business payload.
+
+Idempotence is scoped to `(source_type, idempotency_key)`. Producers must provide a
+stable key for one logical operation (inventory proposals use
+`<inventory source_id>:<drcloud_product_key>`). An exact replay returns the stored
+movement with `created=False`; reuse for a different product, delta, movement type or
+source reference raises `StockMovementConflict`. SQLite enforces this contract with a
+partial unique index. Legacy rows receive the isolated `LEGACY` scope and a key
+derived from their already-unique technical id.
+
+At startup, schema setup is additive and idempotent. Existing `stock_movements` rows
+and their `prestashop_key` are preserved, `drcloud_product_key` is backfilled as
+`drc:<prestashop_key>`, and the ledger/audit columns and indexes are added. Legacy
+rows receive `legacy:<existing id>` so they are readable through the canonical model
+without conflating any historical operations.
