@@ -65,6 +65,89 @@ class ProductStatus(StrEnum):
     ARCHIVED = "ARCHIVED"
 
 
+class MediaRole(StrEnum):
+    PRIMARY = "PRIMARY"
+    SECONDARY = "SECONDARY"
+
+
+class MediaSource(StrEnum):
+    PRESTASHOP = "PRESTASHOP"
+    MANUAL_UPLOAD = "MANUAL_UPLOAD"
+    MOBILE_CAMERA = "MOBILE_CAMERA"
+    IMPORT = "IMPORT"
+    AI_GENERATED = "AI_GENERATED"
+
+
+class MarketingUsage(StrEnum):
+    UNKNOWN = "UNKNOWN"
+    ALLOWED = "ALLOWED"
+    FORBIDDEN = "FORBIDDEN"
+
+
+class VisualType(StrEnum):
+    UNSPECIFIED = "UNSPECIFIED"
+    PACKSHOT = "PACKSHOT"
+    PRODUCT_PHOTO = "PRODUCT_PHOTO"
+    LIFESTYLE = "LIFESTYLE"
+    PACKAGING = "PACKAGING"
+    OTHER = "OTHER"
+
+
+class MediaVariantKind(StrEnum):
+    ORIGINAL = "ORIGINAL"
+    THUMBNAIL = "THUMBNAIL"
+    DISPLAY = "DISPLAY"
+
+
+@dataclass(frozen=True)
+class ProductMedia:
+    media_id: str
+    product_key: str
+    media_type: str
+    role: MediaRole
+    source: MediaSource
+    storage_reference: str
+    mime_type: str
+    width: int
+    height: int
+    file_size: int
+    sha256: str
+    source_reference: str | None = None
+    original_filename: str | None = None
+    visual_type: VisualType = VisualType.UNSPECIFIED
+    marketing_usage: MarketingUsage = MarketingUsage.UNKNOWN
+    protected_original: bool = False
+    usages: tuple[str, ...] = ("catalogue",)
+    imported_at: str | None = None
+    source_updated_at: str | None = None
+    created_at: str = field(default_factory=utc_now)
+    updated_at: str = field(default_factory=utc_now)
+    active: bool = True
+
+    def __post_init__(self) -> None:
+        if not self.media_id.startswith("media:") or not self.product_key.strip():
+            raise ValueError("invalid product media identity")
+        object.__setattr__(self, "role", MediaRole(self.role))
+        object.__setattr__(self, "source", MediaSource(self.source))
+        object.__setattr__(self, "visual_type", VisualType(self.visual_type))
+        object.__setattr__(self, "marketing_usage", MarketingUsage(self.marketing_usage))
+        allowed = {"catalogue", "ecommerce", "marketing", "social"}
+        if not set(self.usages).issubset(allowed):
+            raise ValueError("invalid media usage")
+
+
+@dataclass(frozen=True)
+class ProductMediaVariant:
+    media_id: str
+    kind: MediaVariantKind
+    storage_reference: str
+    mime_type: str
+    width: int
+    height: int
+    file_size: int
+    sha256: str
+
+
 class SupplierStatus(StrEnum):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"

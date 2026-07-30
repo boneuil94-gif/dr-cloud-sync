@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import sqlite3
+import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 from .admin_status import application_metadata
@@ -39,8 +40,40 @@ def backup(database: Path, destination: Path, *, environment: str, safe_mode: bo
     source = sqlite3.connect(database); copy = sqlite3.connect(target / "drcloud.db")
     with copy: source.backup(copy)
     source.close(); copy.close()
+    media_source=database.parent/"media"
+    media_target=target/"media"
+    if media_source.is_dir(): shutil.copytree(media_source,media_target,symlinks=False)
+    media_files=[]
+    if media_target.is_dir():
+        for path in sorted(p for p in media_target.rglob("*") if p.is_file()):
+            media_files.append({"path":path.relative_to(target).as_posix(),"size":path.stat().st_size,
+                                "sha256":hashlib.sha256(path.read_bytes()).hexdigest()})
     metadata = {"application":"drcloud-os", "version":application_metadata()["version"],
                 "commit":os.environ.get("DRCLOUD_BUILD_COMMIT", "unknown"), "created_at":stamp,
+                "media":{"included":True,"files":media_files},
                 "configuration":{"DRCLOUD_ENV":environment,"DRCLOUD_SAFE_MODE":safe_mode,"BARCODE_SYNC_MODE":"dry-run"}}
     (target / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     return target
+
+
+def restore_backup(source: Path, data_dir: Path) -> None:
+    """Restore a stopped instance after validating the complete DB/media bundle."""
+    metadata=json.loads((source/"metadata.json").read_text(encoding="utf-8"))
+    database=source/"drcloud.db"
+    if not database.is_file() or metadata.get("media",{}).get("included") is not True:
+        raise ValueError("Backup DB + médias incomplet")
+    for item in metadata["media"].get("files",[]):
+        candidate=(source/item["path"]).resolve()
+        if source.resolve() not in candidate.parents or not candidate.is_file(): raise ValueError("Média de backup manquant")
+        if candidate.stat().st_size!=item["size"] or hashlib.sha256(candidate.read_bytes()).hexdigest()!=item["sha256"]:
+            raise ValueError("Média de backup corrompu")
+    data_dir.mkdir(parents=True,exist_ok=True)
+    temporary=data_dir/"drcloud.db.restore"
+    shutil.copyfile(database,temporary); temporary.replace(data_dir/"drcloud.db")
+    if (source/"media").is_dir():
+        media_tmp=data_dir/"media.restore"
+        if media_tmp.exists(): shutil.rmtree(media_tmp)
+        shutil.copytree(source/"media",media_tmp)
+        current=data_dir/"media"
+        if current.exists(): current.rename(data_dir/"media.before-restore")
+        media_tmp.replace(current)

@@ -37,6 +37,7 @@ class AdminStatusService:
             "/run/drcloud-deployment/last-successful-commit"))
         self.now = now or (lambda: datetime.now(timezone.utc))
         self.disk_usage = disk_usage or shutil.disk_usage
+        self.media_diagnostics = None
 
     def collect(self) -> dict:
         metadata = application_metadata()
@@ -47,6 +48,8 @@ class AdminStatusService:
             "deployment": self._safe("deployment", lambda: self._deployment(metadata)),
             "system": self._safe("system", self._system),
         }
+        if self.media_diagnostics:
+            sections["media"] = self._safe("media", self.media_diagnostics)
         sections["status"] = self._overall(sections.values())
         sections["checked_at"] = self.now().isoformat().replace("+00:00", "Z")
         return sections
@@ -90,6 +93,8 @@ class AdminStatusService:
                 try:
                     import json
                     raw = json.loads(metadata.read_text(encoding="utf-8"))
+                    if raw.get("media",{}).get("included") is not True:
+                        continue
                     stamp = raw.get("created_at")
                     if stamp:
                         created = datetime.strptime(stamp, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)

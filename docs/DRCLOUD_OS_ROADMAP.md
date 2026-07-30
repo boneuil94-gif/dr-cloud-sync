@@ -1,6 +1,6 @@
 # Roadmap officielle DrCloud OS
 
-**Version :** 1.0.0 — **mise à jour :** 2026-07-30 — **progression pondérée calculée : 40,89 %** — **reste : 59,11 %**.
+**Version :** 1.0.0 — **mise à jour :** 2026-07-30 — **progression pondérée calculée : 47,43 %** — **reste : 52,57 %**.
 
 La mesure est fondée sur des jalons constatables dans le dépôt : `DONE = 100 %`, `IN_PROGRESS = 50 %`, `TODO/BLOCKED = 0 %` du jalon, puis moyenne des jalons et pondération du bloc. La source exécutable est [`drcloud-os-roadmap.json`](drcloud-os-roadmap.json) et `RoadmapService` recalcule les valeurs ; ce document explicite l'état, il ne pilote pas l'interface.
 
@@ -14,12 +14,12 @@ La mesure est fondée sur des jalons constatables dans le dépôt : `DONE = 100 
 | 06 Ventes | IN_PROGRESS | 5 % | 8 | 0.4 |
 | 07 Finance + pilotage | TODO | 0 % | 8 | 0.0 |
 | 08 Clients + fidélité | TODO | 0 % | 6 | 0.0 |
-| 09 Marketing + réseaux sociaux | TODO | 0 % | 8 | 0.0 |
+| 09 Marketing + réseaux sociaux | IN_PROGRESS | 10 % | 8 | 0.8 |
 | 10 Automatisations + IA | IN_PROGRESS | 5 % | 8 | 0.4 |
 | 11 Dashboard | IN_PROGRESS | 10 % | 5 | 0.5 |
 | 12 Sécurité + utilisateurs | IN_PROGRESS | 10 % | 4 | 0.4 |
 | 13 Production + PWA | IN_PROGRESS | 70 % | 3 | 2.1 |
-| **Total** | **IN_PROGRESS** | **40,89 %** | **100** | **40.89** |
+| **Total** | **IN_PROGRESS** | **47,43 %** | **100** | **47.43** |
 
 ## État opérationnel par bloc
 

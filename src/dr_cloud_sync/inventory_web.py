@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 import hashlib, hmac, json, logging, os, secrets, time, uuid
 from pathlib import Path
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, unquote
 from .connectors import DisabledConnector
 from .domain import Product, ProductStatus, PurchaseOrderStatus, SupplierStatus
 from .inventory import InventoryError, InventoryRepository, InventoryService
@@ -18,6 +18,9 @@ from .purchasing import (GoodsReceiptService, PurchaseOrderService,
                          SQLiteGoodsReceiptRepository, SQLitePurchaseOrderRepository,
                          SQLiteSupplierRepository, SupplierService)
 from .security import CredentialStore
+from .media import (MAX_FILE_SIZE, LocalMediaStorage, MediaError, ProductMediaService,
+                    SQLiteProductMediaRepository)
+from .domain import MediaVariantKind
 
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
@@ -42,6 +45,9 @@ class InventoryApp:
         self.goods_receipts=GoodsReceiptService(SQLiteGoodsReceiptRepository(service.repo.path,service.repo.db),self.purchase_orders,service.repo,self.os_repository)
         self.credentials=CredentialStore(service.repo.path,settings.admin_password) if settings else None
         self.password_failures={}
+        media_root=(settings.data_dir if settings else service.repo.path.parent)/"media"/"products"
+        self.media=ProductMediaService(SQLiteProductMediaRepository(service.repo.path),LocalMediaStorage(media_root),self.os_repository,self.os_repository)
+        self.admin_status.media_diagnostics=self.media.diagnostics
 
     def __call__(self, env, start):
         request_id=env.get("HTTP_X_REQUEST_ID") or str(uuid.uuid4()); path=env.get("PATH_INFO", "/"); method=env.get("REQUEST_METHOD", "GET")
@@ -71,6 +77,8 @@ class InventoryApp:
             session=self._session(env)
             if path == "/login": return self._login(env,start,method,session,request_id)
             if not session: return self._redirect(start,"/login",request_id)
+            if path.startswith("/media/") and method in {"GET","HEAD"}:
+                return self._serve_media(path,start,request_id,head=method=="HEAD")
             if path == "/logout" and method == "POST":
                 self._csrf(env,session); return self._redirect(start,"/login",request_id,clear=True)
             if method not in {"GET","HEAD","OPTIONS"}: self._csrf(env,session)
@@ -93,7 +101,7 @@ class InventoryApp:
             if path.startswith("/api/goods-receipts/"):
                 tail=path.removeprefix("/api/goods-receipts/"); parts=tail.split("/"); rid=parts[0]
                 if len(parts)==1 and method=="GET":
-                    receipt,lines=self.goods_receipts.detail(rid); return self._json(start,{"goods_receipt":self._goods_receipt(receipt),"lines":[asdict(x) for x in lines],"movements":[self._stock_movement(x) for x in self.service.repo.list() if x.source_type=="GOODS_RECEIPT" and x.source_id==rid]})
+                    receipt,lines=self.goods_receipts.detail(rid); return self._json(start,{"goods_receipt":self._goods_receipt(receipt),"lines":[self._with_media(asdict(x),x.product_key) for x in lines],"movements":[self._stock_movement(x) for x in self.service.repo.list() if x.source_type=="GOODS_RECEIPT" and x.source_id==rid]})
                 if parts[1:]==["apply"] and method=="POST": return self._json(start,{"goods_receipt":self._goods_receipt(self.goods_receipts.apply(rid,session.get("u","authenticated")))})
             if path == "/api/purchase-orders" and method == "GET":
                 q=parse_qs(env.get("QUERY_STRING","")); status=q.get("status",[None])[0]
@@ -109,7 +117,7 @@ class InventoryApp:
                     if not row:return self._json(start,{"error":"Commande fournisseur introuvable"},"404 Not Found")
                     return self._json(start,{"purchase_order":self._purchase_order(row),"activities":[asdict(a) for a in self.purchase_orders.activities(oid)]})
                 if len(parts)==1 and method=="PATCH": return self._json(start,{"purchase_order":self._purchase_order(self.purchase_orders.update(oid,self._body(env),session.get("u","authenticated")))})
-                if parts[1:]==["receivable"] and method=="GET": return self._json(start,{"lines":self.goods_receipts.receivable(oid)})
+                if parts[1:]==["receivable"] and method=="GET": return self._json(start,{"lines":[self._with_media(x,x["product_key"]) for x in self.goods_receipts.receivable(oid)]})
                 if parts[1:]==["receipts"] and method=="POST": return self._json(start,{"goods_receipt":self._goods_receipt(self.goods_receipts.create(oid,self._body(env),session.get("u","authenticated")))} ,"201 Created")
                 if parts[1:]==["status"] and method=="POST": return self._json(start,{"purchase_order":self._purchase_order(self.purchase_orders.transition(oid,self._body(env)["status"],session.get("u","authenticated")))})
                 if parts[1:]==["lines"] and method=="POST": return self._json(start,{"line":asdict(self.purchase_orders.add_line(oid,self._body(env),session.get("u","authenticated")))},"201 Created")
@@ -143,7 +151,7 @@ class InventoryApp:
             if path == "/api/security/change-password" and method == "POST":
                 return self._change_password(env,start,session,request_id)
             if path == "/api/stock":
-                return self._json(start,{"positions":[asdict(p) for p in self.stock.positions()],"statistics":self.service.repo.aggregate_statistics(),"comparison_statistics":self.external_stock.statistics()})
+                return self._json(start,{"positions":[self._with_media(asdict(p),p.drcloud_product_key) for p in self.stock.positions()],"statistics":self.service.repo.aggregate_statistics(),"comparison_statistics":self.external_stock.statistics()})
             if path == "/api/stock/comparison":
                 return self._json(start,{"comparisons":self.external_stock.comparisons(),"statistics":self.external_stock.statistics()})
             if path == "/api/stock/sync-status":
@@ -157,7 +165,9 @@ class InventoryApp:
                 key=unquote(path.removeprefix("/api/stock/products/")); position=self.stock.position(key)
                 if position is None: return self._json(start,{"error":"Produit sans position de stock"},"404 Not Found")
                 comparison=next((r for r in self.external_stock.comparisons() if r["drcloud_product_key"]==key),None)
-                return self._json(start,{"position":asdict(position),"observations":comparison,"movements":[self._stock_movement(m) for m in self.service.repo.movements_for_product(key)]})
+                return self._json(start,{"position":self._with_media(asdict(position),key,display=True),"observations":comparison,"movements":[self._stock_movement(m) for m in self.service.repo.movements_for_product(key)]})
+            if path.startswith("/api/products/") and "/media" in path:
+                return self._media_api(path,method,env,start,session)
             if path == "/api/catalogue": return self._json(start,self._catalogue(parse_qs(env.get("QUERY_STRING", ""))))
             if path.startswith("/api/catalogue/products/") and path.endswith("/status") and method == "POST":
                 from urllib.parse import unquote
@@ -165,8 +175,9 @@ class InventoryApp:
                 product=self.os_repository.set_status(key,ProductStatus(self._body(env)["status"]))
                 return self._json(start,asdict(product))
             if path == "/api/items":
-                q=parse_qs(env.get("QUERY_STRING", "")); return self._json(start,self.service.search(q.get("q",[""])[0],q.get("view",["ALL"])[0],q.get("without_ean",["0"])[0]=="1"))
-            if path == "/api/scan": return self._json(start,self.service.scan(parse_qs(env.get("QUERY_STRING", "")).get("ean",[""])[0]))
+                q=parse_qs(env.get("QUERY_STRING", "")); rows=self.service.search(q.get("q",[""])[0],q.get("view",["ALL"])[0],q.get("without_ean",["0"])[0]=="1"); return self._json(start,[self._with_media(x,x.get("drcloud_product_key") or f"drc:{x.get('prestashop_key')}") for x in rows])
+            if path == "/api/scan":
+                result=self.service.scan(parse_qs(env.get("QUERY_STRING", "")).get("ean",[""])[0]); result["items"]=[self._with_media(x,x.get("drcloud_product_key") or f"drc:{x.get('prestashop_key')}") for x in result.get("items",[])]; return self._json(start,result)
             if path == "/api/count" and method == "POST":
                 data=self._body(env); return self._json(start,self.service.count(data["prestashop_key"],data.get("physical_quantity"),data.get("source","MANUAL"),data.get("action","COUNT")))
             if path == "/api/barcodes/propose" and method == "POST":
@@ -186,7 +197,7 @@ class InventoryApp:
             return self._error(start,404,request_id)
         except PermissionError: return self._error(start,403,request_id)
         except KeyError as exc: return self._json(start,{"error":str(exc).strip(chr(39))},"404 Not Found")
-        except (InventoryError,BarcodeError,ValueError,json.JSONDecodeError) as exc: return self._json(start,{"error":str(exc)},"400 Bad Request")
+        except (InventoryError,BarcodeError,MediaError,ValueError,json.JSONDecodeError) as exc: return self._json(start,{"error":str(exc)},"400 Bad Request")
         except Exception:
             LOG.exception("request_failed request_id=%s path=%s",request_id,path); return self._error(start,500,request_id)
 
@@ -243,7 +254,7 @@ class InventoryApp:
         if not hmac.compare_digest(token,session["csrf"]): raise PermissionError("CSRF")
     @staticmethod
     def _raw_body(env):
-        if "drcloud.raw_body" not in env: env["drcloud.raw_body"]=env["wsgi.input"].read(min(int(env.get("CONTENT_LENGTH") or 0),1_048_576))
+        if "drcloud.raw_body" not in env: env["drcloud.raw_body"]=env["wsgi.input"].read(min(int(env.get("CONTENT_LENGTH") or 0),MAX_FILE_SIZE+1))
         return env["drcloud.raw_body"]
     def _body(self,env): return json.loads(self._raw_body(env) or b"{}")
     def _html(self,start,name,session,request_id,status="200 OK"):
@@ -268,7 +279,36 @@ class InventoryApp:
             row["coherence"]="INCOHÉRENT" if problems else "ATTENTION" if not p.ean else "OK"
             row["coherence_issues"]=problems or (["EAN absent"] if not p.ean else [])
             row["ean_status"]="CONFLICT" if p.drcloud_product_key in conflicts else "WITH_EAN" if p.ean else "WITHOUT_EAN"; count=counts.get(p.prestashop_key); row["physical_quantity"]=count["physical_quantity"] if count else None; rows.append(row)
+            self._with_media(row,p.drcloud_product_key)
         return rows
+    def _with_media(self,row,key,display=False):
+        media=self.media.primary(key); row["media_url"]=self.media.url(media,MediaVariantKind.DISPLAY if display else MediaVariantKind.THUMBNAIL); row["media_width"]=(media.width if media else None); row["media_height"]=(media.height if media else None); return row
+    def _media_json(self,media):
+        value=asdict(media); value.pop("storage_reference",None); value["url"]=self.media.url(media,MediaVariantKind.ORIGINAL); value["thumbnail_url"]=self.media.url(media); value["display_url"]=self.media.url(media,MediaVariantKind.DISPLAY); return value
+    def _media_api(self,path,method,env,start,session):
+        parts=path.removeprefix("/api/products/").split("/"); key=unquote(parts[0])
+        if len(parts)==2 and parts[1]=="media" and method=="GET": return self._json(start,{"media":[self._media_json(x) for x in self.media.repository.list(key)]})
+        if len(parts)==2 and parts[1]=="media" and method=="POST":
+            source=env.get("HTTP_X_MEDIA_SOURCE","MANUAL_UPLOAD"); role=env.get("HTTP_X_MEDIA_ROLE","PRIMARY")
+            media=self.media.add(key,self._raw_body(env),filename=unquote(env.get("HTTP_X_FILENAME","upload")),source=source,role=role,actor=session.get("u","authenticated"))
+            return self._json(start,{"media":self._media_json(media)},"201 Created")
+        if len(parts)==4 and parts[1]=="media" and method=="POST":
+            media_id=unquote(parts[2]); action=parts[3]
+            if action=="primary": self.media.make_primary(key,media_id,session.get("u","authenticated"))
+            elif action=="disable": self.media.disable(key,media_id,session.get("u","authenticated"))
+            else: raise KeyError(action)
+            return self._json(start,{"media":self._media_json(self.media.repository.get(media_id))})
+        raise KeyError(path)
+    def _serve_media(self,path,start,request_id,head=False):
+        parts=path.split("?")[0].strip("/").split("/")
+        if len(parts)!=3 or parts[0]!="media": raise KeyError(path)
+        media_id=unquote(parts[1]); kind=MediaVariantKind(parts[2].upper()); media=self.media.repository.get(media_id)
+        if not media: raise KeyError(media_id)
+        variant=self.media.repository.variant(media_id,kind)
+        if not variant: raise KeyError(kind)
+        content=self.media.storage.read(variant.storage_reference)
+        headers=[("X-Request-ID",request_id),("Content-Length",str(len(content))),("Cache-Control","public, max-age=31536000, immutable")]
+        return self._send(start,b"" if head else content,variant.mime_type,headers=headers,cache=False)
     @staticmethod
     def _stock_movement(movement):
         labels={"INVENTORY":"Inventaire","LEGACY":"Historique","GOODS_RECEIPT":"Réception fournisseur"}
@@ -277,7 +317,7 @@ class InventoryApp:
           "source_reference":movement.source_id,"occurred_at":movement.applied_at or movement.created_at}
     def _purchase_order(self,order):
         value=asdict(order); lines=self.purchase_orders.lines(order.purchase_order_id)
-        value.update(lines=[asdict(x) for x in lines],line_count=len(lines),total=self.purchase_orders.total(order.purchase_order_id),cost_complete=bool(lines) and all(x.unit_cost is not None for x in lines))
+        value.update(lines=[self._with_media(asdict(x),x.product_key) for x in lines],line_count=len(lines),total=self.purchase_orders.total(order.purchase_order_id),cost_complete=bool(lines) and all(x.unit_cost is not None for x in lines))
         return value
     def _goods_receipt(self,receipt):
         value=asdict(receipt); lines=self.goods_receipts.repository.lines(receipt.receipt_id)
@@ -291,8 +331,8 @@ class InventoryApp:
         if clear: headers.append(("Set-Cookie",f"drcloud_session={attrs}; Max-Age=0"))
         return self._send(start,b"","text/plain","303 See Other",headers)
     @staticmethod
-    def _send(start,body,kind,status="200 OK",headers=None):
-        security=[("Content-Type",kind),("Cache-Control","no-store"),("Content-Security-Policy","default-src 'self'; img-src 'self' data:; media-src 'self' blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"),("X-Content-Type-Options","nosniff"),("Referrer-Policy","no-referrer"),("X-Frame-Options","DENY")]
+    def _send(start,body,kind,status="200 OK",headers=None,cache=True):
+        security=[("Content-Type",kind)]+([("Cache-Control","no-store")] if cache else [])+[("Content-Security-Policy","default-src 'self'; img-src 'self' data:; media-src 'self' blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"),("X-Content-Type-Options","nosniff"),("Referrer-Policy","no-referrer"),("X-Frame-Options","DENY")]
         start(status,security+(headers or [])); return [body]
     def _json(self,start,value,status="200 OK",headers=None): return self._send(start,json.dumps(value,ensure_ascii=False,default=str).encode(),"application/json; charset=utf-8",status,headers)
 
