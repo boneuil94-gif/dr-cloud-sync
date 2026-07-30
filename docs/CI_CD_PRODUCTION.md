@@ -42,9 +42,10 @@ sudo install -d -o drcloud-deploy -g drcloud-deploy -m 0700 /home/drcloud-deploy
 sudoedit /home/drcloud-deploy/.ssh/authorized_keys
 sudo chown drcloud-deploy:drcloud-deploy /home/drcloud-deploy/.ssh/authorized_keys
 sudo chmod 0600 /home/drcloud-deploy/.ssh/authorized_keys
+sudo /opt/drcloud-os/deploy/ovh/prepare-deployment-state.sh
 ```
 
-Conserver le `drcloud.env` de production (mode `0600`) et y ajouter `DRCLOUD_ROADMAP=/app/docs/drcloud-os-roadmap.json`. La clé publique dédiée peut être limitée dans `authorized_keys` par IP source si les plages GitHub utilisées sont maintenues ; le compte n'a besoin d'aucun `sudo`, seulement de l'accès au dépôt, à Docker et au répertoire de sauvegarde. Tester ensuite manuellement une fois `update.sh <SHA-main>`.
+Conserver le `drcloud.env` de production (mode `0600`) et y ajouter `DRCLOUD_ROADMAP=/app/docs/drcloud-os-roadmap.json`. La clé publique dédiée peut être limitée dans `authorized_keys` par IP source si les plages GitHub utilisées sont maintenues ; le compte n'a besoin d'aucun `sudo`, seulement de l'accès au dépôt, à Docker et au répertoire de sauvegarde. Le script de préparation est une opération root unique et idempotente : il fixe `.deployment-state` à `drcloud-deploy:drcloud-deploy 0755`. Les déploiements suivants n'utilisent jamais sudo. Tester ensuite manuellement une fois `update.sh <SHA-main>`.
 
 ## Échec, rollback et secours
 
@@ -86,15 +87,15 @@ ni privilège supplémentaire n'est utilisé.
 ### Publication atomique du dernier succès
 
 `update.sh` détermine une fois le chemin canonique absolu du petit répertoire d'état
-(`deploy/ovh/.deployment-state` par défaut), le crée, puis transmet explicitement cette
+(`deploy/ovh/.deployment-state` par défaut), vérifie qu'il a été préparé, puis transmet explicitement cette
 même valeur à `deploy.sh` et à Docker Compose. Une valeur personnalisée relative est
 résolue depuis la racine du dépôt, jamais depuis le répertoire courant. Compose exige
 la variable et n'a aucun fallback relatif. Il monte uniquement ce répertoire sous
 `/run/drcloud-deployment:ro`. Il ne monte ni le
-checkout `/opt/drcloud-os`, ni `.git`, ni `docker.sock`. L'application s'exécute
-toujours avec l'utilisateur non privilégié `drcloud` et ne peut donc pas modifier le
-marqueur. Le fichier historique `deploy/ovh/.last-successful-commit` reste disponible
-sur l'hôte pour l'exploitation, mais n'est pas la source lue dans le conteneur.
+checkout `/opt/drcloud-os`, ni `.git`, ni `docker.sock`. Le compte SSH
+`drcloud-deploy` est l'unique writer côté hôte. Le répertoire lui appartient avec le
+groupe `drcloud-deploy` et le mode `0755`. L'application s'exécute toujours avec
+l'utilisateur non privilégié `drcloud` et ne peut que lire le marqueur.
 
 `update.sh` conserve la séquence suivante : build/recréation, health local, health
 HTTPS et validation du SHA attendu, puis seulement publication du SHA. La publication
@@ -102,6 +103,13 @@ HTTPS et validation du SHA attendu, puis seulement publication du SHA. La public
 les contrôles, le marqueur contient donc encore le dernier succès précédent et
 l'Administration peut signaler une divergence. Après succès, les SHA servi et validé
 coïncident et la section passe à `ok`.
+
+Le fichier final est volontairement `0444`. Cela ne bloque pas le prochain remplacement :
+le renommage atomique dépend des droits d'écriture du propriétaire sur le répertoire
+`0755`, et non des droits d'écriture sur l'ancien fichier. Si un VPS existant a un
+owner ou un mode différent, exécuter exactement une fois
+`sudo /opt/drcloud-os/deploy/ovh/prepare-deployment-state.sh`; la commande est
+idempotente et aucune intervention root n'est requise ensuite.
 
 Si la cible échoue, son SHA n'est jamais publié. Le checkout revient au SHA précédent,
 le service est reconstruit et les deux contrôles sont rejoués ; ce SHA n'est republié
