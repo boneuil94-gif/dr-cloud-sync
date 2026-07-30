@@ -15,7 +15,7 @@ dependencies = ["waitress==3.0.2", "Pillow==11.3.0"]
 dr-cloud-sync = "dr_cloud_sync.cli:main"
 
 [tool.setuptools.package-data]
-dr_cloud_sync = ["static/*"]
+dr_cloud_sync = ["static/*", "data/*.json"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

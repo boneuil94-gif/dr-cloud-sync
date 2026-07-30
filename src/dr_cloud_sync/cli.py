@@ -24,7 +24,7 @@ from .inventory_web import serve as serve_inventory
 from .os_admin import backup, init_catalog
 from .os_config import OSSettings
 from .rehydration import (CatalogueRehydrationService, historical_observations,
-                          run_rehydration_job)
+                          packaged_historical_snapshot, run_rehydration_job)
 from .repositories import SQLiteOSRepository
 
 
@@ -32,7 +32,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Importe le catalogue maître PrestaShop")
     parser.add_argument("command", choices=["pull", "shopcaisse-pull", "shopcaisse-import-dry-run", "shopcaisse-import-pilot", "shopcaisse-import-controlled", "shopcaisse-import-all", "build-catalog-mapping", "analyse-mapping-exceptions", "create-mapping-exceptions", "build-final-mapping", "inventory-serve", "os-serve", "os-init-catalog", "os-backup", "catalogue-rehydrate"], help="Commande DrCloud")
     parser.add_argument("--apply-safe", action="store_true", help="Applique explicitement les seuls enrichissements SAFE")
-    parser.add_argument("--snapshot", type=Path, default=Path("dist/catalogue-prestashop-reconstruit.json"))
+    parser.add_argument("--snapshot", type=Path, default=packaged_historical_snapshot())
     parser.add_argument("--report", type=Path, default=Path("dist/rapport-rehydratation-catalogue.json"))
     args = parser.parse_args(argv)
     if args.command == "pull":
@@ -54,7 +54,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "shopcaisse-pull":
         try:
             counts = pull_and_write(os.environ.get("SHOPCAISSE_API_KEY", ""),
-                                    Path("dist/catalogue-prestashop-reconstruit.json"), Path("dist"))
+                                    packaged_historical_snapshot(), Path("dist"))
         except (ShopCaisseError, ValueError, json.JSONDecodeError) as exc:
             print(f"Erreur: {exc}", file=sys.stderr)
             return 1
@@ -62,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "shopcaisse-import-dry-run":
         try:
             counts = run_import_dry_run(os.environ.get("SHOPCAISSE_API_KEY", ""),
-                                        Path("dist/catalogue-prestashop-reconstruit.json"), Path("dist"),
+                                        packaged_historical_snapshot(), Path("dist"),
                                         prestashop_client=PrestaShopClient(
                                             resolve_prestashop_api_url(),
                                             os.environ.get("PRESTASHOP_API_KEY", ""),

@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
+from dr_cloud_sync.rehydration import packaged_historical_snapshot
 from dr_cloud_sync.shopcaisse import (
     ShopCaisseClient, ShopCaisseError, build_import_dry_run, extract_prestashop, normalize, reconcile,
 )
@@ -102,7 +103,7 @@ def test_reconciliation_priorities_and_categories():
 
 
 def test_real_prestashop_snapshot_extracts_every_combination_and_plain_product():
-    with open("dist/catalogue-prestashop-reconstruit.json", encoding="utf-8") as stream:
+    with open(packaged_historical_snapshot(), encoding="utf-8") as stream:
         entries, counts = extract_prestashop(json.load(stream))
     assert counts == {"products": 72, "combinations": 453, "comparable_entries": 478}
     assert sum(row["combination_id"] is not None for row in entries) == 453

@@ -69,7 +69,7 @@ def test_catalogue_rehydration_admin_preview_report_apply_and_csrf(configured, t
 
 def test_catalogue_rehydration_rejects_missing_and_stale_preview(configured, tmp_path):
     app, settings = configured
-    snapshot = tmp_path / "snapshot.json"; snapshot.write_text('{"catalogue":[]}')
+    snapshot = tmp_path / "snapshot.json"; snapshot.write_text('{"catalogue":[{"id":"0","nom":"Produit 0"}]}')
     from dr_cloud_sync.admin_rehydration import AdminCatalogueRehydration
     app.catalogue_rehydration = AdminCatalogueRehydration(settings.database, snapshot,
         tmp_path / "backups", environment="test", safe_mode=True)
@@ -216,3 +216,43 @@ def test_administration_uses_drcloud_shell_and_keeps_all_status_fields():
     for token in ("--dc-green", "--dc-sidebar", "--dc-background", "--dc-surface",
                   "--dc-success", "--dc-warning", "--dc-danger", "--dc-info"):
         assert token in css
+
+
+def test_rehydration_source_health_and_operator_safe_missing_source(configured, tmp_path):
+    from dr_cloud_sync.admin_rehydration import AdminCatalogueRehydration
+    app, settings = configured
+    app.catalogue_rehydration = AdminCatalogueRehydration(
+        settings.database, tmp_path / "absent.json", tmp_path / "backups",
+        environment="test", safe_mode=True)
+    _, cookie = login(app); csrf = app._session({"HTTP_COOKIE": cookie})["csrf"]
+    health = json.loads(request(app, "/api/admin/catalogue-rehydration/status", cookie=cookie)[2])
+    assert health["sources"]["catalogue_local"]["available"] is True
+    assert health["sources"]["mapping_historique"] == {
+        "status": "UNAVAILABLE", "available": False,
+        "source": "PACKAGED_HISTORICAL_MAPPING"}
+    assert health["sources"]["prestashop"]["status"] == "NOT_USED"
+    request(app, "/api/admin/catalogue-rehydration/preview", "POST", {}, cookie,
+            {"X-CSRF-Token": csrf})
+    completed = _wait_job(app, cookie)
+    assert completed["state"] == "FAILED"
+    error = completed["current_job"]["error"]
+    assert error.startswith("Analyse impossible :")
+    assert "HistoricalCatalogueUnavailable" not in error and str(tmp_path) not in error
+    assert completed["last_apply"] is None
+
+
+def test_default_packaged_preview_is_production_like_and_read_only(configured):
+    app, _ = configured
+    _, cookie = login(app); csrf = app._session({"HTTP_COOKIE": cookie})["csrf"]
+    before_products = [vars(product).copy() for product in app.os_repository.all()]
+    with app.service.repo.db as db:
+        before_movements = db.execute("SELECT COUNT(*) FROM stock_movements").fetchone()[0]
+    request(app, "/api/admin/catalogue-rehydration/preview", "POST", {}, cookie,
+            {"X-CSRF-Token": csrf})
+    completed = _wait_job(app, cookie)
+    assert completed["state"] == "SUCCEEDED"
+    assert completed["last_preview"]["metrics"]["processed"] == 478
+    assert [vars(product).copy() for product in app.os_repository.all()] == before_products
+    with app.service.repo.db as db:
+        assert db.execute("SELECT COUNT(*) FROM stock_movements").fetchone()[0] == before_movements
+    assert completed["last_apply"] is None

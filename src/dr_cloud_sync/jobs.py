@@ -194,7 +194,7 @@ class JobRunner:
 
 
 def sanitize_error(error: BaseException) -> str:
-    message = f"{type(error).__name__}: {error}"
+    message = str(error) if getattr(error, "operator_safe", False) else f"{type(error).__name__}: {error}"
     message = re.sub(r"(?i)(api[_-]?key|token|password|authorization)(\s*[:=]\s*)[^\s,;]+", r"\1\2[REDACTED]", message)
     message = re.sub(r"(?i)(https?://[^:/\s]+:)[^@/\s]+@", r"\1[REDACTED]@", message)
     return message[:500]

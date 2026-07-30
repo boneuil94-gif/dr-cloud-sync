@@ -12,7 +12,8 @@ from uuid import uuid4
 
 from .jobs import JobRunner, JobStatus, SqliteJobRepository
 from .os_admin import backup
-from .rehydration import CatalogueRehydrationService, historical_observations
+from .rehydration import (CatalogueRehydrationService, HistoricalCatalogueUnavailable,
+                          historical_observations, validate_historical_snapshot)
 from .repositories import SQLiteOSRepository
 
 
@@ -41,9 +42,27 @@ class AdminCatalogueRehydration:
         return SQLiteOSRepository(self.database, [])
 
     def _observations(self, repository):
-        if not self.snapshot.is_file():
-            raise RuntimeError("Snapshot historique de catalogue indisponible")
         return historical_observations(self.snapshot, repository.all())
+
+    def sources(self) -> dict[str, Any]:
+        """Check local sources; PREVIEW deliberately does not contact external APIs."""
+        try:
+            local = {"status": "AVAILABLE", "available": True,
+                     "products": len(self._repository().all())}
+        except Exception:
+            local = {"status": "UNAVAILABLE", "available": False}
+        try:
+            document = validate_historical_snapshot(self.snapshot)
+            identities = sum(len(row.get("declinaisons", [])) or 1
+                             for row in document["catalogue"])
+            mapping = {"status": "AVAILABLE", "available": True,
+                       "source": "PACKAGED_HISTORICAL_MAPPING", "identities": identities}
+        except HistoricalCatalogueUnavailable:
+            mapping = {"status": "UNAVAILABLE", "available": False,
+                       "source": "PACKAGED_HISTORICAL_MAPPING"}
+        return {"catalogue_local": local, "mapping_historique": mapping,
+                "prestashop": {"status": "NOT_USED", "available": False},
+                "shopcaisse": {"status": "NOT_USED", "available": False}}
 
     @staticmethod
     def _fingerprint(repository, observations) -> str:
@@ -97,7 +116,11 @@ class AdminCatalogueRehydration:
             if row["applied_job_id"]:
                 return {"job": self.public_job(self.jobs.get(row["applied_job_id"])), "reused": True}
             if self._running(): raise RehydrationConflict("Une réhydratation est déjà en cours")
-            repository = self._repository(); observations = self._observations(repository)
+            repository = self._repository()
+            try:
+                observations = self._observations(repository)
+            except HistoricalCatalogueUnavailable as exc:
+                raise RehydrationConflict(str(exc)) from None
             if self._fingerprint(repository, observations) != row["fingerprint"]:
                 raise RehydrationConflict("Analyse obsolète; le catalogue a changé, relancez une analyse")
             job = self.jobs.create(job_type="CATALOGUE_REHYDRATION", connector="CATALOGUE",
@@ -143,7 +166,8 @@ class AdminCatalogueRehydration:
         current = next((j for j in recent if j.status == JobStatus.RUNNING), recent[0] if recent else None)
         return {"state": "NEVER" if not current else current.status.value,
                 "current_job": self.public_job(current),
-                "last_preview": self.public_job(preview), "last_apply": self.public_job(apply)}
+                "last_preview": self.public_job(preview), "last_apply": self.public_job(apply),
+                "sources": self.sources()}
 
     def report(self, report_id: str | None, *, page=1, per_page=25,
                classification="ALL", search=""):
