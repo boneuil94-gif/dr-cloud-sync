@@ -82,3 +82,5 @@
   .dc-body .safe{right:10px;bottom:calc(10px + env(safe-area-inset-bottom));max-width:calc(100vw - 20px)}
 }
 @media(max-width:480px){.scanrow{display:grid;grid-template-columns:1fr}.scanrow #camera{display:flex;align-items:center;justify-content:center;gap:8px;width:100%}.inventory-actions{display:grid}.inventory-heading .stats>*{font-size:.7rem}.dc-topbar form .dc-button{font-size:.75rem}}
+
+.receipt-cards{display:grid;gap:12px;margin:18px 0}.receipt-card{display:grid;grid-template-columns:2fr repeat(4,1fr);gap:10px;align-items:end;padding:12px;border:1px solid var(--dc-border);border-radius:12px}.receipt-card label{display:grid;gap:5px}@media(max-width:650px){.receipt-card{grid-template-columns:1fr 1fr}.receipt-card strong{grid-column:1/-1}.receipt-card label{grid-column:1/-1}.receipt-cards .dc-input{font-size:1.1rem;min-height:48px}}

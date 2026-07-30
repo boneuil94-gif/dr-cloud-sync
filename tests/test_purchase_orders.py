@@ -94,3 +94,34 @@ def test_purchase_order_api_auth_and_csrf(app):
     class Settings: secret_key="x"; environment="test"; safe_mode=True
     app.settings=Settings()
     assert request(app,"/api/purchase-orders")[0]=="303 See Other"
+
+def test_goods_receipt_end_to_end_partial_complete_and_idempotent(app):
+    _,supplier=request(app,"/api/suppliers","POST",{"name":"Engagement existant"})
+    _,created=request(app,"/api/purchase-orders","POST",{"supplier_id":supplier["supplier"]["supplier_id"]})
+    oid=created["purchase_order"]["purchase_order_id"]
+    _,added=request(app,f"/api/purchase-orders/{oid}/lines","POST",{"product_key":"drc:1","ordered_quantity":10,"unit_cost":"2.50"})
+    lid=added["line"]["line_id"]; request(app,f"/api/purchase-orders/{oid}/status","POST",{"status":"ORDERED"})
+    _,draft=request(app,f"/api/purchase-orders/{oid}/receipts","POST",{"idempotency_key":"delivery-1","lines":[{"purchase_order_line_id":lid,"received_quantity":4}]})
+    rid=draft["goods_receipt"]["receipt_id"]
+    applied=request(app,f"/api/goods-receipts/{rid}/apply","POST"); assert applied[0]=="200 OK", applied; assert applied[1]["goods_receipt"]["status"]=="APPLIED"
+    assert request(app,f"/api/purchase-orders/{oid}")[1]["purchase_order"]["status"]=="PARTIALLY_RECEIVED"
+    assert app.service.repo.current_quantity("drc:1")==4
+    # Applying the same stable receipt is a harmless replay.
+    request(app,f"/api/goods-receipts/{rid}/apply","POST"); assert app.service.repo.current_quantity("drc:1")==4
+    _,second=request(app,f"/api/purchase-orders/{oid}/receipts","POST",{"idempotency_key":"delivery-2","lines":[{"purchase_order_line_id":lid,"received_quantity":6}]})
+    request(app,f"/api/goods-receipts/{second['goods_receipt']['receipt_id']}/apply","POST")
+    assert request(app,f"/api/purchase-orders/{oid}")[1]["purchase_order"]["status"]=="RECEIVED"
+    assert app.service.repo.current_quantity("drc:1")==10
+    assert request(app,f"/api/purchase-orders/{oid}/receipts","POST",{"idempotency_key":"too-late","lines":[{"purchase_order_line_id":lid,"received_quantity":1}]})[0]=="400 Bad Request"
+    detail=request(app,f"/api/goods-receipts/{rid}")[1]
+    assert detail["movements"][0]["origin"]=="Réception fournisseur"
+
+def test_goods_receipt_rejects_invalid_and_over_receipt(app):
+    _,supplier=request(app,"/api/suppliers","POST",{"name":"Contrôles"})
+    _,created=request(app,"/api/purchase-orders","POST",{"supplier_id":supplier["supplier"]["supplier_id"]}); oid=created["purchase_order"]["purchase_order_id"]
+    _,added=request(app,f"/api/purchase-orders/{oid}/lines","POST",{"product_key":"drc:1","ordered_quantity":2}); lid=added["line"]["line_id"]
+    request(app,f"/api/purchase-orders/{oid}/status","POST",{"status":"ORDERED"})
+    for quantity in (0,-1,3):
+        assert request(app,f"/api/purchase-orders/{oid}/receipts","POST",{"idempotency_key":f"bad-{quantity}","lines":[{"purchase_order_line_id":lid,"received_quantity":quantity}]})[0]=="400 Bad Request"
+    request(app,f"/api/purchase-orders/{oid}/status","POST",{"status":"CANCELLED"})
+    assert request(app,f"/api/purchase-orders/{oid}/receipts","POST",{"idempotency_key":"cancelled","lines":[{"purchase_order_line_id":lid,"received_quantity":1}]})[0]=="400 Bad Request"

@@ -7,8 +7,8 @@
     "TODO": 0,
     "BLOCKED": 0
   },
-  "global_progress_percent": 41.63,
-  "remaining_percent": 58.37,
+  "global_progress_percent": 46.63,
+  "remaining_percent": 53.37,
   "modules": [
     {
       "id": "01-core",
@@ -307,8 +307,8 @@
       "id": "05-purchasing",
       "name": "Achats + fournisseurs",
       "weight": 10,
-      "progress_percent": 30.0,
-      "weighted_progress": 3.0,
+      "progress_percent": 80.0,
+      "weighted_progress": 8.0,
       "status": "IN_PROGRESS",
       "milestones": [
         {
@@ -334,22 +334,22 @@
         {
           "id": "05-purchasing-m05",
           "name": "Contrôle humain",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "05-purchasing-m06",
           "name": "Réception marchandises",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "05-purchasing-m07",
           "name": "Validation réception",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "05-purchasing-m08",
           "name": "Proposition mouvement stock",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "05-purchasing-m09",
@@ -359,16 +359,21 @@
         {
           "id": "05-purchasing-m10",
           "name": "Tests bout en bout",
-          "status": "TODO"
+          "status": "DONE"
         }
       ],
       "completed": [
         "Frontière domaine documentée",
         "Référentiel Fournisseurs V1",
-        "Commandes fournisseurs V1"
+        "Commandes fournisseurs V1",
+        "Contrôle humain",
+        "Réception marchandises",
+        "Validation réception",
+        "Proposition mouvement stock",
+        "Tests bout en bout"
       ],
       "in_progress": [],
-      "next": "Réceptions marchandises (PR J)",
+      "next": "Rapprochement catalogue puis analyse prix et TVA",
       "blocked": []
     },
     {

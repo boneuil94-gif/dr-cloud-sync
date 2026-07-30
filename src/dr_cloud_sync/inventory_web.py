@@ -14,7 +14,8 @@ from .services import AssignBarcodeService, BarcodeError, StockProjectionService
 from .admin_status import AdminStatusService, application_metadata
 from .modules import available_pages, render_navigation
 from .external_stock import ExternalStockQueryService
-from .purchasing import (PurchaseOrderService, SQLitePurchaseOrderRepository,
+from .purchasing import (GoodsReceiptService, PurchaseOrderService,
+                         SQLiteGoodsReceiptRepository, SQLitePurchaseOrderRepository,
                          SQLiteSupplierRepository, SupplierService)
 from .security import CredentialStore
 
@@ -38,6 +39,7 @@ class InventoryApp:
         self.external_stock=ExternalStockQueryService(service.repo.path,self.os_repository.all(),service.repo)
         self.suppliers=SupplierService(SQLiteSupplierRepository(service.repo.path),self.os_repository)
         self.purchase_orders=PurchaseOrderService(SQLitePurchaseOrderRepository(service.repo.path),self.suppliers,self.os_repository,self.os_repository)
+        self.goods_receipts=GoodsReceiptService(SQLiteGoodsReceiptRepository(service.repo.path,service.repo.db),self.purchase_orders,service.repo,self.os_repository)
         self.credentials=CredentialStore(service.repo.path,settings.admin_password) if settings else None
         self.password_failures={}
 
@@ -84,6 +86,15 @@ class InventoryApp:
                 return self._html(start,"purchasing.html",session,request_id)
             if path.startswith("/achats/commandes"):
                 return self._html(start,"purchasing.html",session,request_id)
+            if path.startswith("/achats/receptions"):
+                return self._html(start,"purchasing.html",session,request_id)
+            if path == "/api/goods-receipts" and method == "GET":
+                return self._json(start,{"goods_receipts":[self._goods_receipt(r) for r in self.goods_receipts.repository.list()]})
+            if path.startswith("/api/goods-receipts/"):
+                tail=path.removeprefix("/api/goods-receipts/"); parts=tail.split("/"); rid=parts[0]
+                if len(parts)==1 and method=="GET":
+                    receipt,lines=self.goods_receipts.detail(rid); return self._json(start,{"goods_receipt":self._goods_receipt(receipt),"lines":[asdict(x) for x in lines],"movements":[self._stock_movement(x) for x in self.service.repo.list() if x.source_type=="GOODS_RECEIPT" and x.source_id==rid]})
+                if parts[1:]==["apply"] and method=="POST": return self._json(start,{"goods_receipt":self._goods_receipt(self.goods_receipts.apply(rid,session.get("u","authenticated")))})
             if path == "/api/purchase-orders" and method == "GET":
                 q=parse_qs(env.get("QUERY_STRING","")); status=q.get("status",[None])[0]
                 rows=self.purchase_orders.list(status)
@@ -98,6 +109,8 @@ class InventoryApp:
                     if not row:return self._json(start,{"error":"Commande fournisseur introuvable"},"404 Not Found")
                     return self._json(start,{"purchase_order":self._purchase_order(row),"activities":[asdict(a) for a in self.purchase_orders.activities(oid)]})
                 if len(parts)==1 and method=="PATCH": return self._json(start,{"purchase_order":self._purchase_order(self.purchase_orders.update(oid,self._body(env),session.get("u","authenticated")))})
+                if parts[1:]==["receivable"] and method=="GET": return self._json(start,{"lines":self.goods_receipts.receivable(oid)})
+                if parts[1:]==["receipts"] and method=="POST": return self._json(start,{"goods_receipt":self._goods_receipt(self.goods_receipts.create(oid,self._body(env),session.get("u","authenticated")))} ,"201 Created")
                 if parts[1:]==["status"] and method=="POST": return self._json(start,{"purchase_order":self._purchase_order(self.purchase_orders.transition(oid,self._body(env)["status"],session.get("u","authenticated")))})
                 if parts[1:]==["lines"] and method=="POST": return self._json(start,{"line":asdict(self.purchase_orders.add_line(oid,self._body(env),session.get("u","authenticated")))},"201 Created")
                 if len(parts)==3 and parts[1]=="lines" and method=="PATCH": return self._json(start,{"line":asdict(self.purchase_orders.update_line(oid,parts[2],self._body(env),session.get("u","authenticated")))})
@@ -258,13 +271,18 @@ class InventoryApp:
         return rows
     @staticmethod
     def _stock_movement(movement):
-        labels={"INVENTORY":"Inventaire","LEGACY":"Historique"}
+        labels={"INVENTORY":"Inventaire","LEGACY":"Historique","GOODS_RECEIPT":"Réception fournisseur"}
         return {"id":movement.id,"product_id":movement.drcloud_product_key,"delta":movement.quantity_delta,
           "type":movement.movement_type.value,"origin":labels.get(movement.source_type,movement.source_type.title()),
           "source_reference":movement.source_id,"occurred_at":movement.applied_at or movement.created_at}
     def _purchase_order(self,order):
         value=asdict(order); lines=self.purchase_orders.lines(order.purchase_order_id)
         value.update(lines=[asdict(x) for x in lines],line_count=len(lines),total=self.purchase_orders.total(order.purchase_order_id),cost_complete=bool(lines) and all(x.unit_cost is not None for x in lines))
+        return value
+    def _goods_receipt(self,receipt):
+        value=asdict(receipt); lines=self.goods_receipts.repository.lines(receipt.receipt_id)
+        order=self.purchase_orders.get(receipt.purchase_order_id); supplier=self.suppliers.get(order.supplier_id) if order else None
+        value.update(line_count=len(lines),units_received=sum(x.received_quantity for x in lines),purchase_order_reference=order.reference if order else receipt.purchase_order_id,supplier_name=supplier.name if supplier else "Fournisseur archivé")
         return value
     def _error(self,start,code,request_id): return self._html(start,"error.html",{"csrf":""},request_id,status={401:"401 Unauthorized",403:"403 Forbidden",404:"404 Not Found",429:"429 Too Many Requests",500:"500 Internal Server Error"}[code])
     def _redirect(self,start,location,request_id,cookie=None,clear=False):
