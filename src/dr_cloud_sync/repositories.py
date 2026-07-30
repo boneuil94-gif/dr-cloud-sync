@@ -195,6 +195,13 @@ class SQLiteOSRepository(MemoryCatalogRepository, MemoryAuditRepository):
         CREATE TABLE IF NOT EXISTS barcode_assignments(id TEXT PRIMARY KEY, data TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS activity_logs(id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, data TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS catalogue_eans(drcloud_product_key TEXT PRIMARY KEY, ean TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS product_observations(
+          product_key TEXT NOT NULL, source TEXT NOT NULL, external_id TEXT NOT NULL,
+          observed_json TEXT NOT NULL, observed_at TEXT NOT NULL,
+          PRIMARY KEY(product_key,source,external_id));
+        CREATE TABLE IF NOT EXISTS product_diagnostics(
+          product_key TEXT NOT NULL, reason TEXT NOT NULL, status TEXT NOT NULL,
+          updated_at TEXT NOT NULL, PRIMARY KEY(product_key,reason));
         CREATE TABLE IF NOT EXISTS drcloud_products(
           drcloud_product_key TEXT PRIMARY KEY, data TEXT, updated_at TEXT,
           prestashop_key TEXT, product_id TEXT, combination_id TEXT,
@@ -216,6 +223,10 @@ class SQLiteOSRepository(MemoryCatalogRepository, MemoryAuditRepository):
         self._bootstrap(products)
         self._backfill_commercial_identity(products)
         self._ensure_unique_references()
+        self.db.execute("CREATE INDEX IF NOT EXISTS ix_products_variant ON drcloud_products(variant_name)")
+        self.db.execute("CREATE INDEX IF NOT EXISTS ix_products_reference ON drcloud_products(reference)")
+        self.db.execute("CREATE INDEX IF NOT EXISTS ix_diagnostics_status ON product_diagnostics(status)")
+        self.db.commit()
         loaded=[self._product(r) for r in self.db.execute("SELECT * FROM drcloud_products ORDER BY drcloud_product_key")]
         self.products={p.drcloud_product_key:p for p in loaded}
 
@@ -304,6 +315,53 @@ class SQLiteOSRepository(MemoryCatalogRepository, MemoryAuditRepository):
             raise ValueError("Référence externe déjà utilisée par un produit exploitable")
         self.add_activity(ActivityLog("PRODUCT_STATUS_CHANGED",key,"CATALOGUE",{"from":old.value,"to":product.status.value}))
         return product
+
+    def save_observation(self, observation) -> None:
+        """Upsert the latest external fact without treating it as canonical."""
+        payload=asdict(observation)
+        with self.db:
+            self.db.execute("""INSERT INTO product_observations VALUES(?,?,?,?,?)
+              ON CONFLICT(product_key,source,external_id) DO UPDATE SET
+              observed_json=excluded.observed_json,observed_at=excluded.observed_at""",
+              (observation.product_key,observation.source,observation.external_id,
+               json.dumps(payload,ensure_ascii=False),utc_now()))
+
+    def observations(self, key: str) -> list[dict]:
+        return [json.loads(row[0]) for row in self.db.execute(
+            "SELECT observed_json FROM product_observations WHERE product_key=? ORDER BY source,external_id",(key,))]
+
+    def apply_commercial_changes(self, key: str, changes: dict, conflicts: list[str]) -> None:
+        product=self.get(key)
+        if product is None: raise KeyError(key)
+        allowed={"base_name","variant_name","reference","ean","attributes"}
+        if set(changes)-allowed: raise ValueError("champ commercial invalide")
+        if "ean" in changes:
+            value=changes["ean"][0]
+            duplicate=self.db.execute("""SELECT drcloud_product_key FROM drcloud_products
+              WHERE ean=? AND drcloud_product_key!=? AND status!='ARCHIVED'""",(value,key)).fetchone() if value else None
+            if duplicate:
+                conflicts=list(conflicts)+["ean: déjà associé à un autre produit actif"]
+                changes={name:item for name,item in changes.items() if name!="ean"}
+        assignments=[]; params=[]
+        source_column={"base_name":"name_source","variant_name":"variant_source",
+                       "reference":"reference_source","ean":"ean_source"}
+        for name,(value,source) in changes.items():
+            column="attributes_json" if name=="attributes" else name
+            assignments.append(f"{column}=?"); params.append(json.dumps(value,ensure_ascii=False) if name=="attributes" else value)
+            if name in source_column: assignments.append(f"{source_column[name]}=?"); params.append(source)
+        assignments.append("updated_at=?"); params.extend((utc_now(),key))
+        with self.db:
+            if changes: self.db.execute(f"UPDATE drcloud_products SET {','.join(assignments)} WHERE drcloud_product_key=?",params)
+            self.db.execute("DELETE FROM product_diagnostics WHERE product_key=?",(key,))
+            for reason in conflicts:
+                self.db.execute("INSERT INTO product_diagnostics VALUES(?,?,?,?)",(key,reason,"CONFLICT",utc_now()))
+        if changes:
+            row=self.db.execute("SELECT * FROM drcloud_products WHERE drcloud_product_key=?",(key,)).fetchone()
+            self.products[key]=self._product(row)
+
+    def diagnostics(self, key: str) -> list[dict]:
+        return [dict(row) for row in self.db.execute(
+            "SELECT reason,status FROM product_diagnostics WHERE product_key=? ORDER BY reason",(key,))]
 
     def save_assignment(self, assignment: BarcodeAssignment) -> None:
         super().save_assignment(assignment)

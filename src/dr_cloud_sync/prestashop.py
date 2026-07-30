@@ -24,7 +24,10 @@ class PrestaShopClient:
         "combinations",
         "product_options",
         "product_option_values",
+        "images",
         "stock_availables",
+        "manufacturers",
+        "suppliers",
     )
 
     def __init__(
@@ -65,7 +68,10 @@ class PrestaShopClient:
                 "combinations": "combination",
                 "product_options": "product_option",
                 "product_option_values": "product_option_value",
+                "images": "image",
                 "stock_availables": "stock_available",
+                "manufacturers": "manufacturer",
+                "suppliers": "supplier",
             }[resource]
             container = container.get(singular, container)
         if not container:

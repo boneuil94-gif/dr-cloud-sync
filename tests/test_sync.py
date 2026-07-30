@@ -46,7 +46,7 @@ def test_fetches_all_resources_and_paginates(tmp_path: Path):
     assert len(calls) == len(client.RESOURCES) * 2
     assert all("super-secret" not in call.full_url for call in calls)
     with SnapshotStore(database).connect() as connection:
-        assert connection.execute("SELECT COUNT(*) FROM prestashop_entities").fetchone()[0] == 5
+        assert connection.execute("SELECT COUNT(*) FROM prestashop_entities").fetchone()[0] == len(client.RESOURCES)
         assert connection.execute("SELECT status FROM sync_runs").fetchone()[0] == "SUCCEEDED"
 
 
