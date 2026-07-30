@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-cd "$(dirname "$0")"
+script_dir="$(cd -P -- "$(dirname "$0")" && pwd)"
+source "$script_dir/deployment-environment.sh"
+cd "$script_dir"
 docker info >/dev/null
 docker compose ps --status running drcloud-os | grep -q drcloud-os
 check_health() {

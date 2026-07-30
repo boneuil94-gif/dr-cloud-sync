@@ -108,7 +108,8 @@ def test_success_marker_is_published_only_after_checks_and_rollback_validation()
 def test_first_install_creates_state_directory_without_claiming_success():
     root = Path(__file__).parents[1]
     deploy = (root / "deploy/ovh/deploy.sh").read_text()
-    assert '[[ -d "$DRCLOUD_DEPLOYMENT_STATE_DIR" ]]' in deploy
+    environment = (root / "deploy/ovh/deployment-environment.sh").read_text()
+    assert '[[ -d "$deployment_state_dir" ]]' in environment
     assert "record_successful_commit" not in deploy
 
 
@@ -154,8 +155,9 @@ def test_deployment_state_is_canonical_and_independent_from_working_directory(tm
     deploy = (root / "deploy/ovh/deploy.sh").read_text()
     compose = (root / "deploy/ovh/docker-compose.yml").read_text()
 
-    assert 'export DRCLOUD_DEPLOYMENT_STATE_DIR="$state_dir"' in update
-    assert update.count('DRCLOUD_DEPLOYMENT_STATE_DIR="$state_dir" DRCLOUD_BUILD_COMMIT=') == 2
+    assert 'source "$repo/deploy/ovh/deployment-environment.sh"' in update
+    assert 'state_dir="$DRCLOUD_DEPLOYMENT_STATE_DIR"' in update
+    assert update.index("deployment-environment.sh") < update.index('"$repo/deploy/ovh/backup.sh"')
     assert '${DRCLOUD_DEPLOYMENT_STATE_DIR:-$PWD/' not in deploy
     assert "DRCLOUD_DEPLOYMENT_STATE_DIR:-./" not in compose
 
@@ -201,6 +203,98 @@ def test_deployment_state_is_canonical_and_independent_from_working_directory(tm
     invocations = docker_log.read_text().splitlines()
     assert invocations and all(line.startswith(f"{expected}|") for line in invocations)
     assert not accidental.exists()
+
+
+def test_every_production_compose_caller_prepares_the_deployment_environment():
+    root = Path(__file__).parents[1]
+    scripts = list((root / "deploy/ovh").glob("*.sh"))
+    compose_callers = [path for path in scripts if "docker compose" in path.read_text()]
+    assert {path.name for path in compose_callers} == {"backup.sh", "check.sh", "deploy.sh"}
+    for path in compose_callers:
+        text = path.read_text()
+        assert "deployment-environment.sh" in text
+        assert text.index("deployment-environment.sh") < text.index("docker compose")
+
+
+@pytest.mark.parametrize(
+    ("fail_target", "fail_rollback", "expected_marker", "message"),
+    [
+        (False, False, "target", "SUCCÈS: commit déployé"),
+        (True, False, "previous", "ROLLBACK RÉUSSI"),
+        (True, True, "previous", "ROLLBACK EN ÉCHEC"),
+    ],
+)
+def test_update_preserves_state_environment_through_checks_and_rollback(
+    tmp_path, fail_target, fail_rollback, expected_marker, message
+):
+    root = Path(__file__).parents[1]
+    repo = tmp_path / "repo"
+    shutil.copytree(root / "deploy", repo / "deploy")
+    (repo / ".gitignore").write_text("deploy/ovh/.deployment-state/\n")
+    env_file = repo / "deploy/ovh/drcloud.env"
+    env_file.write_text(
+        "DRCLOUD_SAFE_MODE=true\nBARCODE_SYNC_MODE=dry-run\nDRCLOUD_SECRET_KEY=test\n"
+        "DRCLOUD_ADMIN_USERNAME=test\nDRCLOUD_ADMIN_PASSWORD=test\n"
+    )
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "previous"], cwd=repo, check=True)
+    previous = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+    (repo / "release").write_text("target\n")
+    subprocess.run(["git", "add", "release"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "target"], cwd=repo, check=True)
+    target = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "clone", "-q", "--bare", str(repo), str(origin)], check=True)
+    subprocess.run(["git", "remote", "add", "origin", str(origin)], cwd=repo, check=True)
+    subprocess.run(["git", "checkout", "-q", "--detach", previous], cwd=repo, check=True)
+
+    state = repo / "deploy/ovh/.deployment-state"
+    state.mkdir(mode=0o755)
+    marker = state / "last-successful-commit"
+    marker.write_text(previous + "\n")
+    marker.chmod(0o444)
+    backup_root = tmp_path / "backups"
+    backup_root.mkdir(mode=0o750)
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    compose_log = tmp_path / "compose.log"
+    (fake_bin / "docker").write_text(
+        '#!/bin/sh\nprintf "%s|%s\\n" "$DRCLOUD_DEPLOYMENT_STATE_DIR" "$*" >> "$COMPOSE_LOG"\n'
+        'case "$*" in "compose ps"*) printf "drcloud-os\\n";; esac\n'
+    )
+    (fake_bin / "curl").write_text(
+        '#!/bin/sh\ncase "$*" in *https:*)\n'
+        '  current="${EXPECTED_COMMIT:-$DRCLOUD_BUILD_COMMIT}"\n'
+        '  if { [ "$current" = "$FAIL_TARGET" ] && [ -n "$FAIL_TARGET" ]; } || [ "$FAIL_ROLLBACK" = 1 ]; then\n'
+        '    printf "failure-marker=%s\\n" "$(cat "$STATE_DIR/last-successful-commit")" >> "$COMPOSE_LOG"; exit 22\n'
+        '  fi;; esac\ncurrent="${EXPECTED_COMMIT:-$DRCLOUD_BUILD_COMMIT}"\n'
+        'printf \'{"status":"ok","database":"ok","commit":"%s"}\\n\' "$current"\n'
+    )
+    (fake_bin / "df").write_text(
+        '#!/bin/sh\ncase "$*" in *--output=pcent*) printf "Use%%\\n10%%\\n";; '
+        '*) printf "Filesystem Size Used Avail Use%% Mounted on\\nfake 100G 10G 90G 10%% /\\n";; esac\n'
+    )
+    for executable in fake_bin.iterdir():
+        executable.chmod(0o755)
+    user = subprocess.check_output(["id", "-un"], text=True).strip()
+    group = subprocess.check_output(["id", "-gn"], text=True).strip()
+    result = subprocess.run(
+        [repo / "deploy/ovh/update.sh", target], cwd=tmp_path, text=True, capture_output=True,
+        env={**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}",
+             "COMPOSE_LOG": str(compose_log), "STATE_DIR": str(state),
+             "DRCLOUD_BACKUP_ROOT": str(backup_root),
+             "FAIL_TARGET": target if fail_target else "", "FAIL_ROLLBACK": "1" if fail_rollback else "0",
+             "DRCLOUD_DEPLOY_USER": user, "DRCLOUD_DEPLOY_GROUP": group},
+    )
+    output = result.stdout + result.stderr
+    assert message in output
+    assert marker.read_text().strip() == (target if expected_marker == "target" else previous)
+    lines = compose_log.read_text().splitlines()
+    assert lines and all(line.startswith(f"{state.resolve()}|") for line in lines if not line.startswith("failure-marker="))
+    assert all(line == f"failure-marker={previous}" for line in lines if line.startswith("failure-marker="))
 
 
 def test_compose_validation_requires_an_explicit_absolute_state_directory():
