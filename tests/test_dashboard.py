@@ -4,6 +4,7 @@ from pathlib import Path
 import dr_cloud_sync.inventory_web as inventory_web
 
 from dr_cloud_sync.admin_status import AdminStatusService
+from dr_cloud_sync.modules import MODULES
 
 from test_os_production import configured, login, request  # noqa: F401
 
@@ -39,11 +40,9 @@ def test_official_logo_route_uses_png_mime(configured, tmp_path, monkeypatch):
 
 def test_dashboard_only_contains_real_routes_and_no_fictional_metrics():
     html = (STATIC / "dashboard.html").read_text(encoding="utf-8")
-    shell = (STATIC / "app-shell.html").read_text(encoding="utf-8")
-    for route in ('href="/"', 'href="/roadmap"', 'href="/catalogue"',
-                  'href="/inventaire"', 'href="/administration"'):
-        assert route in shell
-    assert 'href="/modules/' not in shell
+    assert {module.route for module in MODULES if module.available} == {
+        "/", "/roadmap", "/catalogue", "/inventaire", "/administration"
+    }
     for fictional in ("chiffre d’affaires", "marge", "ventes", "clients"):
         assert fictional not in html.casefold()
     assert "Données non disponibles pour le moment" in html

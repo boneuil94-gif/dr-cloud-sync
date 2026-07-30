@@ -12,19 +12,14 @@ from .repositories import SQLiteOSRepository
 from .roadmap import DEFAULT_ROADMAP, RoadmapService
 from .services import AssignBarcodeService, BarcodeError
 from .admin_status import AdminStatusService, application_metadata
+from .modules import available_pages, render_navigation
 
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
 
 # One declaration drives the shared shell. Adding a real module only requires a
 # route, a content template and an entry here; pages never duplicate navigation.
-PAGES = {
-    "dashboard.html": ("Tableau de bord", "dashboard", "dashboard.js"),
-    "roadmap.html": ("Roadmap", "roadmap", "roadmap.js"),
-    "inventory.html": ("Inventaire", "inventory", "inventory.js"),
-    "catalogue.html": ("Catalogue", "catalogue", "inventory.js"),
-    "administration.html": ("Administration", "administration", "administration.js"),
-}
+PAGES = available_pages()
 
 class InventoryApp:
     def __init__(self, service: InventoryService, report_output: Path | None = None, os_repository=None,
@@ -118,12 +113,11 @@ class InventoryApp:
         content_name="inventory.html" if name == "catalogue.html" else name
         html=(ROOT/content_name).read_text(encoding="utf-8"); safe=self.settings.safe_mode if self.settings else True
         if name in PAGES:
-            title, active, script = PAGES[name]
+            module = PAGES[name]
+            title, active, script = module.label, module.id, module.script
             shell=(ROOT/"app-shell.html").read_text(encoding="utf-8")
             html=shell.replace("{{PAGE_CONTENT}}",html).replace("{{PAGE_TITLE}}",title).replace("{{PAGE_SCRIPT}}",script)
-            html=html.replace(f'{{{{ACTIVE_{active}}}}}', ' aria-current="page"')
-            for key in ("dashboard", "roadmap", "catalogue", "inventory", "administration"):
-                html=html.replace(f"{{{{ACTIVE_{key}}}}}", "")
+            html=html.replace("{{NAVIGATION}}", render_navigation(active))
         html=html.replace("{{SAFE_BANNER}}",'<div class="safe">Mode sécurisé — écritures externes désactivées</div>' if safe else "").replace("{{CSRF}}",session["csrf"] if session else "")
         return self._send(start,html.encode(),"text/html; charset=utf-8",status,[("X-Request-ID",request_id)])
     def _catalogue(self,query):
