@@ -9,6 +9,7 @@ from dr_cloud_sync.inventory import InventoryRepository, InventoryService
 from dr_cloud_sync.inventory_web import InventoryApp
 from dr_cloud_sync.os_admin import backup, init_catalog
 from dr_cloud_sync.os_config import OSSettings
+from frontend_assets import assert_no_frontend_secrets
 
 
 def mapping(tmp_path):
@@ -47,8 +48,11 @@ def test_health_manifest_dashboard_and_no_browser_secrets(configured):
     app,_=configured; status,_,body=request(app,'/health'); value=json.loads(body);assert status=='200 OK' and value['database']=='ok' and set(value)=={'status','application','version','commit','build_date','database'}
     assert request(app,'/manifest.webmanifest')[0]=='200 OK'
     _,cookie=login(app); html=request(app,'/',cookie=cookie)[2].decode(); assert 'DrCloud OS' in html and 'Mode sécurisé' in html
-    assets=''.join(p.read_text() for p in (Path(__file__).parents[1]/'src/dr_cloud_sync/static').iterdir())
-    assert 'SHOPCAISSE_API_KEY' not in assets and 'PRESTASHOP_API_KEY' not in assets and 'DRCLOUD_ADMIN_PASSWORD' not in assets and 'very-secret-password' not in html
+    assert_no_frontend_secrets(
+        Path(__file__).parents[1] / 'src/dr_cloud_sync/static',
+        ('SHOPCAISSE_API_KEY', 'PRESTASHOP_API_KEY', 'DRCLOUD_ADMIN_PASSWORD'),
+    )
+    assert 'very-secret-password' not in html
 
 def test_health_can_query_sqlite_from_a_waitress_worker_thread(configured):
     app, _ = configured

@@ -8,6 +8,7 @@ import pytest
 
 from dr_cloud_sync.inventory import InventoryError, InventoryRepository, InventoryService
 from dr_cloud_sync.inventory_web import InventoryApp
+from frontend_assets import assert_no_frontend_secrets
 
 
 @pytest.fixture
@@ -86,8 +87,10 @@ def test_web_api_and_no_secrets(service):
     status,data=request(app,"/api/count","POST",{"prestashop_key":"p:0","physical_quantity":0,"source":"SCAN"})
     assert status=="200 OK" and json.loads(data)["counted"]==1
     assert request(app,"/api/export.csv")[0]=="200 OK"
-    assets="".join(p.read_text() for p in (Path(__file__).parents[1]/"src/dr_cloud_sync/static").iterdir())
-    assert "API_KEY" not in assets and "PRESTASHOP_API_KEY" not in assets
+    assert_no_frontend_secrets(
+        Path(__file__).parents[1] / "src/dr_cloud_sync/static",
+        ("API_KEY", "PRESTASHOP_API_KEY"),
+    )
 
 
 def test_invalid_mapping_is_refused(tmp_path):

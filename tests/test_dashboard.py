@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import dr_cloud_sync.inventory_web as inventory_web
+
 from dr_cloud_sync.admin_status import AdminStatusService
 
 from test_os_production import configured, login, request  # noqa: F401
@@ -16,11 +18,23 @@ def test_dashboard_is_accessible_and_uses_official_brand(configured):
     status, _, body = request(app, "/", cookie=cookie)
     html = body.decode()
     assert status == "200 OK"
-    assert 'src="/drcloud-logo.svg"' in html
+    assert 'src="/drcloud-logo.png"' in html
     assert 'alt="Logo officiel Dr Cloud"' in html
     assert 'aria-label="Navigation principale"' in html
     assert 'href="/administration"' in html
-    assert request(app, "/drcloud-logo.svg", cookie=cookie)[0] == "200 OK"
+
+
+def test_official_logo_route_uses_png_mime(configured, tmp_path, monkeypatch):
+    logo = tmp_path / "drcloud-logo.png"
+    logo.write_bytes(b"\x89PNG\r\n\x1a\n\xff")
+    monkeypatch.setattr(inventory_web, "ROOT", tmp_path)
+    app, _ = configured
+
+    status, headers, body = request(app, "/drcloud-logo.png")
+
+    assert status == "200 OK"
+    assert headers["Content-Type"] == "image/png"
+    assert body == logo.read_bytes()
 
 
 def test_dashboard_only_contains_real_routes_and_no_fictional_metrics():
@@ -65,6 +79,6 @@ def test_administration_keeps_status_cards_and_uses_same_brand(configured):
     status, _, body = request(app, "/administration", cookie=cookie)
     html = body.decode()
     assert status == "200 OK"
-    assert 'src="/drcloud-logo.svg"' in html
+    assert 'src="/drcloud-logo.png"' in html
     for section in ("application", "database", "backup", "deployment", "system"):
         assert f'data-section="{section}"' in html
