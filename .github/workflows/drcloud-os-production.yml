@@ -37,4 +37,4 @@ jobs:
         run: |
           ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" \
             "$OVH_SSH_USER@$OVH_SSH_HOST" \
-            "/opt/drcloud-os/deploy/ovh/update.sh '$DEPLOY_SHA'"
+            "test \"\$(id -un)\" = '$OVH_SSH_USER' && /opt/drcloud-os/deploy/ovh/update.sh '$DEPLOY_SHA'"

@@ -5,24 +5,12 @@ target="${1:-}"
 repo="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 state_dir="${DRCLOUD_DEPLOYMENT_STATE_DIR:-$repo/deploy/ovh/.deployment-state}"
 [[ "$state_dir" == /* ]] || state_dir="$repo/$state_dir"
-install -d -m 0755 "$state_dir"
+[[ -d "$state_dir" ]] || { echo "ERREUR: préparer $state_dir avec prepare-deployment-state.sh." >&2; exit 1; }
 state_dir="$(cd -P -- "$state_dir" && pwd)"
 export DRCLOUD_DEPLOYMENT_STATE_DIR="$state_dir"
-legacy_marker="$repo/deploy/ovh/.last-successful-commit"
 
 record_successful_commit() {
-  local commit="$1" state_tmp legacy_tmp
-  [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || return 2
-  install -d -m 0755 "$state_dir"
-  state_tmp="$(mktemp "$state_dir/.last-successful-commit.XXXXXX")"
-  printf '%s\n' "$commit" > "$state_tmp"
-  chmod 0444 "$state_tmp"
-  mv -f "$state_tmp" "$state_dir/last-successful-commit"
-  # Retain the historical host-side marker for operators, also atomically.
-  legacy_tmp="$(mktemp "$repo/deploy/ovh/.last-successful-commit.XXXXXX")"
-  printf '%s\n' "$commit" > "$legacy_tmp"
-  chmod 0444 "$legacy_tmp"
-  mv -f "$legacy_tmp" "$legacy_marker"
+  "$repo/deploy/ovh/deployment-state.sh" "$state_dir" "$1"
 }
 
 exec 9>"${DRCLOUD_DEPLOY_LOCK:-/tmp/drcloud-os-deploy.lock}"
@@ -37,16 +25,21 @@ git -C "$repo" merge-base --is-ancestor "$target" origin/main || { echo "ERREUR:
 git -C "$repo" checkout --detach "$target"
 if DRCLOUD_DEPLOYMENT_STATE_DIR="$state_dir" DRCLOUD_BUILD_COMMIT="$target" "$repo/deploy/ovh/deploy.sh" && \
    DRCLOUD_HTTPS_URL="${DRCLOUD_HTTPS_URL:-https://osdrcloud.fr}" EXPECTED_COMMIT="$target" "$repo/deploy/ovh/check.sh"; then
-  record_successful_commit "$target"
-  echo "SUCCÈS: commit déployé et HTTPS validé: $target"
-  exit 0
+  if record_successful_commit "$target"; then
+    echo "SUCCÈS: commit déployé, HTTPS validé et marqueur publié: $target"
+    exit 0
+  fi
+  echo "ERREUR: application validée mais publication du marqueur impossible." >&2
 fi
 echo "ERREUR: déploiement de $target; rollback applicatif vers $previous (aucune restauration de données)." >&2
 git -C "$repo" checkout --detach "$previous"
 if DRCLOUD_DEPLOYMENT_STATE_DIR="$state_dir" DRCLOUD_BUILD_COMMIT="$previous" "$repo/deploy/ovh/deploy.sh" && \
    DRCLOUD_HTTPS_URL="${DRCLOUD_HTTPS_URL:-https://osdrcloud.fr}" EXPECTED_COMMIT="$previous" "$repo/deploy/ovh/check.sh"; then
-  record_successful_commit "$previous"
-  echo "ROLLBACK RÉUSSI: commit=$previous. La sauvegarde n'a pas été restaurée." >&2
+  if record_successful_commit "$previous"; then
+    echo "ROLLBACK RÉUSSI: commit=$previous. La sauvegarde n'a pas été restaurée." >&2
+  else
+    echo "ROLLBACK APPLICATIF RÉUSSI, mais publication du marqueur impossible: commit=$previous." >&2
+  fi
 else
   echo "ROLLBACK EN ÉCHEC: intervention d'urgence requise; données laissées intactes." >&2
 fi

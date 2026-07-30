@@ -100,15 +100,52 @@ def test_success_marker_is_published_only_after_checks_and_rollback_validation()
     rollback_check = script.index('EXPECTED_COMMIT="$previous"')
     rollback_publish = script.index('record_successful_commit "$previous"')
     assert success_check < success_publish < rollback_check < rollback_publish
-    assert "mv -f \"$state_tmp\"" in script  # Atomic rename, not in-place mutation.
-    assert "chmod 0444 \"$state_tmp\"" in script
+    publisher = (Path(__file__).parents[1] / "deploy/ovh/deployment-state.sh").read_text()
+    assert 'mv -f -- "$tmp"' in publisher  # Atomic rename, not in-place mutation.
+    assert 'chmod 0444 "$tmp"' in publisher
 
 
 def test_first_install_creates_state_directory_without_claiming_success():
     root = Path(__file__).parents[1]
     deploy = (root / "deploy/ovh/deploy.sh").read_text()
-    assert 'install -d -m 0755 "$DRCLOUD_DEPLOYMENT_STATE_DIR"' in deploy
+    assert '[[ -d "$DRCLOUD_DEPLOYMENT_STATE_DIR" ]]' in deploy
     assert "record_successful_commit" not in deploy
+
+
+def test_deployment_writer_can_atomically_replace_read_only_marker(tmp_path):
+    root = Path(__file__).parents[1]
+    publisher = root / "deploy/ovh/deployment-state.sh"
+    compose = (root / "deploy/ovh/docker-compose.yml").read_text()
+    state_dir = tmp_path / ".deployment-state"
+    state_dir.mkdir(mode=0o755)
+    state_dir.chmod(0o755)
+    user = subprocess.run(["id", "-un"], check=True, text=True, capture_output=True).stdout.strip()
+    group = subprocess.run(["id", "-gn"], check=True, text=True, capture_output=True).stdout.strip()
+    env = {**os.environ, "DRCLOUD_DEPLOY_USER": user, "DRCLOUD_DEPLOY_GROUP": group}
+
+    for commit in ("a" * 40, "b" * 40):
+        result = subprocess.run(
+            [publisher, state_dir, commit], env=env, check=False, text=True, capture_output=True
+        )
+        assert result.returncode == 0, result.stderr
+        marker = state_dir / "last-successful-commit"
+        assert marker.read_text() == f"{commit}\n"
+        assert marker.stat().st_mode & 0o777 == 0o444
+
+    assert state_dir.stat().st_mode & 0o777 == 0o755
+    assert ":/run/drcloud-deployment:ro" in compose
+    scripts = "".join(path.read_text() for path in (root / "deploy/ovh").glob("*.sh"))
+    assert "chmod 777" not in scripts and "chmod 0777" not in scripts
+
+
+def test_state_provisioning_has_explicit_minimal_ownership_contract():
+    root = Path(__file__).parents[1]
+    prepare = (root / "deploy/ovh/prepare-deployment-state.sh").read_text()
+    publisher = (root / "deploy/ovh/deployment-state.sh").read_text()
+    assert "drcloud-deploy" in prepare and 'chmod 0755 "$state_dir"' in prepare
+    assert 'chown "$deploy_user:$deploy_group" "$state_dir"' in prepare
+    assert 'expected_user="${DRCLOUD_DEPLOY_USER:-drcloud-deploy}"' in publisher
+    assert "777" not in prepare
 
 
 def test_deployment_state_is_canonical_and_independent_from_working_directory(tmp_path):
@@ -143,6 +180,8 @@ def test_deployment_state_is_canonical_and_independent_from_working_directory(tm
     accidental = tmp_path / "elsewhere" / ".deployment-state"
     cwd = accidental.parent
     cwd.mkdir()
+    expected_state = root / "deploy/ovh/.deployment-state"
+    expected_state.mkdir(mode=0o755, exist_ok=True)
     try:
         result = subprocess.run(
             [root / "deploy/ovh/deploy.sh"], cwd=cwd, check=False, text=True,
@@ -155,9 +194,10 @@ def test_deployment_state_is_canonical_and_independent_from_working_directory(tm
             env_file.unlink()
         else:
             env_file.write_bytes(original_env)
+        expected_state.rmdir()
 
     assert result.returncode == 0, result.stderr
-    expected = str((root / "deploy/ovh/.deployment-state").resolve())
+    expected = str(expected_state.resolve())
     invocations = docker_log.read_text().splitlines()
     assert invocations and all(line.startswith(f"{expected}|") for line in invocations)
     assert not accidental.exists()
