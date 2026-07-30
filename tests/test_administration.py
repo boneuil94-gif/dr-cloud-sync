@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from dr_cloud_sync.admin_status import AdminStatusService
+from dr_cloud_sync.modules import render_navigation
 from test_os_production import configured, login, request
 
 ROOT = Path(__file__).parents[1]
@@ -142,9 +143,10 @@ def test_administration_uses_drcloud_shell_and_keeps_all_status_fields():
     html = (ROOT / "src/dr_cloud_sync/static/administration.html").read_text()
     shell = (ROOT / "src/dr_cloud_sync/static/app-shell.html").read_text()
     css = (ROOT / "src/dr_cloud_sync/static/inventory.css").read_text()
+    navigation = render_navigation("administration")
     assert 'class="dc-sidebar"' in shell
-    assert 'href="/administration"{{ACTIVE_administration}}' in shell
-    assert 'href="/"' in shell and "Tableau de bord" in shell
+    assert 'href="/administration" aria-current="page"' in navigation
+    assert 'href="/"' in navigation and "Tableau de bord" in navigation
     for section in ("application", "database", "backup", "deployment", "system"):
         assert f'data-section="{section}"' in html
     for status in ("status-ok", "status-warning", "status-error", "status-unknown"):

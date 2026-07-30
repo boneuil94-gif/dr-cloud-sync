@@ -23,6 +23,16 @@ Principes : identité DrCloud stable, services métier comme point d'entrée, d�
 
 ## Modules officiels et frontières
 
+### Registre du shell
+
+`src/dr_cloud_sync/modules.py` est la source unique des groupes et entrées de la
+sidebar. Pour déclarer un futur domaine, ajouter un `Module` avec son identifiant
+Roadmap et sans route, template ni script : il restera non interactif et marqué
+« À venir ». Une fois sa fonctionnalité et sa route réellement livrées, renseigner
+ensemble `route`, `page_template` et `script` pour l'activer. Le shell génère alors
+automatiquement son lien et son état actif ; aucune duplication dans les pages
+HTML n'est nécessaire.
+
 Chaque module peut dépendre de **CORE**. Une flèche métier autorisée va vers un service/port public, jamais vers les tables ou le HTTP d'un autre module. **INTEGRATIONS** implémente des ports déclarés par le métier ; le métier ne dépend pas d'un fournisseur.
 
 | Module | Responsabilité et données possédées | Services métier | Événements produits / consommés | Dépendances autorisées et connecteurs |
