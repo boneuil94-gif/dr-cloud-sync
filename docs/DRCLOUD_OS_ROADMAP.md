@@ -65,3 +65,17 @@ Valider ensuite le format ShopCaisse sur export terrain et compléter les faits 
 ## Progression de Ventes v1
 
 Les valeurs sont calculées depuis les jalons pondérés par `RoadmapService`, jamais stockées dans le JSON canonique : **progression globale 53,62 % → 56,08 %** et **Ventes 46,15 % → 76,92 %**.
+
+## Livraison Data Hub V1 — évolution calculée
+
+Les pourcentages ne sont pas écrits dans cette documentation : `/api/roadmap` les recalcule depuis les poids et statuts du manifeste. La comparaison avant/après est donc présentée en capacités vérifiables :
+
+| Domaine | Avant | Après cette livraison |
+|---|---|---|
+| Global | Ledgers et jobs isolés | Plan de contrôle Data Hub et chaînes de dépendances |
+| Finance | Module futur | Bank Ledger, rapprochement conservateur et projection cashflow en lecture seule |
+| Dashboard | Ventes et système | Contrats de projection banque/achats/stock/alertes préparés |
+| Automatisations | Jobs reprenables isolés | Scheduling configurable, claim, retry/backoff, curseur et freshness |
+| Ventes | Sales Ledger et imports | Source PrestaShop réelle déclarée seulement si configurée ; ShopCaisse reste honnêtement non configuré hors import |
+
+Qonto n'est **pas connecté** : son port testable est livré, mais l'activation attend les credentials secrets et un contrat officiel validé. L'alerting externe avec cooldown demeure une étape ultérieure ; le cockpit expose dès maintenant les signaux sources/jobs.

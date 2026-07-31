@@ -33,6 +33,10 @@ from .creative_review import CreativeReviewError, CreativeReviewService
 from .sales import SalesLedger, SocialAnalyticsService
 from .sales_ingestion import PrestaShopSalesProvider, SalesSyncService, ShopCaisseCSVProvider
 from .social import MarketingSchedulingService, SocialConnectionService, SocialPublishingService
+from .data_hub import DataHub, JobDefinition
+from .bank import BankLedger, DisabledQontoProvider
+from .reconciliation import ReconciliationService
+from .finance import FinanceProjection
 
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
@@ -76,12 +80,21 @@ class InventoryApp:
         self.media=ProductMediaService(SQLiteProductMediaRepository(service.repo.path),LocalMediaStorage(media_root),self.os_repository,self.os_repository)
         self.marketing_repository=MarketingRepository(service.repo.path)
         self.sales=SalesLedger(service.repo.path,self.os_repository)
+        self.data_hub=DataHub(service.repo.path)
+        self.bank=BankLedger(service.repo.path); self.bank_provider=DisabledQontoProvider()
+        self.reconciliation=ReconciliationService(service.repo.path)
+        self.finance=FinanceProjection(self.bank,self.sales)
         sales_providers={}
         paid_states=[x.strip() for x in os.environ.get("PRESTASHOP_PAID_STATE_IDS","").split(",") if x.strip()]
         if os.environ.get("PRESTASHOP_API_URL") and os.environ.get("PRESTASHOP_API_KEY") and paid_states:
             sales_providers["PRESTASHOP"]=PrestaShopSalesProvider(
                 PrestaShopClient(os.environ["PRESTASHOP_API_URL"],os.environ["PRESTASHOP_API_KEY"]),paid_states)
         self.sales_sync=SalesSyncService(self.sales,sales_providers)
+        configured_ps="PRESTASHOP" in sales_providers
+        intervals={"sales":int(os.environ.get("DATA_HUB_SALES_INTERVAL_SECONDS","900")),"bank":int(os.environ.get("DATA_HUB_BANK_INTERVAL_SECONDS","10800")),"projection":int(os.environ.get("DATA_HUB_PROJECTION_INTERVAL_SECONDS","900"))}
+        for args in (("shopcaisse_sales","SHOPCAISSE_SALES","ShopCaisse",False),("prestashop_sales","PRESTASHOP_SALES","PrestaShop",configured_ps),("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",bool(os.environ.get("PRESTASHOP_API_URL") and os.environ.get("PRESTASHOP_API_KEY"))),("bank","BANK","Qonto",False),("purchases","PURCHASES","LOCAL",True),("stock","STOCK","LOCAL",True)):
+            self.data_hub.register_source(*args[:3],configured=args[3],capabilities=("READ",),stale_after_seconds=intervals["bank"]*2 if args[0]=="bank" else intervals["sales"]*2)
+        for job in (JobDefinition("sync_prestashop_sales","prestashop_sales","PRESTASHOP_SALES",intervals["sales"]),JobDefinition("sync_bank_transactions","bank","BANK",intervals["bank"]),JobDefinition("refresh_sales_metrics","prestashop_sales","SALES_METRICS",intervals["projection"],("sync_prestashop_sales",)),JobDefinition("reconcile_bank_sales","bank","RECONCILE",intervals["projection"],("sync_bank_transactions",)),JobDefinition("refresh_finance","bank","FINANCE",intervals["projection"],("reconcile_bank_sales",)),JobDefinition("refresh_dashboard","purchases","DASHBOARD",intervals["projection"]),JobDefinition("refresh_marketing_signals","prestashop_sales","MARKETING",intervals["projection"],("refresh_sales_metrics",))): self.data_hub.register_job(job)
         self.sales_import_preview=None
         self.social_analytics=SocialAnalyticsService(self.marketing_repository.db)
         self.marketing=MarketingAutopilot(self.marketing_repository,self.os_repository,self.media.repository,sales=self.sales)
@@ -121,7 +134,7 @@ class InventoryApp:
                 "/inventory.css": ("inventory.css", "text/css; charset=utf-8"),
                 **{f"/{name}": (name, "text/javascript; charset=utf-8") for name in (
                     "app-shell.js", "inventory.js", "roadmap.js", "dashboard.js",
-                    "administration.js", "stock.js", "purchasing.js", "security.js", "marketing.js", "sales.js",
+                    "administration.js", "stock.js", "purchasing.js", "security.js", "marketing.js", "sales.js", "finance.js",
                 )},
             }
             if path in public_assets:
@@ -148,6 +161,15 @@ class InventoryApp:
             if path == "/achats": return self._html(start,"purchasing.html",session,request_id)
             if path == "/marketing": return self._html(start,"marketing.html",session,request_id)
             if path == "/sales": return self._html(start,"sales.html",session,request_id)
+            if path == "/finance": return self._html(start,"finance.html",session,request_id)
+            if path == "/api/data-hub" and method == "GET": return self._json(start,self.data_hub.health())
+            if path.startswith("/api/data-hub/jobs/") and path.endswith("/run") and method == "POST":
+                job_id=unquote(path.removeprefix("/api/data-hub/jobs/").removesuffix("/run"))
+                operations={"BANK":lambda cursor:self.bank.sync("Qonto",self.bank_provider,cursor),"RECONCILE":lambda cursor:{"rows_imported":self.reconciliation.reconcile_sales_bank()["created"]},"FINANCE":lambda cursor:{"rows_imported":0,"projection":self.finance.snapshot()},"DASHBOARD":lambda cursor:{"rows_imported":0},"SALES_METRICS":lambda cursor:{"rows_imported":0,"metrics":self.sales.analytics()},"MARKETING":lambda cursor:{"rows_imported":0}}
+                job=self.data_hub.job(job_id)
+                if not job or job["job_type"] not in operations: return self._json(start,{"error":"Job non exécutable ou connecteur absent"},"409 Conflict")
+                return self._json(start,self.data_hub.run(job_id,operations[job["job_type"]],manual=True))
+            if path == "/api/finance" and method == "GET": return self._json(start,{"projection":self.finance.snapshot(),"transactions":self.bank.transactions(),"reconciliations":self.reconciliation.list()})
             if path == "/api/sales/cockpit" and method == "GET":
                 return self._json(start,{"analytics":self.sales.analytics(),"sources":self.sales_sync.diagnostics(),"sales":self.sales_sync.sales(),"unmatched":self.sales_sync.unmatched()})
             if path == "/api/sales/shopcaisse/preview" and method == "POST":
