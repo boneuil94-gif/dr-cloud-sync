@@ -149,3 +149,47 @@ def test_missing_or_corrupt_snapshot_fails_closed_without_mutation(tmp_path):
         with pytest.raises(HistoricalCatalogueUnavailable, match="Analyse impossible"):
             historical_observations(path, repo.all())
         assert repo.all() == before
+
+
+def test_complete_packaged_catalogue_survives_reconnect_and_legacy_bootstrap(tmp_path):
+    document = json.loads(packaged_historical_snapshot().read_text())
+    products = []
+    for parent in document["catalogue"]:
+        for combination in parent.get("declinaisons") or [None]:
+            combination_id = combination["id"] if combination else None
+            identity = f"prestashop:{parent['id']}:{combination_id or 0}"
+            products.append(Product(
+                identity, identity, parent["id"], combination_id, identity,
+                parent["nom"], base_name=parent["nom"],
+            ))
+    assert len(products) == 478
+    assert sum(product.combination_id is not None for product in products) == 453
+
+    database = tmp_path / "catalogue.sqlite"
+    SQLiteStockMovementRepository(database).db.close()
+    repo = SQLiteOSRepository(database, products)
+    identities = [product.drcloud_product_key for product in repo.all()]
+    observations = historical_observations(packaged_historical_snapshot(), repo.all())
+    assert len(observations) == 478
+    assert sum(bool(row.variant_name) for row in observations) == 453
+    before_movements = repo.db.execute("SELECT COUNT(*) FROM stock_movements").fetchone()[0]
+    result = CatalogueRehydrationService(repo, backup=lambda: "backup").apply_safe(
+        observations, actor="validation",
+    )
+    assert result["after"]["variants_known"] == 453
+    assert result["after"]["variants_unknown"] == 0
+    assert repo.db.execute("SELECT COUNT(*) FROM stock_movements").fetchone()[0] == before_movements
+    repo.db.close()
+
+    reopened = SQLiteOSRepository(database, [])
+    assert [product.drcloud_product_key for product in reopened.all()] == identities
+    assert sum(bool(product.variant_name) for product in reopened.all()) == 453
+    peach = next(product for product in reopened.all() if str(product.combination_id) == "710")
+    assert peach.display_name.endswith(" — PEACH ICE")
+    assert peach.attributes == {"AL FAKHER 50K": "PEACH ICE"}
+    reopened.db.close()
+
+    # A stale flattened startup mapping must not replace canonical enrichment.
+    bootstrapped = SQLiteOSRepository(database, products)
+    assert sum(bool(product.variant_name) for product in bootstrapped.all()) == 453
+    assert bootstrapped.get(peach.drcloud_product_key).variant_name == "PEACH ICE"
