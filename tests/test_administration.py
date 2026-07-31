@@ -71,6 +71,27 @@ def test_catalogue_rehydration_admin_preview_report_apply_and_csrf(configured, t
     assert duplicate["reused"] is True
 
 
+def test_catalogue_contract_does_not_diagnose_simple_products_as_unknown_variants(configured):
+    app, _ = configured
+    simple = app.os_repository.all()[0]
+    with app.os_repository.db:
+        app.os_repository.db.execute(
+            "UPDATE drcloud_products SET combination_id=NULL WHERE drcloud_product_key=?",
+            (simple.drcloud_product_key,),
+        )
+    _, cookie = login(app)
+    rows = json.loads(request(app, "/api/catalogue", cookie=cookie)[2])
+    row = next(item for item in rows if item["drcloud_product_key"] == simple.drcloud_product_key)
+    assert {"base_name", "variant_name", "display_name", "attributes", "reference", "ean",
+            "primary_media", "diagnostics"} <= row.keys()
+    assert row["display_name"] == row["base_name"]
+    assert "Variante inconnue" not in row["diagnostics"]
+    unknown = json.loads(request(app, "/api/catalogue?filter=UNKNOWN_VARIANT", cookie=cookie)[2])
+    assert simple.drcloud_product_key not in {item["drcloud_product_key"] for item in unknown}
+    quality = json.loads(request(app, "/api/catalogue/quality", cookie=cookie)[2])
+    assert quality["missing_variant"] == 477
+
+
 def test_catalogue_rehydration_rejects_missing_and_stale_preview(configured, tmp_path):
     app, settings = configured
     snapshot = tmp_path / "snapshot.json"; snapshot.write_text('{"catalogue":[{"id":"0","nom":"Produit 0"}]}')
