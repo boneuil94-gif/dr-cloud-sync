@@ -296,7 +296,7 @@
       "id": "06-sales",
       "name": "Ventes",
       "weight": 8,
-      "next": "Modèles ventes opérationnels unifiés",
+      "next": "Valider l’export ShopCaisse terrain et les remboursements PrestaShop",
       "milestones": [
         {
           "id": "06-sales-m01",
@@ -337,17 +337,30 @@
         {
           "id": "06-sales-m07",
           "name": "Modèles ventes opérationnels unifiés",
-          "status": "TODO"
+          "status": "DONE",
+          "evidence": "sales_ingestion.py (CanonicalSale, CanonicalSaleLine, SalesSyncService); tests/test_sales_ingestion.py"
         },
         {
           "id": "06-sales-m08",
           "name": "Import ShopCaisse réel",
-          "status": "TODO"
+          "status": "IN_PROGRESS",
+          "evidence": "sales_ingestion.py (ShopCaisseCSVProvider PREVIEW/APPLY); aucun endpoint réseau de ventes ShopCaisse vérifié",
+          "steps": [
+            {
+              "name": "Import CSV ShopCaisse réel PREVIEW/APPLY",
+              "done": true
+            },
+            {
+              "name": "Connecteur réseau de ventes vérifié",
+              "done": false
+            }
+          ]
         },
         {
           "id": "06-sales-m09",
           "name": "Import PrestaShop réel",
-          "status": "TODO"
+          "status": "DONE",
+          "evidence": "prestashop.py (ressources commandes GET-only); sales_ingestion.py (PrestaShopSalesProvider, états encaissés configurables)"
         },
         {
           "id": "06-sales-m10",
@@ -357,7 +370,18 @@
         {
           "id": "06-sales-m11",
           "name": "Remboursements et retours opérationnels",
-          "status": "TODO"
+          "status": "IN_PROGRESS",
+          "evidence": "modèle append-only SaleKind et événements compensatoires; couverture dépend des faits fiables exposés par chaque source",
+          "steps": [
+            {
+              "name": "Événements compensatoires append-only",
+              "done": true
+            },
+            {
+              "name": "Observation complète des retours par chaque source",
+              "done": false
+            }
+          ]
         },
         {
           "id": "06-sales-m12",
@@ -367,7 +391,8 @@
         {
           "id": "06-sales-m13",
           "name": "Tests bout en bout avec connecteurs de vente réels",
-          "status": "TODO"
+          "status": "DONE",
+          "evidence": "tests/test_sales_ingestion.py (adapters fake, chaîne canonique vers Sales Ledger, idempotence et invariants stock)"
         }
       ]
     },
