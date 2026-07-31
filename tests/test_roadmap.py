@@ -28,7 +28,9 @@ def test_module_progress_is_calculated_from_milestones():
     service = RoadmapService(ROADMAP)
     module = {"milestones": [
         {"id": "a", "name": "A", "status": "DONE"},
-        {"id": "b", "name": "B", "status": "IN_PROGRESS"},
+        {"id": "b", "name": "B", "status": "IN_PROGRESS", "steps": [
+            {"name": "B1", "done": True}, {"name": "B2", "done": False},
+        ]},
         {"id": "c", "name": "C", "status": "TODO"},
         {"id": "d", "name": "D", "status": "BLOCKED"},
     ]}
@@ -39,8 +41,8 @@ def test_module_progress_is_calculated_from_milestones():
 def test_global_and_remaining_are_calculated():
     data = RoadmapService(ROADMAP).load()
     expected = round(sum(m["weight"] * m["progress_percent"] / 100 for m in data["modules"]), 2)
-    assert data["global_progress_percent"] == expected == 47.43
-    assert data["remaining_percent"] == 100 - expected == 52.57
+    assert data["global_progress_percent"] == expected == 49.3
+    assert data["remaining_percent"] == 100 - expected == 50.7
 
 
 def test_inconsistent_weights_are_rejected():
@@ -50,13 +52,9 @@ def test_inconsistent_weights_are_rejected():
         RoadmapService(ROADMAP).validate(data)
 
 
-@pytest.mark.parametrize("target", ["module", "milestone"])
-def test_invalid_status_is_rejected(target):
+def test_invalid_status_is_rejected():
     data = raw_roadmap()
-    if target == "module":
-        data["modules"][0]["status"] = "UNKNOWN"
-    else:
-        data["modules"][0]["milestones"][0]["status"] = "UNKNOWN"
+    data["modules"][0]["milestones"][0]["status"] = "UNKNOWN"
     with pytest.raises(RoadmapError, match="Statut"):
         RoadmapService(ROADMAP).validate(data)
 
@@ -98,7 +96,7 @@ def test_dashboard_loads_dynamic_roadmap_and_keeps_existing_routes(service):
     payload = json.loads(roadmap_body)
     assert roadmap_status == "200 OK"
     assert len(payload["modules"]) == len(raw_roadmap()["modules"])
-    assert payload["global_progress_percent"] == 47.43
+    assert payload["global_progress_percent"] == 49.3
     for path in ("/roadmap", "/catalogue", "/inventaire", "/api/dashboard", "/api/state"):
         assert request(app, path)[0] == "200 OK"
 
@@ -113,3 +111,34 @@ if (partial.progress !== 100 || partial.modules.length !== 1 || clampPercent(-4)
 """
     result = subprocess.run(["node", "-e", script], cwd=ROOT, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_binary_substeps_and_blocked_credit_are_mathematically_explicit():
+    service = RoadmapService(ROADMAP)
+    fixture = {"milestones": [
+        {"id": "done", "name": "Done", "status": "DONE"},
+        {"id": "partial", "name": "Partial", "status": "IN_PROGRESS", "steps": [
+            {"name": "one", "done": True}, {"name": "two", "done": True},
+            {"name": "three", "done": False},
+        ]},
+        {"id": "todo", "name": "Todo", "status": "TODO"},
+        {"id": "blocked", "name": "Blocked", "status": "BLOCKED"},
+    ]}
+    assert service.module_progress(fixture) == 41.67
+    assert service.milestone_credit(fixture["milestones"][2]) == 0
+    assert service.milestone_credit(fixture["milestones"][3]) == 0
+
+
+def test_marketing_recognises_v1_without_claiming_production_future_done():
+    marketing = next(m for m in RoadmapService(ROADMAP).load()["modules"] if m["id"] == "09-marketing")
+    by_id = {item["id"]: item for item in marketing["milestones"]}
+    assert by_id["09-marketing-m02"]["status"] == "DONE"  # Creative AI v1
+    assert by_id["09-marketing-m04"]["status"] == "DONE"  # social pipeline v1
+    assert by_id["09-marketing-m05"]["status"] == "BLOCKED"  # real providers
+    assert by_id["09-marketing-m08"]["status"] == "TODO"  # live analytics
+
+
+def test_canonical_file_contains_no_derived_progress_values():
+    data = raw_roadmap()
+    assert "global_progress_percent" not in data
+    assert all("progress_percent" not in module and "status" not in module for module in data["modules"])

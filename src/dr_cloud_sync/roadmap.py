@@ -13,7 +13,6 @@ class RoadmapError(ValueError):
 
 class RoadmapService:
     ALLOWED_STATUSES = frozenset({"TODO", "IN_PROGRESS", "DONE", "BLOCKED"})
-    STATUS_CREDIT = {"TODO": 0.0, "BLOCKED": 0.0, "IN_PROGRESS": 0.5, "DONE": 1.0}
 
     def __init__(self, path: Path | str):
         self.path = Path(path)
@@ -26,6 +25,7 @@ class RoadmapService:
         self.validate(roadmap)
         # Values exposed to callers always come from milestones and weights.
         for module in roadmap["modules"]:
+            module["status"] = self.module_status(module)
             module["progress_percent"] = self.module_progress(module)
             module["weighted_progress"] = round(
                 module["weight"] * module["progress_percent"] / 100, 2
@@ -41,8 +41,6 @@ class RoadmapService:
         if sum(module.get("weight", 0) for module in modules) != 100:
             raise RoadmapError("Le poids total des modules doit être égal à 100")
         for module in modules:
-            if module.get("status") not in self.ALLOWED_STATUSES:
-                raise RoadmapError(f"Statut de module invalide: {module.get('status')}")
             milestones = module.get("milestones")
             if not isinstance(milestones, list) or not milestones:
                 raise RoadmapError(f"Jalons invalides pour {module.get('id')}")
@@ -51,6 +49,15 @@ class RoadmapService:
                     raise RoadmapError(f"Jalon invalide pour {module.get('id')}")
                 if milestone["status"] not in self.ALLOWED_STATUSES:
                     raise RoadmapError(f"Statut de jalon invalide: {milestone['status']}")
+                steps = milestone.get("steps")
+                if milestone["status"] == "IN_PROGRESS":
+                    if not isinstance(steps, list) or len(steps) < 2:
+                        raise RoadmapError(f"Sous-étapes requises pour {milestone['id']}")
+                    if any(not isinstance(step, dict) or not {"name", "done"} <= step.keys()
+                           or not isinstance(step["done"], bool) for step in steps):
+                        raise RoadmapError(f"Sous-étape invalide pour {milestone['id']}")
+                    if all(step["done"] for step in steps) or not any(step["done"] for step in steps):
+                        raise RoadmapError(f"État IN_PROGRESS incohérent pour {milestone['id']}")
             progress = self.module_progress(module)
             if not 0 <= progress <= 100:
                 raise RoadmapError(f"Progression hors limites pour {module.get('id')}")
@@ -59,10 +66,29 @@ class RoadmapService:
         milestones = module.get("milestones", [])
         if not milestones:
             raise RoadmapError("Un module doit avoir au moins un jalon")
-        earned = sum(self.STATUS_CREDIT.get(item.get("status"), -1) for item in milestones)
-        if earned < 0:
-            raise RoadmapError("Statut de jalon invalide")
+        earned = sum(self.milestone_credit(item) for item in milestones)
         return round(100 * earned / len(milestones), 2)
+
+    def milestone_credit(self, milestone: dict[str, Any]) -> float:
+        status = milestone.get("status")
+        if status == "DONE":
+            return 1.0
+        if status in {"TODO", "BLOCKED"}:
+            return 0.0
+        if status == "IN_PROGRESS":
+            steps = milestone.get("steps", [])
+            if not steps:
+                raise RoadmapError("Un jalon IN_PROGRESS doit avoir des sous-étapes")
+            return sum(step.get("done") is True for step in steps) / len(steps)
+        raise RoadmapError("Statut de jalon invalide")
+
+    def module_status(self, module: dict[str, Any]) -> str:
+        statuses = {item["status"] for item in module["milestones"]}
+        if statuses == {"DONE"}:
+            return "DONE"
+        if statuses <= {"TODO", "BLOCKED"}:
+            return "BLOCKED" if "BLOCKED" in statuses and "TODO" not in statuses else "TODO"
+        return "IN_PROGRESS"
 
     def global_progress(self, roadmap: dict[str, Any]) -> float:
         self._validate_weights(roadmap)

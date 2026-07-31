@@ -1,103 +1,59 @@
 # Roadmap officielle DrCloud OS
 
-**Version :** 1.0.0 — **mise à jour :** 2026-07-30 — **progression pondérée calculée : 47,43 %** — **reste : 52,57 %**.
+**Version :** 2.0.0 — **audit du dépôt :** 2026-07-31 — **progression calculée : 49,30 %** — **reste : 50,70 %**.
 
-La mesure est fondée sur des jalons constatables dans le dépôt : `DONE = 100 %`, `IN_PROGRESS = 50 %`, `TODO/BLOCKED = 0 %` du jalon, puis moyenne des jalons et pondération du bloc. La source exécutable est [`drcloud-os-roadmap.json`](drcloud-os-roadmap.json) et `RoadmapService` recalcule les valeurs ; ce document explicite l'état, il ne pilote pas l'interface.
+## Source d'autorité et calcul
 
-| Bloc | Statut | Progression | Poids | Progression pondérée |
-|---|---:|---:|---:|---:|
-| 01 Core + architecture | IN_PROGRESS | 70 % | 10 | 7.0 |
-| 02 Catalogue + mapping | IN_PROGRESS | 90 % | 10 | 9.0 |
-| 03 Inventaire + EAN | IN_PROGRESS | 80 % | 10 | 8.0 |
-| 04 Stock + synchronisation | IN_PROGRESS | 90 % | 10 | 9.0 |
-| 05 Achats + fournisseurs | IN_PROGRESS | 30 % | 10 | 3.0 |
-| 06 Ventes | IN_PROGRESS | 5 % | 8 | 0.4 |
-| 07 Finance + pilotage | TODO | 0 % | 8 | 0.0 |
-| 08 Clients + fidélité | TODO | 0 % | 6 | 0.0 |
-| 09 Marketing + réseaux sociaux | IN_PROGRESS | 10 % | 8 | 0.8 |
-| 10 Automatisations + IA | IN_PROGRESS | 5 % | 8 | 0.4 |
-| 11 Dashboard | IN_PROGRESS | 10 % | 5 | 0.5 |
-| 12 Sécurité + utilisateurs | IN_PROGRESS | 10 % | 4 | 0.4 |
-| 13 Production + PWA | IN_PROGRESS | 70 % | 3 | 2.1 |
-| **Total** | **IN_PROGRESS** | **47,43 %** | **100** | **47.43** |
+La seule source d'autorité exécutable est [`drcloud-os-roadmap.json`](drcloud-os-roadmap.json). Elle contient uniquement les faits versionnés (domaines, poids, jalons, états, sous-étapes et blocages) : aucun pourcentage calculé n'y est stocké. `RoadmapService` valide puis calcule l'API, l'écran Roadmap et le Dashboard depuis ce fichier.
 
-## État opérationnel par bloc
+Les poids des 13 grands domaines totalisent exactement 100. Ils représentent leur étendue métier relative ; ils n'ont pas été retouchés pour atteindre un résultat souhaité. Dans un domaine, les jalons sont des unités de livraison de même rang : `DONE` vaut 1, `TODO` et `BLOCKED` valent 0. `IN_PROGRESS` vaut strictement la proportion de ses sous-étapes binaires terminées, jamais un 50 % décoratif. La progression d'un domaine est la moyenne de ses jalons et la progression globale est `Σ(poids du domaine × progression du domaine)`.
 
-### 01 — Core + architecture
-- **Terminé :** séparation domaine/services/repositories, types métier, ActivityLog, ports repository.
-- **En cours :** catalogue d'événements et conventions communes.
-- **Prochaine étape :** idempotence persistée, jobs reprenables, notifications et autorisation complète.
-- **Bloqué :** rien.
+Définitions :
 
-### 02 — Catalogue + mapping
-- **Terminé :** mapping initial certain 478/478, clé DrCloud stable, catalogue SQLite durable, recherche, EAN, BarcodeAssignment dry-run, cycle de vie `ACTIVE/INACTIVE/ARCHIVED`, invariants persistants et tests.
-- **En cours :** aucun jalon partiel comptabilisé.
-- **Prochaine étape :** préparer un adapter PostgreSQL lorsque les besoins d’exploitation le justifieront.
-- **Bloqué :** activation live volontairement exclue ; les éventuels doublons EAN historiques doivent être corrigés explicitement avant création automatique de l’index unique.
+- **DONE** : définition du jalon utilisable, persistée si nécessaire, exposée par ses routes/UI si prévu et couverte par des tests ;
+- **IN_PROGRESS** : résultat partiellement utilisable, détaillé par des sous-étapes constatables ;
+- **TODO** : aucun crédit ;
+- **BLOCKED** : aucun crédit et raison visible. Une fondation ne rend jamais son intégration de production `DONE`.
 
-### 03 — Inventaire + EAN
-- **Terminé :** V1, interface OS V2, sessions SQLite, scan/comptage, progression/exports, préparation EAN, rapprochement et workflow validé Inventory → Stock local.
-- **En cours :** aucun jalon partiel comptabilisé.
-- **Prochaine étape :** tests terrain EAN.
-- **Bloqué :** écriture EAN live non autorisée à ce stade.
+## Résultat de l'audit
 
-### 04 — Stock + synchronisation
-- **Terminé :** StockMovement, types, idempotence, validation, ledger permanent, projection Stock read-only, test bout-en-bout Inventaire → Stock et observation PrestaShop contrôlée sans écriture externe.
-- **En cours :** aucun jalon partiel comptabilisé.
-- **Prochaine étape :** alertes métier après définition de seuils explicites ; ShopCaisse reste non observable faute de snapshot quantité persistant, daté et relié à un job.
-- **Bloqué :** aucun ; les alertes de stock faible attendent encore une règle métier explicite.
+| Domaine | Progression | État | Poids | Justification |
+| ------- | ----------: | ---- | ----: | ------------- |
+| Core + architecture | 70 % | IN_PROGRESS | 10 | Domaines, repositories, services, événements, idempotence et jobs présents ; notifications, permissions/audit complet et configuration centralisée restent à livrer. |
+| Catalogue + mapping | 90 % | IN_PROGRESS | 10 | Catalogue durable, identité commerciale, variantes/EAN, recherche, mapping et tests présents ; adapter PostgreSQL absent. |
+| Inventaire + EAN | 80 % | IN_PROGRESS | 10 | Sessions, scan, comptage, exports et workflow de rapprochement présents ; validation terrain et activation live absentes. |
+| Stock + synchronisation | 90 % | IN_PROGRESS | 10 | mouvements, ledger, projections, idempotence et observation PrestaShop contrôlée présents ; alertes de stock faible absentes. |
+| Achats + fournisseurs | 80 % | IN_PROGRESS | 10 | fournisseurs, commandes, réceptions, validation et propositions de mouvements présents ; rapprochement catalogue et analyse prix/TVA absents. |
+| Ventes | 5 % | IN_PROGRESS | 8 | frontière documentée à moitié du premier jalon ; aucun Sales Ledger ni imports de ventes locaux. |
+| Finance + pilotage | 0 % | TODO | 8 | Sales Analytics, marges, TVA, valeur de stock et rentabilité restent à construire. |
+| Clients + fidélité | 0 % | TODO | 6 | modèles, consentements, rapprochement et fidélité absents. |
+| Marketing + réseaux sociaux | 33,33 % | IN_PROGRESS | 8 | Marketing Foundation, Creative AI v1, Human Review et Social Publishing Pipeline v1 sont livrés ; providers/conformité/publication réels, analytics live et intelligence pilotée par ventes/stock/achats restent séparés. |
+| Automatisations + IA | 5 % | IN_PROGRESS | 8 | règles READ/PROPOSE/EXECUTE documentées ; permissions, moteur générique, déclencheurs, actions et assistant restent futurs. |
+| Dashboard | 20 % | IN_PROGRESS | 5 | frontière et roadmap dynamique présentes ; projections métier live absentes. |
+| Sécurité + utilisateurs | 38,46 % | IN_PROGRESS | authentification et credentials durables présents ; RBAC et autorisation par action absents. |
+| Production + PWA | 76,47 % | IN_PROGRESS | Docker, PWA, sauvegardes, observabilité, CI/CD et administration présents ; domaine, rollback UI/automatique et monitoring externe incomplets. |
+| **Total** | **49,30 %** | **IN_PROGRESS** | **100** | Somme pondérée calculée depuis les jalons. |
 
-### 05 — Achats + fournisseurs
-- **Terminé :** frontière documentée, référentiel Fournisseurs V1 et Commandes fournisseurs V1 (lignes, workflow, coûts optionnels, SQLite, service, API et interface).
-- **En cours :** aucun.
-- **Prochaine étape :** réceptions marchandises et mouvements de stock dans la PR J.
-- **Bloqué :** aucun ; OCR complet différé.
+## Ancien pourcentage global
 
-### 06 — Ventes
-- **Terminé :** aucun.
-- **En cours :** frontière et modèles conceptuels unifiés documentés.
-- **Prochaine étape :** modèles locaux et import idempotent en lecture.
-- **Bloqué :** aucun.
+**47,43 %**. Le service recalculait déjà ce nombre, mais depuis une liste ancienne. Le JSON et la documentation contenaient aussi des copies dérivées obsolètes, ce qui rendait l'audit trompeur même si l'API écrasait la copie au chargement.
 
-### 07 — Finance + pilotage
-- **Terminé / En cours :** aucun jalon d'implémentation.
-- **Prochaine étape :** définir les projections analytiques à partir de Sales, Purchasing et Stock.
-- **Bloqué :** disponibilité future des faits métier.
+## Nouveau pourcentage global calculé
 
-### 08 — Clients + fidélité
-- **Terminé / En cours :** aucun jalon d'implémentation.
-- **Prochaine étape :** Customer, CustomerIdentity et CustomerConsent sans fusion automatique.
-- **Bloqué :** aucun.
+**49,30 %**.
 
-### 09 — Marketing + réseaux sociaux
-- **Terminé / En cours :** aucun jalon d'implémentation.
-- **Prochaine étape :** modèles Content/Campaign/SocialPost indépendants des plateformes.
-- **Bloqué :** aucun.
+## Pourquoi il change
 
-### 10 — Automatisations + IA
-- **Terminé :** aucun.
-- **En cours :** règles, séparation READ/PROPOSE/EXECUTE et validation humaine documentées.
-- **Prochaine étape :** dispatcher événementiel local et propositions persistées.
-- **Bloqué :** aucun.
+Les merges Creative AI/Human Review et Social Connections/Publishing n'étaient jamais entrés dans les jalons Marketing : ce domaine restait décrit comme un simple `ProductMedia → MarketingAsset`. L'audit reconnaît maintenant quatre livraisons v1 prouvées par le code, les routes, le cockpit et les tests. Il conserve explicitement à zéro les providers sociaux réels, la conformité officielle, l'activation de publication, les analytics live, Sales-driven/Stock-driven Marketing, l'intelligence achats/marge et le Learning Loop. La hausse est donc seulement la conséquence déterministe de la roadmap corrigée, pas une valeur saisie à la main.
 
-### 11 — Dashboard
-- **Terminé :** frontière de projection documentée.
-- **En cours :** vue Roadmap dynamique lisant le service.
-- **Prochaine étape :** projections ventes, marge et stock.
-- **Bloqué :** faits des modules futurs.
+## Marketing : frontière v1 / production
 
-### 12 — Sécurité + utilisateurs
-- **Terminé :** principes de gestion des secrets documentés.
-- **En cours :** permissions cibles.
-- **Prochaine étape :** User, Role, Permission et contrôle serveur.
-- **Bloqué :** aucun.
+Creative AI v1 est provider-neutral : son générateur déterministe produit des spécifications/copies PREVIEW à partir du produit canonique et du média PRIMARY, en STORY/SQUARE, avec `PRESERVE_ORIGINAL`, revue approve/reject, cockpit et audit. Cela ne prétend pas fournir un fournisseur génératif externe. Social v1 fournit connexions/capabilities, scheduler, orchestration, idempotence/concurrence, compliance gate, historique et UI en mode sûr. Les adapters et secrets réels sont désactivés et la conformité non configurée échoue fermée : la publication de production demeure donc `BLOCKED`.
 
-### 13 — Production + PWA
-- **Terminé :** image Docker, authentification, PWA, sauvegarde/restauration, health check et kit OVH reproductible préparé (Compose local-only, Caddy exemple, bootstrap, firewall et procédures).
-- **En cours :** attente du VPS; aucun déploiement, DNS ou certificat n'a encore été réalisé.
-- **Prochaine étape :** valider le VPS et les accès, exécuter la checklist en SAFE_MODE/dry-run, puis configurer DNS et HTTPS lors d'une intervention contrôlée.
-- **Bloqué :** aucun.
+## Maintenance
 
-## Ordre de livraison
+Lorsqu'un bloc est livré, modifier dans la même PR le jalon canonique et son `evidence`. Passer à `DONE` seulement après vérification du code, de la persistance, des routes/UI pertinentes et des tests. Pour un travail partiel, ajouter des `steps` binaires et utiliser `IN_PROGRESS`. Ajouter un futur résultat comme jalon distinct plutôt que d'élargir après coup une fondation terminée. Ne jamais écrire un pourcentage dans JSON, Python, HTML ou JavaScript : il est une projection de `RoadmapService`.
 
-Consolider d'abord Core/Catalog/Inventory/Stock sans écriture distante, puis Purchasing et Sales qui alimentent Stock. Finance, Customers et Marketing consomment ensuite ces faits. Automation/AI, Dashboard, sécurité et production progressent transversalement, sans contourner les validations.
+## Prochain ordre de livraison
+
+Construire d'abord le Sales Ledger et ses imports idempotents, puis Sales Analytics. Ces faits pourront alimenter Finance, Sales-driven Marketing et le Learning Loop. En parallèle, le passage social en production exige des providers homologués, une conformité métier officielle et une activation contrôlée ; Social Analytics live vient seulement après des publications réelles. L'intelligence stock et achats/marge doit rester fondée sur les ledgers existants, sans confondre ports/interfaces et décisions métier.
