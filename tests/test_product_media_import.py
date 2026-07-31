@@ -22,6 +22,12 @@ class FakePrestaShop:
         self.downloads.append((str(product_id),str(image_id))); return self.payload,self.mime
 
 
+class FullFakePrestaShop(FakePrestaShop):
+    def __init__(self, products, combinations, *, option_values=(), options=()):
+        super().__init__(products, combinations)
+        self.rows.update(product_option_values=list(option_values), product_options=list(options))
+
+
 def setup(tmp_path: Path, client, products):
     tmp_path.mkdir(parents=True,exist_ok=True)
     db=tmp_path/"drcloud.db"; catalogue=SQLiteOSRepository(db,products)
@@ -105,3 +111,34 @@ def test_ambiguous_diagnostic_is_actionable_and_never_downloaded(tmp_path):
     assert item["candidates"]==["11","12"] and item["ambiguity_reason"]
     result=importer.apply(); assert result["summary"]["ambiguous"]==1
     assert client.downloads==[] and media.primary(product.drcloud_product_key) is None
+
+
+def test_read_only_diagnostic_classifies_real_relationship_cases(tmp_path):
+    products=[
+        Product("drc:1:10","1:10",1,10,1,"A",variant_name="Rouge",attributes={"Couleur":"Rouge"}),
+        Product("drc:2:20","2:20",2,20,2,"B"),
+        Product("drc:3:30","3:30",3,30,3,"C"),
+        Product("drc:4:40","4:40",4,40,4,"D"),
+        Product("drc:5:50","5:50",5,50,5,"E"),
+    ]
+    combinations=[{"id":10,**assoc(11)},{"id":20,**assoc(21,22)},{"id":30},
+                  {"id":40,**assoc(41)},{"id":50}]
+    parents=[{"id":1,**assoc(19)},{"id":2,**assoc(29)},{"id":3,**assoc(31,32)},
+             {"id":4,**assoc(49)},{"id":5}]
+    importer,media=setup(tmp_path,FullFakePrestaShop(parents,combinations),products)
+    protected=media.add("drc:4:40",png("blue"))
+    before=media.repository.db.execute("SELECT * FROM product_media ORDER BY media_id").fetchall()
+    report=importer.preview(); by_key={item["product_key"]:item for item in report["items"]}
+    after=media.repository.db.execute("SELECT * FROM product_media ORDER BY media_id").fetchall()
+
+    assert by_key["drc:1:10"]["projected_classification"]=="SAFE_RESOLVABLE"
+    assert by_key["drc:1:10"]["candidate_image_id"]=="11"  # combination beats parent
+    assert by_key["drc:2:20"]["ambiguity_cause"]=="MULTIPLE_COMBINATION_IMAGES"
+    assert by_key["drc:3:30"]["ambiguity_cause"]=="MULTIPLE_PARENT_IMAGES"
+    assert by_key["drc:4:40"]["classification"]=="EXISTING_PRIMARY"
+    assert by_key["drc:4:40"]["existing_primary"]["media_id"]==protected.media_id
+    assert by_key["drc:5:50"]["projected_classification"]=="NO_DATA"
+    assert report["summary"]["ambiguity_causes"]=={
+        "MULTIPLE_COMBINATION_IMAGES":1,"MULTIPLE_PARENT_IMAGES":1}
+    assert report["primary_integrity"]["duplicate_primary_count"]==0
+    assert before==after and importer.client.downloads==[]

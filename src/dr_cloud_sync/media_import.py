@@ -88,6 +88,24 @@ def _ids(row: dict[str, Any]) -> list[str]:
                               if isinstance(item, dict) and str(item.get("id", "")).isdigit()))
 
 
+def _label(value: Any) -> str | None:
+    """Flatten PrestaShop's scalar or translated Webservice values."""
+    if isinstance(value, list):
+        value = next((item.get("value") for item in value if isinstance(item, dict)
+                      and item.get("value")), None)
+    elif isinstance(value, dict):
+        value = value.get("value")
+    return str(value).strip() if value not in (None, "") else None
+
+
+def _association_ids(row: dict[str, Any], name: str, singular: str) -> list[str]:
+    values = (row.get("associations") or {}).get(name) or []
+    if isinstance(values, dict): values = values.get(singular, values)
+    if isinstance(values, dict): values = [values]
+    return [str(item["id"]) for item in values if isinstance(item, dict)
+            and str(item.get("id", "")).isdigit()] if isinstance(values, list) else []
+
+
 class ProductMediaImportService:
     """Resolve explicit identities, then download only deterministic candidates."""
     def __init__(self, database: Path, client: PrestaShopClient,
@@ -101,13 +119,21 @@ class ProductMediaImportService:
     def preview(self) -> dict[str, Any]:
         products={str(row["id"]): row for row in self.client.iter_resource("products")}
         combinations={str(row["id"]): row for row in self.client.iter_resource("combinations")}
+        # These two resources are read solely to make the diagnostic independently
+        # auditable.  Older/fake clients may not expose them.
+        try:
+            option_values={str(row["id"]): row for row in self.client.iter_resource("product_option_values")}
+            options={str(row["id"]): row for row in self.client.iter_resource("product_options")}
+        except (KeyError, ValueError, PrestaShopError):
+            option_values={}; options={}
+        primary_snapshot=self.media.repository.primaries()
         items=[]
         for product in self.catalogue.all():
             parent=products.get(str(product.product_id), {})
             combination=(combinations.get(str(product.combination_id), {})
                          if product.combination_id is not None else {})
             specific=_ids(combination); parent_ids=_ids(parent)
-            current=self.media.primary(product.drcloud_product_key)
+            current=primary_snapshot.get(product.drcloud_product_key)
             classification="NO_IMAGE"; candidate=None; provenance=None
             if current:
                 classification="EXISTING_PRIMARY"
@@ -127,14 +153,53 @@ class ProductMediaImportService:
                                                candidate, provenance) if candidate else None)
             already=bool(source_reference and self.media.repository.by_source_reference(
                 product.drcloud_product_key, MediaSource.PRESTASHOP, source_reference))
-            reason = ("plusieurs images de combinaison" if len(specific)>1 else
-                      "plusieurs images parentes sans image par défaut déterministe" if classification=="AMBIGUOUS" else None)
-            items.append({"product_key":product.drcloud_product_key,"product":product.base_name or product.name,
+            cause = ("MULTIPLE_COMBINATION_IMAGES" if len(specific)>1 else
+                     "MULTIPLE_PARENT_IMAGES" if classification=="AMBIGUOUS" else None)
+            reason = ("La combinaison référence plusieurs images explicites; aucune relation PrestaShop ne les départage."
+                      if cause=="MULTIPLE_COMBINATION_IMAGES" else
+                      "Le parent référence plusieurs images sans image cover valide et la combinaison n'en référence aucune."
+                      if cause=="MULTIPLE_PARENT_IMAGES" else None)
+            value_ids=_association_ids(combination,"product_option_values","product_option_value")
+            attributes=[]
+            for value_id in value_ids:
+                value=option_values.get(value_id,{})
+                option_id=str(value.get("id_attribute_group") or value.get("id_product_option") or "")
+                attributes.append({"option_id":option_id or None,"option":_label(options.get(option_id,{}).get("name")),
+                                   "value_id":value_id,"value":_label(value.get("name"))})
+            candidate_details=[]
+            for image_id in list(dict.fromkeys(specific+parent_ids)):
+                sources=[]
+                if image_id in specific: sources.append("COMBINATION_ASSOCIATION")
+                if image_id in parent_ids: sources.append("PARENT_ASSOCIATION")
+                candidate_details.append({"image_id":image_id,"sources":sources,
+                    "combination_associated":image_id in specific,"parent_associated":image_id in parent_ids,
+                    "parent_cover":str(parent.get("id_default_image") or "")==image_id})
+            projected=("SAFE_RESOLVABLE" if classification=="SAFE" else
+                       "AMBIGUOUS_REMAINING" if classification=="AMBIGUOUS" else
+                       "PROTECTED_EXISTING_PRIMARY" if classification=="EXISTING_PRIMARY" else "NO_DATA")
+            proof=("Une unique image est explicitement associée à la combinaison."
+                   if provenance=="COMBINATION_IMAGE" else
+                   "L'image cover du parent est explicitement désignée par id_default_image."
+                   if candidate and str(parent.get("id_default_image") or "")==candidate else
+                   "Le parent ne possède qu'une unique image candidate."
+                   if candidate else None)
+            items.append({"drcloud_product_key":product.drcloud_product_key,"product_key":product.drcloud_product_key,
+                          "base_name":product.base_name or product.name,"display_name":product.display_name,
+                          "product":product.base_name or product.name,
                           "variant":product.variant_name,
+                          "variant_name":product.variant_name,
+                          "attributes":attributes or [{"option":key,"value":value,"option_id":None,"value_id":None}
+                                                       for key,value in product.attributes.items()],
                           "product_id":product.product_id,
                           "combination_id":product.combination_id,"classification":classification,
+                          "projected_classification":projected,"ambiguity_cause":cause,
                           "candidate_image_id":candidate,"provenance":provenance,
-                          "candidates":specific if specific else parent_ids,"ambiguity_reason":reason,
+                          "candidates":specific if specific else parent_ids,"candidate_images":candidate_details,
+                          "combination_image_ids":specific,"parent_image_ids":parent_ids,
+                          "ambiguity_reason":reason,"deterministic_proof":proof,
+                          "family":{"product_id":product.product_id,"base_name":product.base_name or product.name},
+                          "existing_primary":({"media_id":current.media_id,"product_key":current.product_key,
+                            "source":current.source.value,"storage_reference":current.storage_reference} if current else None),
                           "existing_primary_source":current.source.value if current else None,
                           "already_imported":already})
         summary={"processed":len(items),"combination_image":sum(x["provenance"]=="COMBINATION_IMAGE" for x in items),
@@ -144,7 +209,30 @@ class ProductMediaImportService:
                  "ambiguous":sum(x["classification"]=="AMBIGUOUS" for x in items),
                  "candidate_images":sum(bool(x["candidate_image_id"]) for x in items),
                  "downloads_required":sum(x["classification"]=="SAFE" and not x["already_imported"] for x in items)}
-        return {"job_type":JOB_TYPE,"mode":"PREVIEW","summary":summary,"items":items}
+        ambiguous=[x for x in items if x["classification"]=="AMBIGUOUS"]
+        causes={cause:sum(x["ambiguity_cause"]==cause for x in ambiguous)
+                for cause in sorted({x["ambiguity_cause"] for x in ambiguous})}
+        families={str(pid):{"product_id":pid,"base_name":group[0]["base_name"],"count":len(group),
+                            "causes":sorted({x["ambiguity_cause"] for x in group})}
+                  for pid in sorted({x["product_id"] for x in ambiguous},key=lambda value:int(value))
+                  for group in [[x for x in ambiguous if x["product_id"]==pid]]}
+        catalogue_keys={p.drcloud_product_key for p in self.catalogue.all()}
+        missing=[]
+        for media in primary_snapshot.values():
+            try: self.media.storage.path(media.storage_reference)
+            except (FileNotFoundError, MediaError): missing.append(media.media_id)
+        integrity={"distinct_products_with_primary":len(primary_snapshot),
+                   "primary_rows":len(primary_snapshot),"missing_primary_files":missing,
+                   "duplicate_primary_count":self.media.repository.db.execute("""SELECT COUNT(*) FROM
+                     (SELECT product_key FROM product_media WHERE active=1 AND role='PRIMARY'
+                      GROUP BY product_key HAVING COUNT(*)>1)""").fetchone()[0],
+                   "orphan_primary_product_keys":sorted(set(primary_snapshot)-catalogue_keys),
+                   "primary_product_associations_correct":all(k==m.product_key for k,m in primary_snapshot.items())}
+        summary.update({"safe_resolvable":sum(x["projected_classification"]=="SAFE_RESOLVABLE" for x in ambiguous),
+                        "ambiguous_remaining":sum(x["projected_classification"]=="AMBIGUOUS_REMAINING" for x in ambiguous),
+                        "ambiguity_causes":causes,"ambiguous_families":len(families)})
+        return {"job_type":JOB_TYPE,"mode":"PREVIEW","read_only":True,"summary":summary,
+                "families":list(families.values()),"primary_integrity":integrity,"items":items}
 
     def apply(self, preview: dict[str, Any] | None = None, *, actor="authenticated", batch_size=None) -> dict[str, Any]:
         # The UI preview is informative only: APPLY always reads PrestaShop and local PRIMARYs again.
