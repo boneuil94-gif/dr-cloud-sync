@@ -6,6 +6,6 @@ L'idempotence préfère `(provider, external_transaction_id)`. Sans identifiant 
 
 ## Qonto
 
-`DisabledQontoProvider` est volontairement `NOT_CONFIGURED`. Pour une activation réelle il manque : un contrat/API Qonto officiel validé pour la version retenue, les identifiants read-only injectés par l'infrastructure de secrets, l'identifiant d'organisation requis par ce contrat, et des tests de contrat comptes/soldes/transactions/pagination/rate-limit. Aucun endpoint n'a été inventé. L'adapter futur ne doit exposer ni virement, ni paiement, ni bénéficiaire, ni mutation bancaire. Revolut Business reste une extension future du même port.
+`QontoBankProvider` implémente désormais le port read-only avec les endpoints Qonto v2 officiels documentés dans `QONTO_CONNECTOR.md`. Les comptes, soldes et transactions sont persistés ; l'upsert par `transaction_id` conserve l'idempotence et permet une évolution de statut pending → completed. Sans référence de credential résolue, `DisabledQontoProvider` conserve honnêtement l'état `NOT_CONFIGURED`.
 
 Les erreurs réseau, timeouts, 5xx et rate limits pourront porter `retryable=True` et respecter `Retry-After`; auth/config/validation restent terminales. Aucun credential ne doit rejoindre frontend, logs, audits ou tables métier.

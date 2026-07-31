@@ -25,6 +25,20 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+  automation-worker:
+    image: drcloud-os:local
+    command: ["dr-cloud-sync", "automation-worker"]
+    restart: unless-stopped
+    env_file: [./drcloud.env]
+    environment:
+      DRCLOUD_BACKUP_DIR: /data/backups
+    volumes:
+      - drcloud-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sqlite3,os; sqlite3.connect('/data/drcloud.db').execute('select 1')"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
 
 volumes:
   drcloud-data:

@@ -40,6 +40,7 @@ class DisabledQontoProvider:
 SCHEMA="""
 CREATE TABLE IF NOT EXISTS bank_transactions(transaction_id TEXT PRIMARY KEY,source TEXT NOT NULL,provider TEXT NOT NULL,external_transaction_id TEXT,account_id TEXT NOT NULL,booked_at TEXT NOT NULL,value_at TEXT,amount TEXT NOT NULL,currency TEXT NOT NULL,direction TEXT NOT NULL,label TEXT NOT NULL,counterparty TEXT,reference TEXT,status TEXT NOT NULL,category TEXT NOT NULL,category_state TEXT NOT NULL,raw_metadata_json TEXT NOT NULL,imported_at TEXT NOT NULL,idempotency_key TEXT NOT NULL UNIQUE);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_bank_external ON bank_transactions(provider,external_transaction_id) WHERE external_transaction_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS bank_accounts(account_id TEXT NOT NULL,provider TEXT NOT NULL,name TEXT NOT NULL,currency TEXT NOT NULL,imported_at TEXT NOT NULL,PRIMARY KEY(account_id,provider));
 CREATE TABLE IF NOT EXISTS bank_balances(account_id TEXT NOT NULL,provider TEXT NOT NULL,current_balance TEXT NOT NULL,available_balance TEXT,currency TEXT NOT NULL,observed_at TEXT NOT NULL,imported_at TEXT NOT NULL,PRIMARY KEY(account_id,provider));
 """
 def now(): return datetime.now(timezone.utc).isoformat()
@@ -56,12 +57,19 @@ class BankLedger:
             for t in page.transactions:
                 key=self.fingerprint(provider,t); direction="CREDIT" if t.amount>=0 else "DEBIT"
                 metadata={k:v for k,v in (t.raw_metadata or {}).items() if not any(x in k.lower() for x in ("token","secret","password","authorization","api_key"))}
-                inserted+=self.db.execute("""INSERT OR IGNORE INTO bank_transactions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                  (f"bank:{key}","BANK",provider,t.external_transaction_id,t.account_id,t.booked_at,t.value_at,str(t.amount),t.currency,direction,t.label,t.counterparty,t.reference,t.status,str(t.category),"PROPOSED",json.dumps(metadata),now(),key)).rowcount
+                values=(f"bank:{key}","BANK",provider,t.external_transaction_id,t.account_id,t.booked_at,t.value_at,str(t.amount),t.currency,direction,t.label,t.counterparty,t.reference,t.status,str(t.category),"PROPOSED",json.dumps(metadata),now(),key)
+                existing=self.db.execute("SELECT 1 FROM bank_transactions WHERE idempotency_key=?",(key,)).fetchone()
+                self.db.execute("""INSERT INTO bank_transactions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                  ON CONFLICT(idempotency_key) DO UPDATE SET booked_at=excluded.booked_at,value_at=excluded.value_at,amount=excluded.amount,direction=excluded.direction,label=excluded.label,counterparty=excluded.counterparty,reference=excluded.reference,status=excluded.status,raw_metadata_json=excluded.raw_metadata_json,imported_at=excluded.imported_at""",values)
+                inserted+=not bool(existing)
         return {"rows_imported":inserted,"duplicates":len(page.transactions)-inserted,"cursor":page.next_cursor}
     def store_balances(self,provider,balances):
         with self.db:
             for b in balances:self.db.execute("""INSERT INTO bank_balances VALUES(?,?,?,?,?,?,?) ON CONFLICT(account_id,provider) DO UPDATE SET current_balance=excluded.current_balance,available_balance=excluded.available_balance,currency=excluded.currency,observed_at=excluded.observed_at,imported_at=excluded.imported_at""",(b.account_id,provider,str(b.current),str(b.available) if b.available is not None else None,b.currency,b.observed_at,now()))
+    def store_accounts(self,provider,accounts):
+        with self.db:
+            for a in accounts:self.db.execute("""INSERT INTO bank_accounts VALUES(?,?,?,?,?) ON CONFLICT(account_id,provider) DO UPDATE SET name=excluded.name,currency=excluded.currency,imported_at=excluded.imported_at""",(a.account_id,provider,a.name,a.currency,now()))
+    def accounts(self): return [dict(r) for r in self.db.execute("SELECT * FROM bank_accounts ORDER BY account_id")]
     def transactions(self): return [dict(r) for r in self.db.execute("SELECT * FROM bank_transactions ORDER BY booked_at DESC")]
     def balances(self): return [dict(r) for r in self.db.execute("SELECT * FROM bank_balances ORDER BY account_id")]
     def sync(self,provider_name,provider,cursor=None):
@@ -70,4 +78,4 @@ class BankLedger:
         while True:
             page=provider.transactions(cursor);result=self.import_page(provider_name,page);total+=result["rows_imported"];duplicates+=result["duplicates"];cursor=page.next_cursor
             if cursor is None: break
-        self.store_balances(provider_name,provider.balances());return {"rows_imported":total,"duplicates":duplicates,"cursor":cursor}
+        self.store_accounts(provider_name,provider.accounts());self.store_balances(provider_name,provider.balances());return {"rows_imported":total,"duplicates":duplicates,"cursor":cursor}

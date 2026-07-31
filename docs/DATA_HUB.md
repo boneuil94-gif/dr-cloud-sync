@@ -4,13 +4,13 @@
 
 Le Data Hub est le **plan de contrôle provider-neutral** des lectures externes. Il réutilise SQLite et les jobs applicatifs : `data_sources`, `sync_jobs` et `data_hub_sync_runs` conservent configuration, curseur, exécutions, erreurs assainies et verrou. Il ne remplace ni le Sales Ledger, ni le Bank Ledger, ni le Stock Ledger.
 
-Sources déclarées : `SHOPCAISSE_SALES`, `PRESTASHOP_SALES`, `PRESTASHOP_CATALOG`, `BANK`, `PURCHASES`, `STOCK`. Un provider n'est `CONNECTED` que si son adapter réel est configuré. En V1, achats et stock locaux le sont ; PrestaShop ventes l'est avec URL, clé issue de l'environnement et états payés ; ShopCaisse demeure `NOT_CONFIGURED` hors import explicite ; Qonto demeure `NOT_CONFIGURED`.
+Sources déclarées : `SHOPCAISSE_SALES`, `PRESTASHOP_SALES`, `PRESTASHOP_CATALOG`, `BANK`, `PURCHASES`, `STOCK`. Un provider n'est `CONNECTED` que si son adapter réel est configuré. PrestaShop ventes l'est avec URL, clé et états payés ; ShopCaisse l'est lorsque l'inbox d'exports CSV réels existe ; Qonto l'est uniquement après un health check authentifié réussi. Sans ces prérequis, la source reste `NOT_CONFIGURED`.
 
 ## Jobs, planification et reprise
 
 Les cadences viennent de `DATA_HUB_SALES_INTERVAL_SECONDS`, `DATA_HUB_BANK_INTERVAL_SECONDS` et `DATA_HUB_PROJECTION_INTERVAL_SECONDS`. Les jobs définissent dépendances, prochaine exécution et tentatives. Une mise à jour SQLite conditionnelle fournit le claim exclusif. Les erreurs explicitement `retryable` utilisent un backoff exponentiel plafonné ; configuration, authentification et validation ne sont pas rejouées agressivement. Le curseur n'avance qu'après succès.
 
-Chaînes préparées : ventes → métriques → marketing → dashboard et banque → rapprochement → finance → dashboard. Un prédécesseur non réussi bloque la suite et rend l'état visible. Un scheduler de production peut appeler `run_due` sans introduire une seconde file de jobs.
+Chaînes : ventes → métriques → marketing → dashboard et banque → rapprochement → finance → dashboard. Le service Docker `automation-worker` appelle `run_due`; le verrou conditionnel SQLite interdit l'exécution concurrente d'un même job.
 
 ## Freshness, santé, alertes
 

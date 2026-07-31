@@ -31,10 +31,11 @@ from .marketing import MarketingAutopilot, MarketingRepository
 from .creative_ai import CreativeAIService, CreativeGenerationError
 from .creative_review import CreativeReviewError, CreativeReviewService
 from .sales import SalesLedger, SocialAnalyticsService
-from .sales_ingestion import PrestaShopSalesProvider, SalesSyncService, ShopCaisseCSVProvider
+from .sales_ingestion import PrestaShopSalesProvider, SalesSyncService, ShopCaisseCSVProvider, ShopCaisseSalesProvider
 from .social import MarketingSchedulingService, SocialConnectionService, SocialPublishingService
 from .data_hub import DataHub, JobDefinition
 from .bank import BankLedger, DisabledQontoProvider
+from .qonto import EnvironmentSecretProvider, QontoBankProvider, QontoError
 from .reconciliation import ReconciliationService
 from .finance import FinanceProjection
 
@@ -81,10 +82,19 @@ class InventoryApp:
         self.marketing_repository=MarketingRepository(service.repo.path)
         self.sales=SalesLedger(service.repo.path,self.os_repository)
         self.data_hub=DataHub(service.repo.path)
-        self.bank=BankLedger(service.repo.path); self.bank_provider=DisabledQontoProvider()
+        self.bank=BankLedger(service.repo.path)
+        secret_ref=os.environ.get("QONTO_CREDENTIAL_REF","")
+        candidate=QontoBankProvider(secret_ref,EnvironmentSecretProvider(os.environ),timeout=float(os.environ.get("QONTO_TIMEOUT_SECONDS","8")))
+        qonto_connected=False
+        if candidate.configured:
+            try: qonto_connected=candidate.health()["status"]=="CONNECTED"
+            except QontoError: pass
+        self.bank_provider=candidate if candidate.configured else DisabledQontoProvider()
         self.reconciliation=ReconciliationService(service.repo.path)
         self.finance=FinanceProjection(self.bank,self.sales)
         sales_providers={}
+        shopcaisse_inbox=os.environ.get("SHOPCAISSE_SALES_INBOX","")
+        if shopcaisse_inbox and Path(shopcaisse_inbox).is_dir(): sales_providers["SHOPCAISSE"]=ShopCaisseSalesProvider(Path(shopcaisse_inbox))
         paid_states=[x.strip() for x in os.environ.get("PRESTASHOP_PAID_STATE_IDS","").split(",") if x.strip()]
         if os.environ.get("PRESTASHOP_API_URL") and os.environ.get("PRESTASHOP_API_KEY") and paid_states:
             sales_providers["PRESTASHOP"]=PrestaShopSalesProvider(
@@ -92,9 +102,9 @@ class InventoryApp:
         self.sales_sync=SalesSyncService(self.sales,sales_providers)
         configured_ps="PRESTASHOP" in sales_providers
         intervals={"sales":int(os.environ.get("DATA_HUB_SALES_INTERVAL_SECONDS","900")),"bank":int(os.environ.get("DATA_HUB_BANK_INTERVAL_SECONDS","10800")),"projection":int(os.environ.get("DATA_HUB_PROJECTION_INTERVAL_SECONDS","900"))}
-        for args in (("shopcaisse_sales","SHOPCAISSE_SALES","ShopCaisse",False),("prestashop_sales","PRESTASHOP_SALES","PrestaShop",configured_ps),("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",bool(os.environ.get("PRESTASHOP_API_URL") and os.environ.get("PRESTASHOP_API_KEY"))),("bank","BANK","Qonto",False),("purchases","PURCHASES","LOCAL",True),("stock","STOCK","LOCAL",True)):
+        for args in (("shopcaisse_sales","SHOPCAISSE_SALES","ShopCaisse","SHOPCAISSE" in sales_providers),("prestashop_sales","PRESTASHOP_SALES","PrestaShop",configured_ps),("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",bool(os.environ.get("PRESTASHOP_API_URL") and os.environ.get("PRESTASHOP_API_KEY"))),("bank","BANK","Qonto",qonto_connected),("purchases","PURCHASES","LOCAL",True),("stock","STOCK","LOCAL",True)):
             self.data_hub.register_source(*args[:3],configured=args[3],capabilities=("READ",),stale_after_seconds=intervals["bank"]*2 if args[0]=="bank" else intervals["sales"]*2)
-        for job in (JobDefinition("sync_prestashop_sales","prestashop_sales","PRESTASHOP_SALES",intervals["sales"]),JobDefinition("sync_bank_transactions","bank","BANK",intervals["bank"]),JobDefinition("refresh_sales_metrics","prestashop_sales","SALES_METRICS",intervals["projection"],("sync_prestashop_sales",)),JobDefinition("reconcile_bank_sales","bank","RECONCILE",intervals["projection"],("sync_bank_transactions",)),JobDefinition("refresh_finance","bank","FINANCE",intervals["projection"],("reconcile_bank_sales",)),JobDefinition("refresh_dashboard","purchases","DASHBOARD",intervals["projection"]),JobDefinition("refresh_marketing_signals","prestashop_sales","MARKETING",intervals["projection"],("refresh_sales_metrics",))): self.data_hub.register_job(job)
+        for job in (JobDefinition("sync_shopcaisse_sales","shopcaisse_sales","SHOPCAISSE_SALES",int(os.environ.get("SHOPCAISSE_SYNC_INTERVAL_SECONDS","600"))),JobDefinition("sync_prestashop_sales","prestashop_sales","PRESTASHOP_SALES",intervals["sales"]),JobDefinition("sync_bank_transactions","bank","BANK",intervals["bank"]),JobDefinition("refresh_sales_metrics","prestashop_sales","SALES_METRICS",intervals["projection"],("sync_prestashop_sales",)),JobDefinition("reconcile_bank_sales","bank","RECONCILE",intervals["projection"],("sync_bank_transactions",)),JobDefinition("refresh_finance","bank","FINANCE",intervals["projection"],("reconcile_bank_sales",)),JobDefinition("refresh_dashboard","purchases","DASHBOARD",intervals["projection"]),JobDefinition("refresh_marketing_signals","prestashop_sales","MARKETING",intervals["projection"],("refresh_sales_metrics",))): self.data_hub.register_job(job)
         self.sales_import_preview=None
         self.social_analytics=SocialAnalyticsService(self.marketing_repository.db)
         self.marketing=MarketingAutopilot(self.marketing_repository,self.os_repository,self.media.repository,sales=self.sales)
@@ -117,6 +127,11 @@ class InventoryApp:
             self.backup_service.root,
             environment=settings.environment if settings else "development",
             safe_mode=settings.safe_mode if settings else True)
+
+    def automation_operations(self):
+        def sales(source):
+            report=self.sales_sync.sync(source,actor="automation"); return {**report,"rows_imported":report["imported"]}
+        return {"SHOPCAISSE_SALES":lambda cursor:sales("SHOPCAISSE"),"PRESTASHOP_SALES":lambda cursor:sales("PRESTASHOP"),"BANK":lambda cursor:self.bank.sync("Qonto",self.bank_provider,cursor),"RECONCILE":lambda cursor:{"rows_imported":self.reconciliation.reconcile_sales_bank()["created"]},"FINANCE":lambda cursor:{"rows_imported":0,"projection":self.finance.snapshot()},"DASHBOARD":lambda cursor:{"rows_imported":0},"SALES_METRICS":lambda cursor:{"rows_imported":0,"metrics":self.sales.analytics()},"MARKETING":lambda cursor:{"rows_imported":0}}
 
     def __call__(self, env, start):
         request_id=env.get("HTTP_X_REQUEST_ID") or str(uuid.uuid4()); path=env.get("PATH_INFO", "/"); method=env.get("REQUEST_METHOD", "GET")
