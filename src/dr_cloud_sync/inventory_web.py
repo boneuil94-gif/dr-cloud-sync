@@ -28,6 +28,8 @@ from .backup_service import BackupService, configured_backup_dir
 from .prestashop import PrestaShopError
 from .media_import import PrestaShopIntegrationUnavailable, PrestaShopMediaProvider
 from .marketing import MarketingAutopilot, MarketingRepository
+from .creative_ai import CreativeAIService, CreativeGenerationError
+from .creative_review import CreativeReviewError, CreativeReviewService
 
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
@@ -71,6 +73,8 @@ class InventoryApp:
         self.media=ProductMediaService(SQLiteProductMediaRepository(service.repo.path),LocalMediaStorage(media_root),self.os_repository,self.os_repository)
         self.marketing_repository=MarketingRepository(service.repo.path)
         self.marketing=MarketingAutopilot(self.marketing_repository,self.os_repository,self.media.repository)
+        self.creative_ai=CreativeAIService(self.marketing_repository,self.os_repository,self.media.repository)
+        self.creative_review=CreativeReviewService(self.marketing_repository)
         # Optional external integration: configuration and client are resolved only
         # when an authenticated operator explicitly requests PREVIEW/APPLY.
         self.media_import=PrestaShopMediaProvider(service.repo.path,self.media,self.os_repository,
@@ -130,6 +134,21 @@ class InventoryApp:
             if path == "/marketing": return self._html(start,"marketing.html",session,request_id)
             if path == "/api/marketing/dashboard" and method == "GET":
                 return self._json(start,{"settings":self.marketing_repository.settings(),"preview":self.marketing.preview(),"proposals":self.marketing_repository.rows("marketing_proposals"),"opportunities":self.marketing_repository.rows("marketing_opportunities"),"schedules":self.marketing_repository.rows("marketing_schedules")})
+            if path.startswith("/api/marketing/proposals/") and "/creative" in path:
+                tail=path.removeprefix("/api/marketing/proposals/"); identifier=unquote(tail.split("/creative",1)[0])
+                action=tail.split("/creative",1)[1].strip("/")
+                actor=session.get("u","authenticated")
+                if not action and method=="GET":
+                    detail=self.creative_ai.get(identifier)
+                    review=self.creative_review.detail(identifier)
+                    detail.update({k:review[k] for k in ("reviewable","blocking_reasons","rejection_reason")})
+                    return self._json(start,detail)
+                if action=="generate" and method=="POST": return self._json(start,self.creative_ai.generate(identifier,actor))
+                if action=="regenerate" and method=="POST": return self._json(start,self.creative_ai.regenerate(identifier,actor))
+                if action=="approve" and method=="POST": return self._json(start,self.creative_review.approve(identifier,actor))
+                if action=="reject" and method=="POST":
+                    return self._json(start,self.creative_review.reject(identifier,str(self._body(env).get("reason") or ""),actor))
+                raise KeyError(path)
             if path == "/api/marketing/autopilot/preview" and method == "POST":
                 return self._json(start,self.marketing.preview())
             if path == "/api/marketing/autopilot/activation" and method == "POST":
@@ -266,7 +285,6 @@ class InventoryApp:
                 movements=self.service.repo.movements_for_product(product) if product else self.service.repo.recent_movements(50)
                 return self._json(start,{"movements":[self._stock_movement(m) for m in movements]})
             if path.startswith("/api/stock/products/"):
-                from urllib.parse import unquote
                 key=unquote(path.removeprefix("/api/stock/products/")); position=self.stock.position(key)
                 if position is None: return self._json(start,{"error":"Produit sans position de stock"},"404 Not Found")
                 comparison=next((r for r in self.external_stock.comparisons() if r["drcloud_product_key"]==key),None)
@@ -288,7 +306,6 @@ class InventoryApp:
                 if method == "POST":
                     return self._json(start,asdict(self.hydration.update_manual(key,self._body(env),session.get("u","authenticated"))))
             if path.startswith("/api/catalogue/products/") and path.endswith("/status") and method == "POST":
-                from urllib.parse import unquote
                 key=unquote(path.removeprefix("/api/catalogue/products/").removesuffix("/status"))
                 product=self.os_repository.set_status(key,ProductStatus(self._body(env)["status"]))
                 return self._json(start,asdict(product))
@@ -316,7 +333,7 @@ class InventoryApp:
         except PermissionError: return self._error(start,403,request_id)
         except KeyError as exc: return self._json(start,{"error":str(exc).strip(chr(39))},"404 Not Found")
         except RehydrationConflict as exc: return self._json(start,{"error":str(exc)},"409 Conflict")
-        except (InventoryError,BarcodeError,MediaError,ValueError,json.JSONDecodeError) as exc: return self._json(start,{"error":str(exc)},"400 Bad Request")
+        except (InventoryError,BarcodeError,MediaError,CreativeGenerationError,CreativeReviewError,ValueError,json.JSONDecodeError) as exc: return self._json(start,{"error":str(exc)},"400 Bad Request")
         except Exception:
             LOG.exception("request_failed request_id=%s path=%s",request_id,path); return self._error(start,500,request_id)
 

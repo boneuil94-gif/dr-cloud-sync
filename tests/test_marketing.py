@@ -1,6 +1,7 @@
 import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
@@ -80,3 +81,38 @@ def test_marketing_web_auth_csrf_and_cockpit(configured):
     csrf=app._session({"HTTP_COOKIE":cookie})["csrf"]
     status,_,body=request(app,"/api/marketing/autopilot/preview","POST",{},cookie,{"X-CSRF-Token":csrf})
     assert status=="200 OK" and json.loads(body)["mutated"] is False
+
+
+def test_creative_ai_frontend_has_complete_human_review_contract():
+    html=Path("src/dr_cloud_sync/static/marketing.html").read_text()
+    script=Path("src/dr_cloud_sync/static/marketing.js").read_text()
+    for label in ("Générer","Régénérer","Approuver","Refuser","PREVIEW","PRESERVE_ORIGINAL"):
+        assert label in html+script
+    assert "publication" in html.lower()
+
+
+def test_creative_api_requires_auth_and_csrf_and_runs_human_workflow(configured):
+    app,_=configured
+    product=app.os_repository.all()[0]
+    app.media.repository.add(ProductMedia(
+        "media:creative-api",product.drcloud_product_key,"IMAGE",MediaRole.PRIMARY,
+        MediaSource.PRESTASHOP,"products/api.png","image/png",800,800,10,"b"*64,
+        marketing_usage=MarketingUsage.ALLOWED,protected_original=True,
+        usages=("catalogue","marketing")),[])
+    proposal=app.marketing.create_manual_proposal(
+        "Creative API",[product.drcloud_product_key],"Review API","admin")
+    base=f"/api/marketing/proposals/{proposal}/creative"
+    assert request(app,base)[0]=="303 See Other"
+    _,cookie=login(app)
+    assert request(app,base+"/generate","POST",{},cookie)[0]=="403 Forbidden"
+    csrf=app._session({"HTTP_COOKIE":cookie})["csrf"]
+    headers={"X-CSRF-Token":csrf}
+    status,_,body=request(app,base+"/generate","POST",{},cookie,headers)
+    generated=json.loads(body)
+    assert status=="200 OK" and generated["status"]=="READY_FOR_REVIEW"
+    assert {a["format"] for a in generated["creative_assets"]}=={"STORY","SQUARE"}
+    status,_,body=request(app,base,cookie=cookie)
+    assert status=="200 OK" and json.loads(body)["reviewable"] is True
+    status,_,body=request(app,base+"/approve","POST",{},cookie,headers)
+    assert status=="200 OK" and json.loads(body)["status"]=="APPROVED"
+    assert app.marketing_repository.rows("marketing_schedules")==[]

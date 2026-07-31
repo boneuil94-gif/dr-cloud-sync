@@ -4,6 +4,7 @@ Approval is explicit and local: this module never schedules or publishes content
 """
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from .marketing import MarketingRepository, ProposalStatus, now
@@ -41,6 +42,14 @@ class CreativeReviewService:
             and bool(assets)
             and all(a["status"] == "PREVIEW" and a["packaging_policy"] == "PRESERVE_ORIGINAL" for a in assets)
         )
+        blockers=[]
+        if proposal["status"] != ProposalStatus.READY_FOR_REVIEW.value: blockers.append("La proposition n'est pas prête à relire")
+        if not proposal.get("headline") or not proposal.get("body"): blockers.append("Le copy est incomplet")
+        if not assets: blockers.append("Aucune variante créative")
+        if any(a["packaging_policy"] != "PRESERVE_ORIGINAL" for a in assets): blockers.append("Packaging non protégé")
+        proposal["blocking_reasons"]=blockers
+        rejected=self.repo.db.execute("SELECT details_json FROM marketing_audit WHERE event_type='CREATIVE_REJECTED' AND entity_id=? ORDER BY rowid DESC LIMIT 1",(proposal_id,)).fetchone()
+        proposal["rejection_reason"]=json.loads(rejected[0]).get("reason","") if rejected else ""
         return proposal
 
     def approve(self, proposal_id: str, actor: str = "authenticated") -> dict[str, Any]:
@@ -60,6 +69,8 @@ class CreativeReviewService:
             self.repo.audit("CREATIVE_APPROVED", "ContentProposal", proposal_id, actor, {
                 "creative_ids": [a["creative_id"] for a in detail["creative_assets"]],
                 "product_keys": detail["product_keys"],
+                "formats": [a["format"] for a in detail["creative_assets"]],
+                "fingerprint": self._fingerprint(proposal_id),
                 "packaging_policy": "PRESERVE_ORIGINAL",
             })
         return self.detail(proposal_id)
@@ -80,5 +91,15 @@ class CreativeReviewService:
                 "UPDATE marketing_assets SET status='REJECTED' WHERE proposal_id=? AND status='PREVIEW'",
                 (proposal_id,),
             )
-            self.repo.audit("CREATIVE_REJECTED", "ContentProposal", proposal_id, actor, {"reason": reason})
+            self.repo.audit("CREATIVE_REJECTED", "ContentProposal", proposal_id, actor, {
+                "reason": reason,"creative_ids":[a["creative_id"] for a in detail["creative_assets"]],
+                "product_keys":detail["product_keys"],"formats":[a["format"] for a in detail["creative_assets"]],
+                "fingerprint":self._fingerprint(proposal_id),
+                "packaging_policy":"PRESERVE_ORIGINAL"})
         return self.detail(proposal_id)
+
+    def _fingerprint(self, proposal_id: str) -> str:
+        row=self.repo.db.execute(
+            "SELECT details_json FROM marketing_audit WHERE event_type IN ('CREATIVE_GENERATED','CREATIVE_REGENERATED') AND entity_id=? ORDER BY rowid DESC LIMIT 1",
+            (proposal_id,)).fetchone()
+        return str(json.loads(row[0]).get("fingerprint") or "") if row else ""

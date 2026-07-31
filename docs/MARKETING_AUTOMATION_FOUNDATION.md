@@ -43,10 +43,36 @@ programmations, au calendrier, à la bibliothèque et à une simulation explicab
 Les mutations sont authentifiées et protégées par CSRF comme le reste de DrCloud
 OS. L'activation est une action explicite et réversible.
 
+## Creative AI v1 livré
+
+Le cockpit Marketing branche désormais les services provider-neutral existants sur
+le workflow complet `DRAFT → génération → PREVIEW → review humaine → APPROVED /
+REJECTED`. Le copy est structuré (headline, body, CTA, hashtags et texte légal),
+et chaque proposition génère deux spécifications indépendantes : Instagram Story
+9:16 et Instagram Post Square 1:1.
+
+La génération lit uniquement l'identité commerciale canonique et le média
+`ProductMedia PRIMARY`. Elle échoue si ce média manque et ne modifie jamais son
+fichier. Le Brand Kit configurable (noir, blanc, vert Dr Cloud, direction moderne,
+premium et propre) est inclus dans le fingerprint et visible dans la preview. La
+policy `PRESERVE_ORIGINAL` est vérifiée en fail-closed avant la review.
+
+Les endpoints Creative AI authentifiés et protégés par CSRF couvrent détail,
+génération, régénération, approbation et refus motivé. Les audits
+`CREATIVE_GENERATED`, `CREATIVE_REGENERATED`, `CREATIVE_APPROVED` et
+`CREATIVE_REJECTED` conservent acteur, produits, créations, formats, fingerprint
+quand applicable et policy sans secret ni binaire. L'approbation reste une action
+humaine explicite et ne programme ni ne publie rien.
+
+La baseline déterministe reste le fallback sans fournisseur : les cartes affichées
+sont honnêtement nommées « spécification créative / preview » et ne prétendent pas
+être des bitmaps générés.
+
 ## Roadmap honnête
 
 1. **Marketing Foundation + Autopilot** — cette PR.
-2. **Creative AI** — implémenter les ports avec contrôle du Brand Kit et du packaging.
+2. **Creative AI v1** — livré : génération provider-neutral, copy, Story/Square,
+   PRIMARY, Brand Kit, PREVIEW, review humaine, approve/reject et audit.
 3. **Social Connections** — credential store et capacités vérifiées.
 4. **Social Scheduler/Publisher** — seulement après conformité validée ; approval
    reste non contournable.
@@ -56,6 +82,7 @@ OS. L'activation est une action explicite et réversible.
 8. **Marketing Learning Loop** — règles/recommandations fondées sur historique,
    analytics et ventes, sans prétendre à un ML avant les données.
 
-Creative AI réel, publication sociale, analytics live et recommandations ventes/
-stock ne sont donc **pas terminés**. La prochaine étape recommandée est Creative
-AI, précédée par la validation du Brand Kit officiel et de la policy conformité.
+Restent volontairement futurs : fournisseur génératif externe, fichiers images IA
+finaux, Social Connections réelles, scheduler/publisher réel, analytics live,
+Sales Ledger, marketing piloté par stock et learning loop. Aucun connecteur social
+de ce module ne peut actuellement publier.
