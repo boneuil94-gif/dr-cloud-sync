@@ -73,16 +73,23 @@ sont honnêtement nommées « spécification créative / preview » et ne préte
 1. **Marketing Foundation + Autopilot** — cette PR.
 2. **Creative AI v1** — livré : génération provider-neutral, copy, Story/Square,
    PRIMARY, Brand Kit, PREVIEW, review humaine, approve/reject et audit.
-3. **Social Connections** — credential store et capacités vérifiées.
-4. **Social Scheduler/Publisher** — seulement après conformité validée ; approval
-   reste non contournable.
+3. **Social Connections foundation** — livré : références opaques, états explicites,
+   découverte de capacités et contrôle manuel sans appel externe par défaut.
+4. **Social Scheduler/Publisher v1** — livré : prérequis applicatifs, lifecycle,
+   claim SQLite atomique, retry borné, idempotence, historique et audit. Le gate
+   de conformité fail-closed et les providers désactivés interdisent toute
+   publication réelle dans la configuration actuelle.
 5. **Analytics** — ingestion de résultats réels.
 6. **Sales-driven Marketing** — après disponibilité du Sales Ledger.
 7. **Stock-driven Marketing** — après une source stock marketing qualifiée.
 8. **Marketing Learning Loop** — règles/recommandations fondées sur historique,
    analytics et ventes, sans prétendre à un ML avant les données.
 
-Restent volontairement futurs : fournisseur génératif externe, fichiers images IA
-finaux, Social Connections réelles, scheduler/publisher réel, analytics live,
-Sales Ledger, marketing piloté par stock et learning loop. Aucun connecteur social
-de ce module ne peut actuellement publier.
+Sont maintenant livrés : Marketing Foundation, Creative AI v1, Human Review,
+Social Connections foundation, capability discovery, scheduler, orchestration de
+publication, idempotence, compliance gate, audit et providers désactivés sûrs.
+
+Restent volontairement futurs : vraies connexions Meta/Snap/TikTok de production,
+règles de conformité officielles, activation de la publication réelle, analytics
+live, Sales Ledger, Stock Marketing et Learning Loop. Aucun connecteur social de
+production n'est fourni ou activé.
