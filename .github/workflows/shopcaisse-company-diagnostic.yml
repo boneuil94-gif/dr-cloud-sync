@@ -12,7 +12,7 @@ jobs:
     env:
       SHOPCAISSE_API_KEY: ${{ secrets.SHOPCAISSE_API_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Vérifier la restriction en lecture seule
         run: |
           python - <<'PY'
