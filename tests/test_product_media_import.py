@@ -6,6 +6,7 @@ from PIL import Image
 from dr_cloud_sync.domain import Product
 from dr_cloud_sync.media import LocalMediaStorage, ProductMediaService, SQLiteProductMediaRepository
 from dr_cloud_sync.media_import import ProductMediaImportService
+from dr_cloud_sync.backup_service import BackupUnavailable
 from dr_cloud_sync.repositories import SQLiteOSRepository
 
 
@@ -66,3 +67,41 @@ def test_apply_validates_mime_continues_errors_and_is_idempotent(tmp_path):
     bad_importer,bad_media=setup(tmp_path/"bad",bad,bad_products)
     result=bad_importer.apply(bad_importer.preview())
     assert result["summary"]["failed"]==1 and bad_media.primary("drc:2:20") is None
+
+
+def test_backup_is_verified_before_download_and_failure_is_fail_closed(tmp_path):
+    product=Product("drc:1:10","1:10",1,10,1,"A")
+    client=FakePrestaShop([{"id":1}],[{"id":10,**assoc(11)}])
+    importer,media=setup(tmp_path,client,[product])
+    class BrokenBackup:
+        def create(self, *args, **kwargs): raise BackupUnavailable("backup unavailable")
+    importer.backup_service=BrokenBackup()
+    try: importer.apply(importer.preview())
+    except BackupUnavailable: pass
+    else: raise AssertionError("apply must abort")
+    assert client.downloads==[] and media.primary(product.drcloud_product_key) is None
+    job=importer.jobs.list_recent(1)[0]
+    assert job.status.value=="FAILED" and "backup unavailable" in (job.error_message or "")
+
+
+def test_apply_repreviews_protects_new_primary_and_audits_result(tmp_path):
+    product=Product("drc:1:10","1:10",1,10,1,"A")
+    client=FakePrestaShop([{"id":1}],[{"id":10,**assoc(11)}])
+    importer,media=setup(tmp_path,client,[product]); stale=importer.preview()
+    manual=media.add(product.drcloud_product_key,png("blue"),actor="operator")
+    result=importer.apply(stale,actor="operator")
+    assert client.downloads==[] and media.primary(product.drcloud_product_key).media_id==manual.media_id
+    assert result["summary"]["ignored_primary_existing"]==1
+    events=[a for a in importer.catalogue.activities() if a.event_type=="PRESTASHOP_MEDIA_IMPORT"]
+    assert len(events)==1 and events[0].metadata["actor"]=="operator"
+    assert "PRESTASHOP_API_KEY" not in str(result)+str(events[0].metadata)
+
+
+def test_ambiguous_diagnostic_is_actionable_and_never_downloaded(tmp_path):
+    product=Product("drc:1:10","1:10",1,10,1,"Produit",variant_name="Rouge")
+    client=FakePrestaShop([{"id":1}],[{"id":10,**assoc(11,12)}])
+    importer,media=setup(tmp_path,client,[product]); item=importer.preview()["items"][0]
+    assert (item["product"],item["variant"],item["product_id"],item["combination_id"])==("Produit","Rouge","1","10")
+    assert item["candidates"]==["11","12"] and item["ambiguity_reason"]
+    result=importer.apply(); assert result["summary"]["ambiguous"]==1
+    assert client.downloads==[] and media.primary(product.drcloud_product_key) is None

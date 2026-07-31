@@ -70,7 +70,8 @@ class InventoryApp:
         self.media=ProductMediaService(SQLiteProductMediaRepository(service.repo.path),LocalMediaStorage(media_root),self.os_repository,self.os_repository)
         # Optional external integration: configuration and client are resolved only
         # when an authenticated operator explicitly requests PREVIEW/APPLY.
-        self.media_import=PrestaShopMediaProvider(service.repo.path,self.media,self.os_repository)
+        self.media_import=PrestaShopMediaProvider(service.repo.path,self.media,self.os_repository,
+                                                   backup_service=self.backup_service)
         self.media_import_preview=None
         self.hydration=ProductHydrationService(self.os_repository)
         self.admin_status.media_diagnostics=self.media.diagnostics
@@ -194,7 +195,7 @@ class InventoryApp:
                 if not self.media_import_preview:
                     return self._json(start,{"error":"Un PREVIEW courant est requis"},"409 Conflict")
                 try:
-                    result=self.media_import.service().apply(self.media_import_preview,actor=session.get("u","authenticated"))
+                    result=self.media_import.service().apply(actor=session.get("u","authenticated"))
                 except PrestaShopIntegrationUnavailable as exc:
                     return self._json(start,{"error":str(exc),"integration":self.media_import.status()},"503 Service Unavailable")
                 self.media_import_preview=None
