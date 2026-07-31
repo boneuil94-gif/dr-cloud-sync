@@ -1,5 +1,5 @@
 "use strict";
-const list = value => value && value.length ? value.join(" · ") : "—";
+const escapeRoadmap = value => String(value ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 fetch("/api/roadmap").then(response => {
   if (!response.ok) throw new Error("Roadmap indisponible");
   return response.json();
@@ -11,12 +11,12 @@ fetch("/api/roadmap").then(response => {
   roadmap.modules.forEach(module => {
     const node = template.content.cloneNode(true);
     node.querySelector("h2").textContent = module.name;
+    const badge=node.querySelector(".status-badge"); badge.textContent=module.status; badge.classList.add(`status-${module.status.toLowerCase().replace('_','-')}`);
     node.querySelector(".module-percent").textContent = `${module.progress_percent} %`;
+    node.querySelector(".module-weight").textContent = `Poids global : ${module.weight} %`;
     node.querySelector("progress").value = module.progress_percent;
-    node.querySelector(".completed").textContent = list(module.completed);
-    node.querySelector(".in-progress").textContent = list(module.in_progress);
     node.querySelector(".next").textContent = module.next || "—";
-    node.querySelector(".blocked").textContent = list(module.blocked);
+    node.querySelector(".milestone-list").innerHTML=module.milestones.map(m=>`<li><span class="status-badge status-${m.status.toLowerCase().replace('_','-')}">${escapeRoadmap(m.status)}</span><span>${escapeRoadmap(m.name)}${m.steps?` <small>(${m.steps.filter(s=>s.done).length}/${m.steps.length} sous-étapes)</small>`:''}${m.blocking_reason?`<small class="milestone-reason">${escapeRoadmap(m.blocking_reason)}</small>`:''}</span></li>`).join('');
     target.appendChild(node);
   });
 }).catch(error => { const alert=document.querySelector("#roadmapError"); alert.hidden=false; alert.textContent=error.message; });
