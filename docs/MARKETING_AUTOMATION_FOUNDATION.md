@@ -1,5 +1,11 @@
 # Marketing Automation Foundation
 
+> Extension livrée : le Sales Ledger et les analytics déterministes sont décrits
+> dans [SALES_LEDGER.md](SALES_LEDGER.md). L'autopilot sait désormais expliquer
+> BEST_SELLER, SALES_SPIKE, SALES_DROP et TRENDING_PRODUCT à partir de ventes
+> fraîches, et applique la fatigue issue de l'historique de publication. Aucune
+> corrélation sociale/vente n'est transformée en attribution.
+
 ## Architecture livrée
 
 `MarketingAutopilot` orchestre une chaîne déterministe **signaux → opportunités

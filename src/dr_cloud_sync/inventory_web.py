@@ -30,6 +30,7 @@ from .media_import import PrestaShopIntegrationUnavailable, PrestaShopMediaProvi
 from .marketing import MarketingAutopilot, MarketingRepository
 from .creative_ai import CreativeAIService, CreativeGenerationError
 from .creative_review import CreativeReviewError, CreativeReviewService
+from .sales import SalesLedger, SocialAnalyticsService
 
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
@@ -72,7 +73,9 @@ class InventoryApp:
         media_root=data_dir/"media"/"products"
         self.media=ProductMediaService(SQLiteProductMediaRepository(service.repo.path),LocalMediaStorage(media_root),self.os_repository,self.os_repository)
         self.marketing_repository=MarketingRepository(service.repo.path)
-        self.marketing=MarketingAutopilot(self.marketing_repository,self.os_repository,self.media.repository)
+        self.sales=SalesLedger(service.repo.path,self.os_repository)
+        self.social_analytics=SocialAnalyticsService(self.marketing_repository.db)
+        self.marketing=MarketingAutopilot(self.marketing_repository,self.os_repository,self.media.repository,sales=self.sales)
         self.creative_ai=CreativeAIService(self.marketing_repository,self.os_repository,self.media.repository)
         self.creative_review=CreativeReviewService(self.marketing_repository)
         # Optional external integration: configuration and client are resolved only
@@ -132,8 +135,19 @@ class InventoryApp:
             if path == "/stock": return self._html(start,"stock.html",session,request_id)
             if path == "/achats": return self._html(start,"purchasing.html",session,request_id)
             if path == "/marketing": return self._html(start,"marketing.html",session,request_id)
+            if path == "/api/sales/status" and method == "GET": return self._json(start,self.sales.status())
+            if path == "/api/sales/metrics" and method == "GET": return self._json(start,self.sales.analytics())
+            if path.startswith("/api/sales/products/") and method == "GET":
+                return self._json(start,self.sales.product_metrics(unquote(path.removeprefix("/api/sales/products/"))))
+            if path == "/api/sales/import/preview" and method == "POST":
+                body=self._body(env); return self._json(start,self.sales.preview_csv(str(body.get("csv") or ""),session.get("u","authenticated")))
+            if path == "/api/sales/import/apply" and method == "POST":
+                body=self._body(env); return self._json(start,self.sales.apply_csv(str(body.get("batch_id") or ""),str(body.get("csv") or ""),session.get("u","authenticated")))
+            if path == "/api/marketing/analytics" and method == "GET": return self._json(start,self.sales.analytics())
+            if path == "/api/marketing/analytics/products" and method == "GET": return self._json(start,{"products":self.sales.analytics()["products"]})
+            if path == "/api/marketing/analytics/social" and method == "GET": return self._json(start,self.social_analytics.summary())
             if path == "/api/marketing/dashboard" and method == "GET":
-                return self._json(start,{"settings":self.marketing_repository.settings(),"preview":self.marketing.preview(),"proposals":self.marketing_repository.rows("marketing_proposals"),"opportunities":self.marketing_repository.rows("marketing_opportunities"),"schedules":self.marketing_repository.rows("marketing_schedules")})
+                return self._json(start,{"settings":self.marketing_repository.settings(),"preview":self.marketing.preview(),"analytics":self.sales.analytics(),"social_analytics":self.social_analytics.summary(),"proposals":self.marketing_repository.rows("marketing_proposals"),"opportunities":self.marketing_repository.rows("marketing_opportunities"),"schedules":self.marketing_repository.rows("marketing_schedules")})
             if path.startswith("/api/marketing/proposals/") and "/creative" in path:
                 tail=path.removeprefix("/api/marketing/proposals/"); identifier=unquote(tail.split("/creative",1)[0])
                 action=tail.split("/creative",1)[1].strip("/")
