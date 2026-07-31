@@ -58,19 +58,26 @@ def test_parent_fallback_ambiguity_and_manual_primary(tmp_path):
 
 
 def test_apply_validates_mime_continues_errors_and_is_idempotent(tmp_path):
-    products=[Product("drc:1:10","1:10",1,10,1,"A")]
-    client=FakePrestaShop([{"id":1}],[{"id":10,**assoc(11)}])
-    importer,media=setup(tmp_path,client,products); preview=importer.preview()
+    products=[Product("drc:1:10","1:10",1,10,1,"A"),Product("drc:1:11","1:11",1,11,2,"A")]
+    client=FakePrestaShop([{"id":1}],[{"id":10,"id_product":1,**assoc(10,11)},
+                                               {"id":11,"id_product":1,**assoc(10)}])
+    importer,media=setup(tmp_path,client,products)
+    protected=media.add("drc:1:11",png("blue")); preview=importer.preview()
     first=importer.apply(preview); second=importer.apply(importer.preview())
     assert first["summary"]["imported"]==1 and second["summary"]["processed"]==0
     imported=media.primary("drc:1:10")
     assert imported.source.value=="PRESTASHOP" and imported.marketing_usage.value=="UNKNOWN"
     assert imported.protected_original and '"combination_id":"10"' in imported.source_reference
     assert len(media.repository.list("drc:1:10"))==1
+    assert media.primary("drc:1:11").media_id==protected.media_id
+    assert first["summary"]["protected_primary_unchanged"] is True
 
-    bad_products=[Product("drc:2:20","2:20",2,20,2,"B")]
-    bad=FakePrestaShop([{"id":2}],[{"id":20,**assoc(21)}],payload=b"<html>login</html>",mime="text/html")
+    bad_products=[Product("drc:2:20","2:20",2,20,2,"B"),Product("drc:2:21","2:21",2,21,3,"B")]
+    bad=FakePrestaShop([{"id":2}],[{"id":20,"id_product":2,**assoc(20,21)},
+                                    {"id":21,"id_product":2,**assoc(20)}],
+                       payload=b"<html>login</html>",mime="text/html")
     bad_importer,bad_media=setup(tmp_path/"bad",bad,bad_products)
+    bad_media.add("drc:2:21",png("blue"))
     result=bad_importer.apply(bad_importer.preview())
     assert result["summary"]["failed"]==1 and bad_media.primary("drc:2:20") is None
 
@@ -181,12 +188,15 @@ def test_each_variant_may_have_one_exclusive_and_preview_never_mutates(tmp_path)
     assert report["families"][0]["common_image_ids"]==[] and len(report["families"][0]["matrix"])==5
 
 
-def test_exclusivity_preview_is_not_an_apply_candidate(tmp_path):
+def test_exclusivity_preview_is_the_only_apply_candidate_and_is_idempotent(tmp_path):
     products=[Product("drc:1:10","1:10",1,10,1,"A"),Product("drc:1:11","1:11",1,11,2,"A")]
     combinations=[{"id":10,"id_product":1,**assoc(1,2)},{"id":11,"id_product":1,**assoc(1,3)}]
     importer,media=setup(tmp_path,FakePrestaShop([{"id":1,**assoc(1,2,3)}],combinations),products)
     preview=importer.preview()
     assert preview["summary"]["safe_by_combination_exclusivity"]==2
     result=importer.apply(preview)
-    assert result["summary"]["processed"]==0 and importer.client.downloads==[]
-    assert all(media.primary(product.drcloud_product_key) is None for product in products)
+    assert result["summary"]["processed"]==2 and result["summary"]["imported"]==2
+    assert importer.client.downloads==[("1","2"),("1","3")]
+    assert all(media.primary(product.drcloud_product_key) is not None for product in products)
+    again=importer.apply(importer.preview())
+    assert again["summary"]["processed"]==again["summary"]["imported"]==0
