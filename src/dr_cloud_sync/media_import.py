@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import asdict
 import json
 from pathlib import Path
+import os
 import shutil
 from typing import Any
 
@@ -11,9 +12,61 @@ from .domain import MarketingUsage, MediaRole, MediaSource
 from .jobs import JobRunner, SqliteJobRepository
 from .media import MAX_FILE_SIZE, MIN_FREE_BYTES, MediaError, ProductMediaService
 from .prestashop import PrestaShopClient, PrestaShopError
+from .config import ConfigurationError, resolve_prestashop_api_url
 
 ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp"}
 JOB_TYPE = "PRODUCT_MEDIA_IMPORT"
+
+
+class PrestaShopIntegrationUnavailable(RuntimeError):
+    """Operator-safe failure at the optional integration boundary."""
+    operator_safe = True
+
+
+class PrestaShopMediaProvider:
+    """Lazy provider: inspecting or booting DrCloud never constructs a client."""
+    def __init__(self, database: Path, media: ProductMediaService, catalogue,
+                 environ=None, client_factory=None) -> None:
+        self.database=Path(database); self.media=media; self.catalogue=catalogue
+        self.environ=environ if environ is not None else os.environ
+        self.client_factory=client_factory or PrestaShopClient; self._service=None; self._unavailable=False
+
+    def status(self) -> dict[str, Any]:
+        key=self.environ.get("PRESTASHOP_API_KEY", "").strip()
+        if not key or key == "CHANGE_ME":
+            return {"status":"warning","state":"NOT_CONFIGURED","configured":False,
+                    "message":"Intégration non configurée"}
+        try:
+            resolve_prestashop_api_url(self.environ.get("PRESTASHOP_API_URL"))
+            timeout=float(self.environ.get("PRESTASHOP_TIMEOUT_SECONDS", "10"))
+            if timeout <= 0: raise ValueError
+        except (ConfigurationError,ValueError,TypeError):
+            return {"status":"warning","state":"INVALID_CONFIGURATION","configured":False,
+                    "message":"Configuration invalide"}
+        if self._unavailable:
+            return {"status":"warning","state":"UNAVAILABLE","configured":True,
+                    "message":"Service externe temporairement indisponible"}
+        return {"status":"ok","state":"CONFIGURED","configured":True,
+                "message":"Intégration configurée (disponibilité non testée)"}
+
+    def service(self) -> "ProductMediaImportService":
+        state=self.status()["state"]
+        if state == "NOT_CONFIGURED":
+            raise PrestaShopIntegrationUnavailable(
+                "Import PrestaShop indisponible — intégration non configurée")
+        if state == "INVALID_CONFIGURATION":
+            raise PrestaShopIntegrationUnavailable(
+                "Import PrestaShop indisponible — configuration invalide")
+        if self._service is None:
+            url=resolve_prestashop_api_url(self.environ.get("PRESTASHOP_API_URL"))
+            timeout=float(self.environ.get("PRESTASHOP_TIMEOUT_SECONDS", "10"))
+            client=self.client_factory(url,self.environ["PRESTASHOP_API_KEY"].strip(),
+                                       timeout=timeout,retries=2)
+            self._service=ProductMediaImportService(self.database,client,self.media,self.catalogue)
+        return self._service
+
+    def mark_unavailable(self) -> None:
+        self._unavailable=True
 
 
 def _ids(row: dict[str, Any]) -> list[str]:

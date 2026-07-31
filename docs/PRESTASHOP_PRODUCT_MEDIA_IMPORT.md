@@ -2,6 +2,25 @@
 
 ## Contrat et frontière externe
 
+L'intégration média est optionnelle. DrCloud OS démarre, sert `/health` et conserve
+ses fonctions locales si `PRESTASHOP_API_KEY` est absente ou si
+`PRESTASHOP_API_URL` est absente, vide ou invalide. Le client et la validation de
+configuration ne sont exécutés qu'après l'action authentifiée **Analyser les
+images**; aucun accès DNS/HTTP n'a lieu pendant `create_app()`.
+
+Les variables sont `PRESTASHOP_API_KEY`, `PRESTASHOP_API_URL` (URL absolue de la
+racine Webservice, par exemple `https://boutique.example/api`) et facultativement
+`PRESTASHOP_TIMEOUT_SECONDS` (10 secondes pour l'import média). Quand l'URL est
+absente ou vide, le défaut historique `https://dr-cloudshop.com/api` est conservé
+pour rétrocompatibilité, mais une clé reste nécessaire. Les valeurs sentinelles
+`CHANGE_ME` ne constituent pas une configuration valide et aucun secret n'est
+retourné dans le diagnostic.
+
+Administration distingue `CONFIGURED` (configuration connue, réseau non testé),
+`NOT_CONFIGURED`, `INVALID_CONFIGURATION` et `UNAVAILABLE`. Seule une opération
+explicite teste le réseau; une panne fournisseur n'affecte jamais le health check
+du cœur local. Le client utilise un timeout borné et deux tentatives au maximum.
+
 La ressource de métadonnées `products` expose les images parentes dans
 `associations.images`; `combinations` expose de la même manière les associations
 explicites de chaque combinaison. L'identité locale est résolue exclusivement par
@@ -63,3 +82,8 @@ PrestaShop ne donnant pas ici de checksum/version source, aucun refresh automati
 n'est effectué. Une référence déjà importée est ignorée; tout remplacement futur
 doit passer par un nouveau PREVIEW manuel et ne doit jamais écraser un PRIMARY
 manuel. Cette PR ne lance ni import de production, ni déploiement, ni IA Marketing.
+
+`DRCLOUD_SAFE_MODE` reste inchangé : le connecteur n'effectue que des GET externes
+et APPLY écrit uniquement dans la base et le volume média locaux après validation
+et action CSRF explicite. Aucun produit, mouvement de stock, quantité, EAN,
+référence, achat ou réception n'est modifié par ce workflow.

@@ -41,6 +41,7 @@ class AdminStatusService:
         self.now = now or (lambda: datetime.now(timezone.utc))
         self.disk_usage = disk_usage or shutil.disk_usage
         self.media_diagnostics = None
+        self.prestashop_diagnostics = None
 
     def collect(self) -> dict:
         metadata = application_metadata()
@@ -53,6 +54,8 @@ class AdminStatusService:
         }
         if self.media_diagnostics:
             sections["media"] = self._safe("media", self.media_diagnostics)
+        if self.prestashop_diagnostics:
+            sections["prestashop"] = self._safe("prestashop", self.prestashop_diagnostics)
         sections["status"] = self._overall(sections.values())
         sections["checked_at"] = self.now().isoformat().replace("+00:00", "Z")
         return sections

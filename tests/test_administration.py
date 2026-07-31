@@ -23,7 +23,7 @@ def test_administration_page_and_api_require_authentication(configured):
     assert status == "200 OK" and b'id="adminHero"' in html
     status, _, body = request(app, "/api/admin/status", cookie=cookie)
     assert status == "200 OK"
-    assert set(json.loads(body)) == {"status", "checked_at", "application", "database", "deployment", "backup", "system", "media"}
+    assert set(json.loads(body)) == {"status", "checked_at", "application", "database", "deployment", "backup", "system", "media", "prestashop"}
     assert request(app, "/api/admin/catalogue-rehydration/status")[0] == "303 See Other"
 
 
