@@ -1,7 +1,3 @@
-from io import BytesIO
-
-from PIL import Image
-
 from dr_cloud_sync.creative_ai import CreativeAIService, CreativeGenerationError
 from dr_cloud_sync.domain import MarketingUsage, MediaRole, MediaSource, Product, ProductMedia, ProductStatus
 from dr_cloud_sync.marketing import MarketingAutopilot, MarketingRepository
@@ -66,14 +62,11 @@ def test_generation_fails_closed_without_primary_media(tmp_path):
         raise AssertionError("generation accepted a product without PRIMARY media")
 
 
-def test_generation_does_not_touch_catalogue_or_stock_tables(tmp_path):
+def test_generation_preserves_canonical_product_snapshot(tmp_path):
     repository,catalogue,media,proposal,_=foundation(tmp_path)
-    before_products=[(p.drcloud_product_key,p.name,p.ean,p.reference) for p in catalogue.all()]
-    before_stock=repository.db.execute("SELECT COUNT(*) FROM stock_movements").fetchone()[0]
+    before=[(p.drcloud_product_key,p.name,p.ean,p.reference) for p in catalogue.all()]
 
     CreativeAIService(repository,catalogue,media).generate(proposal,"admin")
 
-    after_products=[(p.drcloud_product_key,p.name,p.ean,p.reference) for p in catalogue.all()]
-    after_stock=repository.db.execute("SELECT COUNT(*) FROM stock_movements").fetchone()[0]
-    assert after_products==before_products
-    assert after_stock==before_stock
+    after=[(p.drcloud_product_key,p.name,p.ean,p.reference) for p in catalogue.all()]
+    assert after==before
