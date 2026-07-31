@@ -10,6 +10,12 @@ services:
         DRCLOUD_BUILD_DATE: ${DRCLOUD_BUILD_DATE:-unknown}
     image: drcloud-os:local
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
     env_file:
       - ./drcloud.env
     environment:
@@ -29,6 +35,12 @@ services:
     image: drcloud-os:local
     command: ["dr-cloud-sync", "automation-worker"]
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
     env_file: [./drcloud.env]
     environment:
       DRCLOUD_BACKUP_DIR: /data/backups

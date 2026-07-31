@@ -1,6 +1,7 @@
 """WSGI application for the unified, authenticated DrCloud OS interface."""
 from __future__ import annotations
 from dataclasses import asdict
+from datetime import datetime, timezone
 import hashlib, hmac, json, logging, os, secrets, time, uuid
 from pathlib import Path
 from urllib.parse import parse_qs, unquote
@@ -17,7 +18,7 @@ from .external_stock import ExternalStockQueryService
 from .purchasing import (GoodsReceiptService, PurchaseOrderService,
                          SQLiteGoodsReceiptRepository, SQLitePurchaseOrderRepository,
                          SQLiteSupplierRepository, SupplierService)
-from .security import CredentialStore
+from .security import AuthorizationService, CredentialStore, SecurityStore
 from .media import (MAX_FILE_SIZE, LocalMediaStorage, MediaError, ProductMediaService,
                     SQLiteProductMediaRepository)
 from .domain import MediaVariantKind
@@ -75,7 +76,9 @@ class InventoryApp:
         self.suppliers=SupplierService(SQLiteSupplierRepository(service.repo.path),self.os_repository)
         self.purchase_orders=PurchaseOrderService(SQLitePurchaseOrderRepository(service.repo.path),self.suppliers,self.os_repository,self.os_repository)
         self.goods_receipts=GoodsReceiptService(SQLiteGoodsReceiptRepository(service.repo.path,service.repo.db),self.purchase_orders,service.repo,self.os_repository)
+        self.security=SecurityStore(service.repo.path,settings.admin_username,settings.admin_password) if settings else None
         self.credentials=CredentialStore(service.repo.path,settings.admin_password) if settings else None
+        self.authorization=AuthorizationService(self.security) if self.security else None
         self.password_failures={}
         media_root=data_dir/"media"/"products"
         self.media=ProductMediaService(SQLiteProductMediaRepository(service.repo.path),LocalMediaStorage(media_root),self.os_repository,self.os_repository)
@@ -164,8 +167,19 @@ class InventoryApp:
             if path.startswith("/media/") and method in {"GET","HEAD"}:
                 return self._serve_media(path,start,request_id,head=method=="HEAD")
             if path == "/logout" and method == "POST":
-                self._csrf(env,session); return self._redirect(start,"/login",request_id,clear=True)
+                self._csrf(env,session)
+                if self.security:
+                    self.security.revoke_sessions(session["uid"],session.get("sid")); self.security.db.commit()
+                    self.security.audit(session["uid"],"LOGOUT","SESSION",session.get("sid"),request_id,env.get("REMOTE_ADDR"))
+                return self._redirect(start,"/login",request_id,clear=True)
             if method not in {"GET","HEAD","OPTIONS"}: self._csrf(env,session)
+            if self.authorization:
+                permission=self._route_permission(path,method)
+                if permission=="__not_found__": return self._error(start,404,request_id)
+                try: self.authorization.require(session["uid"],permission)
+                except PermissionError:
+                    self.security.audit(session["uid"],"AUTHORIZATION_DENIED","ROUTE",path,request_id,env.get("REMOTE_ADDR"),{"method":method,"permission":permission},False)
+                    raise
             if path == "/": return self._html(start,"dashboard.html",session,request_id)
             if path == "/catalogue": return self._html(start,"catalogue.html",session,request_id)
             if path == "/inventaire": return self._html(start,"inventory.html",session,request_id)
@@ -370,6 +384,20 @@ class InventoryApp:
                 return self._json(start,self.catalogue_rehydration.request_apply(report_id,session.get("u","authenticated")),"202 Accepted")
             if path == "/api/security/change-password" and method == "POST":
                 return self._change_password(env,start,session,request_id)
+            if path == "/api/security/overview" and method == "GET":
+                return self._json(start,{"users":self.security.users(),"roles":[{"name":r,"permissions":sorted(self.security.permissions_for_role(r))} for r in ("ADMIN","MANAGER","STAFF","READ_ONLY")],"sessions":self.security.active_sessions(),"events":self.security.audits(30),"password_policy":{"minimum_length":14,"hash":"PBKDF2-HMAC-SHA256","iterations":600000},"protections":{"csrf":True,"session_versioning":True,"default_deny":True,"security_headers":True},"secret_references":[dict(r) for r in self.security.db.execute("SELECT secret_ref,provider,purpose,status,created_at,updated_at,last_rotated_at FROM secret_references ORDER BY provider,purpose")]})
+            if path == "/api/security/users" and method == "POST":
+                body=self._body(env); user=self.security.create_user(str(body.get("username") or ""),str(body.get("display_name") or ""),str(body.get("password") or ""),body.get("roles") or [],session["uid"]); self.security.audit(session["uid"],"USER_CREATED","USER",user["user_id"],request_id,env.get("REMOTE_ADDR"),{"roles":body.get("roles")}); return self._json(start,{"user":{**user,"roles":self.security.roles_for(user["user_id"])}},"201 Created")
+            if path.startswith("/api/security/users/"):
+                parts=path.removeprefix("/api/security/users/").split("/"); user_id=unquote(parts[0]); action=parts[1] if len(parts)>1 else ""
+                body=self._body(env) if method=="POST" else {}
+                if action=="status" and method=="POST": result=self.security.set_status(user_id,str(body.get("status") or ""),session["uid"]); self.security.audit(session["uid"],"USER_STATUS_CHANGED","USER",user_id,request_id,env.get("REMOTE_ADDR"),{"status":body.get("status")}); return self._json(start,{"user":result})
+                if action=="roles" and method=="POST": self.security.assign_roles(user_id,body.get("roles") or [],session["uid"]); self.security.audit(session["uid"],"USER_ROLES_CHANGED","USER",user_id,request_id,env.get("REMOTE_ADDR"),{"roles":body.get("roles")}); return self._json(start,{"roles":self.security.roles_for(user_id)})
+                if action=="reset-password" and method=="POST": self.security.reset_password(user_id,str(body.get("password") or "")); self.security.audit(session["uid"],"PASSWORD_RESET","USER",user_id,request_id,env.get("REMOTE_ADDR")); return self._json(start,{"success":True})
+            if path.startswith("/api/security/sessions/") and path.endswith("/revoke") and method=="POST":
+                sid=unquote(path.removeprefix("/api/security/sessions/").removesuffix("/revoke")); row=self.security.db.execute("SELECT user_id FROM security_sessions WHERE session_id=?",(sid,)).fetchone()
+                if not row: raise KeyError(sid)
+                self.security.revoke_sessions(row["user_id"],sid); self.security.db.commit(); self.security.audit(session["uid"],"SESSION_REVOKED","SESSION",sid,request_id,env.get("REMOTE_ADDR")); return self._json(start,{"revoked":True})
             if path == "/api/stock":
                 return self._json(start,{"positions":[self._with_media(asdict(p),p.drcloud_product_key) for p in self.stock.positions()],"statistics":self.service.repo.aggregate_statistics(),"comparison_statistics":self.external_stock.statistics()})
             if path == "/api/stock/comparison":
@@ -439,10 +467,15 @@ class InventoryApp:
         remote=env.get("REMOTE_ADDR",""); now=time.monotonic(); attempts=[x for x in self.failures.get(remote,[]) if now-x<300]; self.failures[remote]=attempts
         if len(attempts)>=5: return self._error(start,429,request_id)
         data=parse_qs(self._raw_body(env).decode("utf-8")); user=data.get("username",[""])[0]; password=data.get("password",[""])[0]
-        valid_password=bool(self.credentials and self.credentials.verify(password))
-        if not (hmac.compare_digest(user,self.settings.admin_username) and valid_password):
-            attempts.append(now); LOG.warning("login_failed request_id=%s remote=%s",request_id,remote); return self._html(start,"login.html",None,request_id,status="401 Unauthorized")
-        self.failures.pop(remote,None); credential=self.credentials.get(); token={"u":user,"exp":int(time.time())+28800,"csrf":secrets.token_urlsafe(24),"sv":credential.session_version}; cookie=self._encode(token)
+        identity=self.security.authenticate(user,password) if self.security else None
+        if not identity:
+            attempts.append(now); LOG.warning("login_failed request_id=%s remote=%s",request_id,remote)
+            self.security.audit(None,"LOGIN_FAILED","USER",None,request_id,remote,{"username":user},False)
+            return self._html(start,"login.html",None,request_id,status="401 Unauthorized")
+        self.failures.pop(remote,None); self.security.mark_login(identity["user_id"]); credential=self.security.credential(identity["user_id"]); expires=int(time.time())+28800
+        expires_iso=datetime.fromtimestamp(expires,timezone.utc).isoformat(); sid=self.security.create_session(identity["user_id"],expires_iso,remote)
+        token={"u":identity["username"],"uid":identity["user_id"],"sid":sid,"exp":expires,"csrf":secrets.token_urlsafe(24),"sv":credential.session_version}; cookie=self._encode(token)
+        self.security.audit(identity["user_id"],"LOGIN_SUCCEEDED","SESSION",sid,request_id,remote)
         return self._redirect(start,"/",request_id,cookie=cookie)
 
     def _change_password(self,env,start,session,request_id):
@@ -453,17 +486,14 @@ class InventoryApp:
         data=self._body(env); current=data.get("current_password",""); new=data.get("new_password","")
         if new != data.get("new_password_confirmation",""):
             return self._json(start,{"error":"La confirmation ne correspond pas."},"400 Bad Request")
-        if len(new) < 12:
-            return self._json(start,{"error":"Le nouveau mot de passe doit contenir au moins 12 caractères."},"400 Bad Request")
-        if new.casefold() in {"motdepasse123", "password1234", "administrateur", "drcloud123456"}:
-            return self._json(start,{"error":"Le nouveau mot de passe est trop facile à deviner."},"400 Bad Request")
         if hmac.compare_digest(current,new):
             return self._json(start,{"error":"Le nouveau mot de passe doit être différent."},"400 Bad Request")
-        try: self.credentials.change_password(current,new,session.get("u","authenticated"))
+        try: self.security.change_password(session["uid"],current,new,session.get("u"))
         except PermissionError:
             attempts.append(now)
             return self._json(start,{"error":"Le mot de passe actuel est incorrect."},"400 Bad Request")
         self.password_failures.pop(remote,None)
+        self.security.audit(session["uid"],"PASSWORD_CHANGED","USER",session["uid"],request_id,remote)
         secure=self.settings.environment=="production"; attrs="; Path=/; HttpOnly; SameSite=Lax"+("; Secure" if secure else "")
         return self._json(start,{"success":True,"reauthentication_required":True},headers=[("Set-Cookie",f"drcloud_session={attrs}; Max-Age=0"),("X-Request-ID",request_id)])
 
@@ -475,11 +505,25 @@ class InventoryApp:
         try:
             payload,sig=raw.rsplit(".",1); expected=hmac.new(self.settings.secret_key.encode(),payload.encode(),hashlib.sha256).hexdigest()
             if not hmac.compare_digest(sig,expected): return None
-            data=json.loads(bytes.fromhex(payload)); credential=self.credentials.get()
-            return data if data["exp"]>time.time() and credential and data.get("sv")==credential.session_version else None
+            data=json.loads(bytes.fromhex(payload)); credential=self.security.credential(data["uid"])
+            return data if data["exp"]>time.time() and credential and data.get("sv")==credential.session_version and self.security.valid_session(data["sid"],data["uid"],data["sv"]) else None
         except (ValueError,KeyError,json.JSONDecodeError): return None
     def _encode(self,data):
         payload=json.dumps(data,separators=(",",":")).encode().hex(); return payload+"."+hmac.new(self.settings.secret_key.encode(),payload.encode(),hashlib.sha256).hexdigest()
+    @staticmethod
+    def _route_permission(path,method):
+        """Return the explicit grant required by a route; unknown routes fail closed."""
+        pages={"/":"catalogue.read","/catalogue":"catalogue.read","/inventaire":"stock.read","/stock":"stock.read","/sales":"sales.read","/finance":"finance.read","/achats":"purchasing.read","/marketing":"marketing.read","/administration":"admin.read","/securite":"security.read","/roadmap":"admin.read"}
+        if path in pages: return pages[path]
+        if path.startswith("/achats/"): return "purchasing.read"
+        if path.startswith("/media/"): return "catalogue.read"
+        if path.startswith("/api/security/change-password"): return "security.read"
+        if path.startswith("/api/security/users") or path.startswith("/api/security/sessions/"): return "security.manage_users" if method!="GET" else "security.read"
+        if path.startswith("/api/security/"): return "security.read"
+        domains=(("/api/finance","finance.read"),("/api/data-hub/jobs/","bank.sync"),("/api/data-hub","admin.read"),("/api/sales","sales.read" if method=="GET" else "sales.sync"),("/api/marketing","marketing.read" if method=="GET" else "marketing.approve"),("/api/purchase-orders","purchasing.read" if method=="GET" else "purchasing.write"),("/api/goods-receipts","purchasing.read" if method=="GET" else "purchasing.write"),("/api/suppliers","purchasing.read" if method=="GET" else "purchasing.write"),("/api/admin","admin.read" if method=="GET" else "admin.write"),("/api/roadmap","admin.read"),("/api/stock","stock.read"),("/api/inventory","stock.read" if method=="GET" else "stock.validate"),("/api/count","stock.write"),("/api/complete","stock.validate"),("/api/barcodes","catalogue.write"),("/api/products","catalogue.read" if method=="GET" else "catalogue.write"),("/api/catalogue","catalogue.read"),("/api/search","catalogue.read"),("/api/scan","catalogue.read"),("/api/history","stock.read"),("/api/report","stock.read"),("/api/export.csv","stock.read"),("/api/state","stock.read"),("/api/dashboard","catalogue.read"))
+        for prefix,permission in domains:
+            if path.startswith(prefix): return permission
+        return "__default_deny__" if path.startswith("/api/") else "__not_found__"
     def _csrf(self,env,session):
         if not self.settings: return
         token=env.get("HTTP_X_CSRF_TOKEN") or parse_qs(self._raw_body(env).decode(errors="ignore")).get("csrf_token",[""])[0]
@@ -607,14 +651,16 @@ class InventoryApp:
         return self._send(start,b"","text/plain","303 See Other",headers)
     @staticmethod
     def _send(start,body,kind,status="200 OK",headers=None,cache=True):
-        security=[("Content-Type",kind)]+([("Cache-Control","no-store")] if cache else [])+[("Content-Security-Policy","default-src 'self'; img-src 'self' data:; media-src 'self' blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"),("X-Content-Type-Options","nosniff"),("Referrer-Policy","no-referrer"),("X-Frame-Options","DENY")]
+        security=[("Content-Type",kind)]+([("Cache-Control","no-store")] if cache else [])+[("Content-Security-Policy","default-src 'self'; img-src 'self' data:; media-src 'self' blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"),("X-Content-Type-Options","nosniff"),("Referrer-Policy","no-referrer"),("Permissions-Policy","camera=(self), microphone=(), geolocation=(), payment=(), usb=()"),("X-Frame-Options","DENY")]
         start(status,security+(headers or [])); return [body]
     def _json(self,start,value,status="200 OK",headers=None): return self._send(start,json.dumps(value,ensure_ascii=False,default=str).encode(),"application/json; charset=utf-8",status,headers)
 
 def create_app(settings: OSSettings | None=None):
-    settings=settings or OSSettings.from_env(); settings.data_dir.mkdir(parents=True,exist_ok=True)
+    settings=settings or OSSettings.from_env(); settings.data_dir.mkdir(parents=True,exist_ok=True); settings.data_dir.chmod(0o700)
     catalogue=Path(os.environ.get("INVENTORY_CATALOGUE",settings.data_dir/"catalogue.json")); report=Path(os.environ.get("INVENTORY_MAPPING_REPORT",settings.data_dir/"catalogue-report.json"))
-    return InventoryApp(InventoryService(catalogue,report,InventoryRepository(settings.database)),settings.data_dir/"rapport-inventaire.json",settings=settings)
+    app=InventoryApp(InventoryService(catalogue,report,InventoryRepository(settings.database)),settings.data_dir/"rapport-inventaire.json",settings=settings)
+    if settings.database.exists(): settings.database.chmod(0o600)
+    return app
 
 def serve(catalogue:Path,validation:Path,database:Path,host="127.0.0.1",port=8080):
     from waitress import serve as waitress_serve
