@@ -106,6 +106,39 @@ def _association_ids(row: dict[str, Any], name: str, singular: str) -> list[str]
             and str(item.get("id", "")).isdigit()] if isinstance(values, list) else []
 
 
+def combination_exclusivity(candidate_image_ids: list[str], sibling_candidate_sets: list[list[str]],
+                            *, explicitly_associated_image_ids: list[str] | None = None,
+                            existing_primary_image_id: str | None = None,
+                            deterministic_image_ids: list[str] | None = None) -> dict[str, Any]:
+    """Classify a multiple-image association using set membership only.
+
+    This deliberately does not inspect ordering, names, colours, files or pixels.  The
+    extra arguments make every negative decision auditable rather than silently
+    weakening the rule when another deterministic source is available.
+    """
+    candidates=set(map(str,candidate_image_ids))
+    siblings=set().union(*(set(map(str, values)) for values in sibling_candidate_sets)) \
+        if sibling_candidate_sets else set()
+    exclusive=sorted(candidates-siblings,key=int)
+    shared=sorted(candidates & siblings,key=int)
+    explicit=set(map(str, explicitly_associated_image_ids or []))
+    deterministic=set(map(str, deterministic_image_ids or []))
+    selected=exclusive[0] if len(exclusive)==1 else None
+    contradictions=[]
+    if selected and selected not in explicit: contradictions.append("NOT_EXPLICITLY_ASSOCIATED")
+    if selected and existing_primary_image_id and str(existing_primary_image_id)!=selected:
+        contradictions.append("EXISTING_PRIMARY_DESIGNATES_DIFFERENT_IMAGE")
+    if selected and any(image_id != selected for image_id in deterministic):
+        contradictions.append("OTHER_DETERMINISTIC_SOURCE_DESIGNATES_DIFFERENT_IMAGE")
+    safe=bool(selected and not contradictions)
+    return {"shared_image_ids":shared,"exclusive_image_ids":exclusive,
+            "classification":"SAFE_BY_COMBINATION_EXCLUSIVITY" if safe else "AMBIGUOUS_REMAINING",
+            "candidate_image_id":selected if safe else None,"contradictions":contradictions,
+            "proof":(f"L’image {selected} est explicitement associée à cette combinaison et n’est "
+                     "candidate d’aucune autre combinaison du parent; aucune source déterministe "
+                     "ni PRIMARY local ne la contredit." if safe else None)}
+
+
 class ProductMediaImportService:
     """Resolve explicit identities, then download only deterministic candidates."""
     def __init__(self, database: Path, client: PrestaShopClient,
@@ -127,6 +160,10 @@ class ProductMediaImportService:
         except (KeyError, ValueError, PrestaShopError):
             option_values={}; options={}
         primary_snapshot=self.media.repository.primaries()
+        combinations_by_parent: dict[str,list[dict[str,Any]]]={}
+        for row in combinations.values():
+            parent_id=str(row.get("id_product") or "")
+            if parent_id: combinations_by_parent.setdefault(parent_id,[]).append(row)
         items=[]
         for product in self.catalogue.all():
             parent=products.get(str(product.product_id), {})
@@ -202,6 +239,43 @@ class ProductMediaImportService:
                             "source":current.source.value,"storage_reference":current.storage_reference} if current else None),
                           "existing_primary_source":current.source.value if current else None,
                           "already_imported":already})
+        # Deepen only the diagnosis of items that were already ambiguous.  Their base
+        # classification stays AMBIGUOUS, so APPLY can never consume this preview rule.
+        local_by_combination={str(item["combination_id"]):item for item in items
+                              if item["combination_id"] is not None}
+        ambiguous_parent_ids={str(item["product_id"]) for item in items
+                              if item["classification"]=="AMBIGUOUS"}
+        family_matrices={}
+        for parent_id in ambiguous_parent_ids:
+            rows=combinations_by_parent.get(parent_id,[])
+            # Some test/legacy payloads omit id_product.  The locally known siblings
+            # remain exact and ensure the report is useful without inventing links.
+            if not rows:
+                ids={str(item["combination_id"]) for item in items
+                     if str(item["product_id"])==parent_id and item["combination_id"] is not None}
+                rows=[combinations[cid] for cid in ids if cid in combinations]
+            sets={str(row["id"]):_ids(row) for row in rows}
+            union=sorted(set().union(*(set(v) for v in sets.values())),key=int) if sets else []
+            intersection=sorted(set.intersection(*(set(v) for v in sets.values())),key=int) if sets else []
+            matrix=[]
+            for combination_id,candidates in sorted(sets.items(),key=lambda pair:int(pair[0])):
+                local=local_by_combination.get(combination_id)
+                decision=combination_exclusivity(candidates,[values for cid,values in sets.items()
+                    if cid!=combination_id],explicitly_associated_image_ids=candidates)
+                matrix.append({"parent":parent_id,"product_id":parent_id,
+                    "combination_id":combination_id,
+                    "variant_name":local["variant_name"] if local else None,
+                    "candidate_image_ids":candidates,**{key:decision[key] for key in
+                    ("shared_image_ids","exclusive_image_ids")}})
+                if local and local["classification"]=="AMBIGUOUS":
+                    local.update({"shared_image_ids":decision["shared_image_ids"],
+                        "exclusive_image_ids":decision["exclusive_image_ids"],
+                        "projected_classification":decision["classification"],
+                        "candidate_image_id":decision["candidate_image_id"],
+                        "deterministic_proof":decision["proof"],
+                        "exclusivity_contradictions":decision["contradictions"]})
+            family_matrices[parent_id]={"product_id":parent_id,"union_image_ids":union,
+                "intersection_image_ids":intersection,"matrix":matrix}
         summary={"processed":len(items),"combination_image":sum(x["provenance"]=="COMBINATION_IMAGE" for x in items),
                  "parent_fallback":sum(x["provenance"]=="PARENT_FALLBACK" for x in items),
                  "existing_primary":sum(x["classification"]=="EXISTING_PRIMARY" for x in items),
@@ -213,6 +287,12 @@ class ProductMediaImportService:
         causes={cause:sum(x["ambiguity_cause"]==cause for x in ambiguous)
                 for cause in sorted({x["ambiguity_cause"] for x in ambiguous})}
         families={str(pid):{"product_id":pid,"base_name":group[0]["base_name"],"count":len(group),
+                            "ambiguous_variants":len(group),
+                            "common_image_ids":family_matrices.get(str(pid),{}).get("intersection_image_ids",[]),
+                            "union_image_ids":family_matrices.get(str(pid),{}).get("union_image_ids",[]),
+                            "matrix":family_matrices.get(str(pid),{}).get("matrix",[]),
+                            "safe_by_combination_exclusivity":sum(x["projected_classification"]=="SAFE_BY_COMBINATION_EXCLUSIVITY" for x in group),
+                            "ambiguous_remaining":sum(x["projected_classification"]=="AMBIGUOUS_REMAINING" for x in group),
                             "causes":sorted({x["ambiguity_cause"] for x in group})}
                   for pid in sorted({x["product_id"] for x in ambiguous},key=lambda value:int(value))
                   for group in [[x for x in ambiguous if x["product_id"]==pid]]}
@@ -229,6 +309,7 @@ class ProductMediaImportService:
                    "orphan_primary_product_keys":sorted(set(primary_snapshot)-catalogue_keys),
                    "primary_product_associations_correct":all(k==m.product_key for k,m in primary_snapshot.items())}
         summary.update({"safe_resolvable":sum(x["projected_classification"]=="SAFE_RESOLVABLE" for x in ambiguous),
+                        "safe_by_combination_exclusivity":sum(x["projected_classification"]=="SAFE_BY_COMBINATION_EXCLUSIVITY" for x in ambiguous),
                         "ambiguous_remaining":sum(x["projected_classification"]=="AMBIGUOUS_REMAINING" for x in ambiguous),
                         "ambiguity_causes":causes,"ambiguous_families":len(families)})
         return {"job_type":JOB_TYPE,"mode":"PREVIEW","read_only":True,"summary":summary,

@@ -43,6 +43,21 @@ comme PRIMARY. La provenance sérialisée conserve la ressource, l'image, le pro
 la combinaison et le rôle `COMBINATION_IMAGE`, `PARENT_IMAGE` ou
 `PARENT_FALLBACK`.
 
+Le PREVIEW approfondit les `MULTIPLE_COMBINATION_IMAGES` par produit parent. Il
+publie, pour toutes les combinaisons du parent, la matrice des candidats, leur
+union et leur intersection, ainsi que les images partagées et exclusives. Une
+ambiguïté est projetée `SAFE_BY_COMBINATION_EXCLUSIVITY` seulement si la différence
+entre son ensemble et l'union des ensembles frères contient exactement une image,
+que cette image appartient bien à son association explicite et qu'aucun PRIMARY
+local ni autre résultat déterministe ne la contredit. Deux exclusives, aucune
+exclusive ou des ensembles identiques restent `AMBIGUOUS_REMAINING`.
+
+Cette projection est un **diagnostic uniquement** : la classification opérationnelle
+reste `AMBIGUOUS`, et `APPLY` ne sélectionne jamais une ligne résolue par exclusivité.
+Le rapport garantit donc
+`safe_by_combination_exclusivity + ambiguous_remaining = ambiguous`, sans créer de
+`ProductMedia`, télécharger d'image ni modifier un PRIMARY pendant le PREVIEW.
+
 Les imports ont `source=PRESTASHOP`, `marketing_usage=UNKNOWN` et
 `protected_original=true`. Ils ne sont donc jamais implicitement approuvés pour
 Creative AI. Une future intégration Marketing devra exiger une approbation humaine
