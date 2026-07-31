@@ -2,6 +2,8 @@ import json
 import subprocess
 import time
 import pytest
+from io import BytesIO
+from PIL import Image
 from collections import namedtuple
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -44,6 +46,9 @@ def test_catalogue_rehydration_admin_preview_report_apply_and_csrf(configured, t
     from dr_cloud_sync.admin_rehydration import AdminCatalogueRehydration
     app.catalogue_rehydration = AdminCatalogueRehydration(settings.database, snapshot,
         tmp_path / "backups", environment="test", safe_mode=True)
+    pictured = app.os_repository.all()[0]
+    image = BytesIO(); Image.new("RGB", (24, 24), "peachpuff").save(image, "PNG")
+    app.media.add(pictured.drcloud_product_key, image.getvalue(), filename="primary.png")
     _, cookie = login(app); csrf = app._session({"HTTP_COOKIE": cookie})["csrf"]
     assert request(app, "/api/admin/catalogue-rehydration/preview", "POST", {}, cookie)[0] == "403 Forbidden"
     status = request(app, "/api/admin/catalogue-rehydration/preview", "POST", {}, cookie,
@@ -56,6 +61,20 @@ def test_catalogue_rehydration_admin_preview_report_apply_and_csrf(configured, t
         f"/api/admin/catalogue-rehydration/report?report_id={report_id}&page=1&per_page=25&classification=SAFE&search=Produit",
         cookie=cookie)[2])
     assert report["summary"]["processed"] == 478 and len(report["items"]) == 25
+    catalogue_before = json.loads(request(app, "/api/catalogue", cookie=cookie)[2])
+    assert [item["canonical"]["drcloud_product_key"] for item in report["items"]] == [
+        item["drcloud_product_key"] for item in catalogue_before[:25]]
+    canonical = report["items"][0]["canonical"]
+    assert canonical["display_name"] == catalogue_before[0]["display_name"]
+    assert canonical["base_name"] == catalogue_before[0]["base_name"]
+    assert canonical["variant_name"] == catalogue_before[0]["variant_name"]
+    assert canonical["attributes"] == catalogue_before[0]["attributes"]
+    assert canonical["ean"] == "" and canonical["reference"] == ""
+    assert canonical["primary_media"]["role"] == "PRIMARY"
+    assert canonical["primary_media"]["thumbnail_url"].startswith("/media/")
+    assert report["items"][1]["canonical"]["primary_media"] is None
+    # Historical NO_DATA remains available, but only alongside canonical values.
+    assert report["items"][0]["fields"]["ean"] == "NO_DATA"
     body = {"report_id": report_id}
     assert request(app, "/api/admin/catalogue-rehydration/apply", "POST", body, cookie,
                    {"X-CSRF-Token": csrf})[0] == "202 Accepted"

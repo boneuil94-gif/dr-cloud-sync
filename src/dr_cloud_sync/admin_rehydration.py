@@ -16,6 +16,8 @@ from .backup_service import BackupService
 from .rehydration import (CatalogueRehydrationService, HistoricalCatalogueUnavailable,
                           historical_observations, validate_historical_snapshot)
 from .repositories import SQLiteOSRepository
+from .media import SQLiteProductMediaRepository
+from .domain import MediaVariantKind
 
 
 class RehydrationConflict(RuntimeError):
@@ -183,12 +185,53 @@ class AdminCatalogueRehydration:
             report_id = row[0] if row else None
         row = self._report_row(report_id) if report_id else None
         if not row: raise KeyError("report")
-        report = json.loads(row["report_json"]); items = report["items"]
+        report = json.loads(row["report_json"]); historical_items = report["items"]
+        # The report is an historical diagnostic, not a catalogue read model.  Join
+        # it to the durable catalogue at read time so commercial identity and media
+        # can never be replaced by stale candidates/image_ids from the snapshot.
+        repository = self._repository()
+        products = repository.all()
+        by_key = {item["product_key"]: item for item in historical_items}
+        media_repository = SQLiteProductMediaRepository(self.database)
+        primaries = media_repository.primaries()
+        variants = media_repository.variants_for([media.media_id for media in primaries.values()])
+        items = []
+        for product in products:  # exactly the central catalogue repository order
+            item = by_key.get(product.drcloud_product_key)
+            if item is None:
+                continue
+            primary = primaries.get(product.drcloud_product_key)
+            primary_json = None
+            if primary:
+                thumbnail = variants.get((primary.media_id, MediaVariantKind.THUMBNAIL))
+                primary_json = {
+                    "media_id": primary.media_id,
+                    "role": primary.role.value,
+                    "source": primary.source.value,
+                    "thumbnail_url": (f"/media/{primary.media_id}/thumbnail?v={thumbnail.sha256[:16]}"
+                                      if thumbnail else None),
+                    "status": "AVAILABLE",
+                }
+            item = dict(item)
+            item["canonical"] = {
+                "display_name": product.display_name,
+                "base_name": product.base_name,
+                "variant_name": product.variant_name,
+                "attributes": product.attributes,
+                "reference": product.reference,
+                "ean": product.ean,
+                "primary_media": primary_json,
+                "drcloud_product_key": product.drcloud_product_key,
+                "product_id": product.product_id,
+                "combination_id": product.combination_id,
+            }
+            items.append(item)
         if classification != "ALL": items = [x for x in items if x["classification"] == classification]
         needle = search.casefold().strip()
         if needle:
             items = [x for x in items if needle in " ".join(str(x.get(k) or "") for k in
                 ("product_key", "product_id", "combination_id") ).casefold() or
+                needle in " ".join(str(v) for v in x["canonical"].values()).casefold() or
                 needle in " ".join(str(v) for v in x["current"].values()).casefold() or
                 needle in " ".join(str(v) for v in x["candidates"].values()).casefold()]
         total = len(items); start = (page - 1) * per_page
