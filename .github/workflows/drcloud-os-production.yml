@@ -17,6 +17,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
+      - name: Check out the exact successful commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
       - name: Configure dedicated SSH identity
         env:
           SSH_PRIVATE_KEY: ${{ secrets.OVH_SSH_PRIVATE_KEY }}
@@ -28,13 +32,31 @@ jobs:
           chmod 600 ~/.ssh/drcloud_deploy
           printf '%s\n' "$OVH_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-      - name: Deploy the exact successful commit
+      - name: Stage the reviewed runtime configuration installer
         env:
           OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
           OVH_SSH_PORT: ${{ secrets.OVH_SSH_PORT }}
           OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
+          scp -q -i ~/.ssh/drcloud_deploy -P "${OVH_SSH_PORT:-22}" \
+            deploy/ovh/configure-prestashop-env.sh \
+            "$OVH_SSH_USER@$OVH_SSH_HOST:/tmp/drcloud-prestashop-$DEPLOY_SHA.sh"
+      - name: Deploy the exact successful commit
+        env:
+          OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
+          OVH_SSH_PORT: ${{ secrets.OVH_SSH_PORT }}
+          OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
+          PRESTASHOP_API_KEY: ${{ secrets.PRESTASHOP_API_KEY }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          test -n "$PRESTASHOP_API_KEY" || { echo "PRESTASHOP_API_KEY est absent" >&2; exit 1; }
+          printf '%s\n%s\n' 'https://dr-cloudshop.com/api' "$PRESTASHOP_API_KEY" |
+            ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" \
+              "$OVH_SSH_USER@$OVH_SSH_HOST" \
+              "DRCLOUD_ENV_FILE=/opt/drcloud-os/deploy/ovh/drcloud.env \
+               /bin/bash /tmp/drcloud-prestashop-$DEPLOY_SHA.sh; \
+               status=\$?; rm -f /tmp/drcloud-prestashop-$DEPLOY_SHA.sh; exit \$status"
           ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" \
             "$OVH_SSH_USER@$OVH_SSH_HOST" \
             "test \"\$(id -un)\" = '$OVH_SSH_USER' && /opt/drcloud-os/deploy/ovh/update.sh '$DEPLOY_SHA'"
