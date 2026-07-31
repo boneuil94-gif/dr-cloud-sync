@@ -8,13 +8,16 @@ Après merge, le `push` sur `main` repasse la même CI. La workflow **DrCloud OS
 
 ## Secrets GitHub et environment
 
-Créer l'environment `production` (avec approbation obligatoire si souhaitée) et les secrets suivants. Aucun identifiant DrCloud applicatif ne doit être ajouté à GitHub : il reste exclusivement dans `/opt/drcloud-os/deploy/ovh/drcloud.env`.
+Créer l'environment `production` (avec approbation obligatoire si souhaitée) et les secrets suivants. Les identifiants administrateur DrCloud restent exclusivement dans `/opt/drcloud-os/deploy/ovh/drcloud.env`. La clé PrestaShop existante est transmise au fichier runtime par l'entrée standard, sans apparaître dans la commande distante ni dans les logs.
 
 - `OVH_SSH_HOST` : nom DNS ou IP du VPS ;
 - `OVH_SSH_PORT` : port SSH (généralement `22`) ;
 - `OVH_SSH_USER` : compte Unix dédié, par exemple `drcloud-deploy` ;
 - `OVH_SSH_PRIVATE_KEY` : clé privée dédiée sans réutilisation ;
 - `OVH_SSH_KNOWN_HOSTS` : ligne de clé hôte vérifiée hors bande (`ssh-keyscan` seul ne constitue pas une vérification).
+- `PRESTASHOP_API_KEY` : secret PrestaShop existant (ne pas créer ni remplacer la clé pour ce déploiement).
+
+Le fichier réellement consommé par Compose est `/opt/drcloud-os/deploy/ovh/drcloud.env`, via `env_file`. Avant le déploiement, la workflow appelle `configure-prestashop-env.sh`, qui remplace atomiquement uniquement `PRESTASHOP_API_URL` et `PRESTASHOP_API_KEY`, force l'URL `https://dr-cloudshop.com/api` et conserve le mode `0600`. Cette configuration rend le connecteur visible comme `CONFIGURED`; elle ne teste pas le réseau PrestaShop et ne lance aucun import média.
 
 ## Installation unique sur le VPS
 

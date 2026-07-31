@@ -339,3 +339,36 @@ def test_ci_provides_absolute_state_directory_when_validating_compose():
     workflow = (root / ".github/workflows/drcloud-os-ci.yml").read_text()
     assert 'DRCLOUD_DEPLOYMENT_STATE_DIR="${{ github.workspace }}/deploy/ovh/.deployment-state"' in workflow
     assert "docker compose -f deploy/ovh/docker-compose.yml config --quiet" in workflow
+
+
+def test_production_workflow_provisions_existing_prestashop_secret_before_deploy():
+    root = Path(__file__).parents[1]
+    workflow = (root / ".github/workflows/drcloud-os-production.yml").read_text()
+    configure = workflow.index("configure-prestashop-env.sh")
+    deploy = workflow.index("update.sh '$DEPLOY_SHA'")
+    assert "PRESTASHOP_API_KEY: ${{ secrets.PRESTASHOP_API_KEY }}" in workflow
+    assert "printf '%s\\n%s\\n' 'https://dr-cloudshop.com/api' \"$PRESTASHOP_API_KEY\"" in workflow
+    assert configure < deploy
+
+
+def test_prestashop_runtime_configuration_is_atomic_and_secret_free_in_output(tmp_path):
+    root = Path(__file__).parents[1]
+    source = root / "deploy/ovh/configure-prestashop-env.sh"
+    deploy_dir = tmp_path / "deploy/ovh"
+    deploy_dir.mkdir(parents=True)
+    script = deploy_dir / source.name
+    shutil.copy2(source, script)
+    env_file = deploy_dir / "drcloud.env"
+    env_file.write_text(
+        "DRCLOUD_SAFE_MODE=true\nPRESTASHOP_API_URL=\nPRESTASHOP_API_KEY=\nPORT=8080\n"
+    )
+    secret = "existing-secret-never-log"
+    result = subprocess.run(
+        [script], input=f"https://dr-cloudshop.com/api\n{secret}\n",
+        text=True, capture_output=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert secret not in result.stdout + result.stderr
+    assert "PRESTASHOP_API_URL=https://dr-cloudshop.com/api" in env_file.read_text()
+    assert f"PRESTASHOP_API_KEY={secret}" in env_file.read_text()
+    assert env_file.stat().st_mode & 0o777 == 0o600
