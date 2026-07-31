@@ -103,6 +103,48 @@ class PrestaShopClient:
             time.sleep(0.25 * (2**attempt))
         raise AssertionError("unreachable")
 
+    def download_product_image(self, product_id: int | str, image_id: int | str,
+                               *, image_type: str | None = None,
+                               max_bytes: int = 10 * 1024 * 1024) -> tuple[bytes, str]:
+        """Download an image through PrestaShop's binary image resource (GET only).
+
+        The Webservice contract is ``/images/products/{product}/{image}``, with an
+        optional final image-type segment.  Unlike normal API resources this
+        response is bytes, not JSON.
+        """
+        identifiers = (str(product_id), str(image_id))
+        if not all(value.isdigit() and int(value) > 0 for value in identifiers):
+            raise ValueError("Identifiant image PrestaShop invalide")
+        segments = ["images", "products", *identifiers]
+        if image_type is not None:
+            if not image_type or not all(c.isalnum() or c in "_-" for c in image_type):
+                raise ValueError("Format image PrestaShop invalide")
+            segments.append(image_type)
+        resource = "/".join(segments)
+        request = Request(f"{self.api_url}/{resource}", headers={
+            "Authorization": self._authorization,
+            "Accept": "image/jpeg, image/png, image/webp",
+        }, method="GET")
+        for attempt in range(self.retries):
+            try:
+                with self.opener(request, timeout=self.timeout) as response:
+                    content_type = response.headers.get_content_type().lower()
+                    declared = response.headers.get("Content-Length")
+                    if declared and int(declared) > max_bytes:
+                        raise PrestaShopError("Image PrestaShop supérieure à la limite autorisée")
+                    data = response.read(max_bytes + 1)
+                    if not data or len(data) > max_bytes:
+                        raise PrestaShopError("Image PrestaShop vide ou supérieure à la limite autorisée")
+                    return data, content_type
+            except HTTPError as exc:
+                if exc.code not in {429, 500, 502, 503, 504} or attempt == self.retries - 1:
+                    raise PrestaShopError(f"PrestaShop HTTP {exc.code} sur images/products") from exc
+            except (URLError, TimeoutError, OSError) as exc:
+                if attempt == self.retries - 1:
+                    raise PrestaShopError("PrestaShop indisponible sur images/products") from exc
+            time.sleep(0.25 * (2**attempt))
+        raise AssertionError("unreachable")
+
     def pull_import_fields(self, sale_units: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         """Read authoritative SKU and computed prices for snapshot sale units.
 

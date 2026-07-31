@@ -25,6 +25,9 @@ from .hydration import ProductHydrationService
 from .admin_rehydration import AdminCatalogueRehydration, RehydrationConflict
 from .rehydration import packaged_historical_snapshot
 from .backup_service import BackupService, configured_backup_dir
+from .config import resolve_prestashop_api_url
+from .prestashop import PrestaShopClient
+from .media_import import ProductMediaImportService
 
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
@@ -66,6 +69,11 @@ class InventoryApp:
         self.password_failures={}
         media_root=data_dir/"media"/"products"
         self.media=ProductMediaService(SQLiteProductMediaRepository(service.repo.path),LocalMediaStorage(media_root),self.os_repository,self.os_repository)
+        api_key=os.environ.get("PRESTASHOP_API_KEY","").strip()
+        self.media_import=(ProductMediaImportService(service.repo.path,
+            PrestaShopClient(resolve_prestashop_api_url(),api_key),self.media,self.os_repository)
+            if api_key else None)
+        self.media_import_preview=None
         self.hydration=ProductHydrationService(self.os_repository)
         self.admin_status.media_diagnostics=self.media.diagnostics
         self.catalogue_rehydration = AdminCatalogueRehydration(
@@ -174,6 +182,16 @@ class InventoryApp:
             if path == "/api/state": return self._json(start,{"session":self.service.session(),"progress":self.service.progress(),"proposal":self.service.proposal()})
             if path == "/api/roadmap": return self._json(start,self.roadmap_service.load())
             if path == "/api/admin/status": return self._json(start,self.admin_status.collect(),headers=[("X-Request-ID",request_id)])
+            if path == "/api/admin/product-media-import/preview" and method == "POST":
+                if not self.media_import: return self._json(start,{"error":"Configuration PrestaShop absente"},"503 Service Unavailable")
+                self.media_import_preview=self.media_import.preview()
+                return self._json(start,self.media_import_preview)
+            if path == "/api/admin/product-media-import/apply" and method == "POST":
+                if not self.media_import or not self.media_import_preview:
+                    return self._json(start,{"error":"Un PREVIEW courant est requis"},"409 Conflict")
+                result=self.media_import.apply(self.media_import_preview,actor=session.get("u","authenticated"))
+                self.media_import_preview=None
+                return self._json(start,result)
             if path == "/api/admin/catalogue-rehydration/status" and method == "GET":
                 return self._json(start,self.catalogue_rehydration.status())
             if path == "/api/admin/catalogue-rehydration/preview" and method == "POST":

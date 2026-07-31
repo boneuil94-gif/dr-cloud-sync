@@ -132,6 +132,12 @@ class SQLiteProductMediaRepository:
     def primary(self, product_key: str) -> ProductMedia | None:
         return self._media(self.db.execute("SELECT * FROM product_media WHERE product_key=? AND role='PRIMARY' AND active=1",(product_key,)).fetchone())
 
+    def by_source_reference(self, product_key: str, source: MediaSource,
+                            source_reference: str) -> ProductMedia | None:
+        return self._media(self.db.execute(
+            "SELECT * FROM product_media WHERE product_key=? AND source=? AND source_reference=? AND active=1 ORDER BY created_at DESC LIMIT 1",
+            (product_key, MediaSource(source).value, source_reference)).fetchone())
+
     def make_primary(self, product_key: str, media_id: str) -> None:
         stamp=utc_now()
         with self.db:
