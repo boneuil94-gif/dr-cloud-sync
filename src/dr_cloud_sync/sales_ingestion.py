@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import csv, io, json, sqlite3
+from pathlib import Path
 from typing import Any, Mapping, Protocol, Sequence
 from uuid import uuid4
 from .sales import SaleEvent, SaleKind, SaleSource, SalesLedger, _decimal, _now, _utc
@@ -94,6 +95,22 @@ class ShopCaisseCSVProvider:
             key=(sale_id,sold); grouped.setdefault(key,[]).append(line)
         sales=tuple(CanonicalSale(self.source,k[0],k[1],"UTC","STORE",str(rows[0].__dict__ and "EUR"),"COMPLETED",tuple(rows)) for k,rows in grouped.items())
         return ProviderBatch(sales,max((s.sold_at for s in sales),default=cursor))
+
+class ShopCaisseSalesProvider(ShopCaisseCSVProvider):
+    """Automatic ingestion of the real CSV export deposited in a protected inbox."""
+    def __init__(self,inbox: Path): self.inbox=Path(inbox); super().__init__("")
+    @property
+    def configured(self): return self.inbox.is_dir()
+    def fetch(self,*,cursor=None,since=None):
+        files=sorted(self.inbox.glob("*.csv")); content=""; header=None
+        for path in files:
+            rows=path.read_text(encoding="utf-8-sig").splitlines()
+            if not rows: continue
+            if header is None: header=rows[0];content+=header+"\n"
+            if rows[0]!=header: raise ValueError(f"ShopCaisse CSV header mismatch: {path.name}")
+            content+="\n".join(rows[1:])+"\n"
+        self.content=content
+        return super().fetch(cursor=cursor,since=since)
 
 
 class PrestaShopSalesProvider:

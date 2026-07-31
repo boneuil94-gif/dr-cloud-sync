@@ -62,6 +62,12 @@
           "id": "01-core-m11",
           "name": "Data Hub provider-neutral et runtime SQLite",
           "status": "DONE"
+        },
+        {
+          "id": "01-core-m12",
+          "name": "Connecteur bancaire Qonto read-only réel",
+          "status": "DONE",
+          "evidence": "qonto.py; QONTO_CONNECTOR.md; tests/test_qonto_connector.py — activation possible, NOT_CONFIGURED sans credential"
         }
       ]
     },
@@ -349,14 +355,14 @@
           "id": "06-sales-m08",
           "name": "Import ShopCaisse réel",
           "status": "IN_PROGRESS",
-          "evidence": "sales_ingestion.py (ShopCaisseCSVProvider PREVIEW/APPLY); aucun endpoint réseau de ventes ShopCaisse vérifié",
+          "evidence": "sales_ingestion.py (ShopCaisseSalesProvider): ingestion automatique des exports CSV réels; API réseau de tickets non vérifiée",
           "steps": [
             {
-              "name": "Import CSV ShopCaisse réel PREVIEW/APPLY",
+              "name": "Import automatique export CSV ShopCaisse réel",
               "done": true
             },
             {
-              "name": "Connecteur réseau de ventes vérifié",
+              "name": "Endpoint réseau de ventes officiel vérifié",
               "done": false
             }
           ]
@@ -898,6 +904,12 @@
           "id": "13-production-m18",
           "name": "Freshness et santé des connecteurs dans Administration",
           "status": "DONE"
+        },
+        {
+          "id": "13-production-m19",
+          "name": "Worker Data Hub automatique en production",
+          "status": "DONE",
+          "evidence": "deploy/ovh/docker-compose.yml automation-worker; AUTOMATION_RUNTIME.md"
         }
       ]
     }
