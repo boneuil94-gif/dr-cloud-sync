@@ -5,7 +5,7 @@ from PIL import Image
 
 from dr_cloud_sync.domain import Product
 from dr_cloud_sync.media import LocalMediaStorage, ProductMediaService, SQLiteProductMediaRepository
-from dr_cloud_sync.media_import import ProductMediaImportService
+from dr_cloud_sync.media_import import ProductMediaImportService, combination_exclusivity
 from dr_cloud_sync.backup_service import BackupUnavailable
 from dr_cloud_sync.repositories import SQLiteOSRepository
 
@@ -142,3 +142,51 @@ def test_read_only_diagnostic_classifies_real_relationship_cases(tmp_path):
         "MULTIPLE_COMBINATION_IMAGES":1,"MULTIPLE_PARENT_IMAGES":1}
     assert report["primary_integrity"]["duplicate_primary_count"]==0
     assert before==after and importer.client.downloads==[]
+
+
+def decision(candidates, siblings, **kwargs):
+    return combination_exclusivity(candidates,siblings,
+        explicitly_associated_image_ids=kwargs.pop("explicit",candidates),**kwargs)
+
+
+def test_combination_exclusivity_set_rules():
+    assert decision([1,2,3],[[1,2,3]])["classification"]=="AMBIGUOUS_REMAINING"
+    safe=decision([1,2,3,4],[[1,2,3]])
+    assert safe["classification"]=="SAFE_BY_COMBINATION_EXCLUSIVITY"
+    assert safe["candidate_image_id"]=="4" and safe["exclusive_image_ids"]==["4"]
+    assert decision([1,4,5],[[1]])["classification"]=="AMBIGUOUS_REMAINING"
+    assert decision([1,2],[[1]],explicit=[1])["classification"]=="AMBIGUOUS_REMAINING"
+    assert decision([1,2],[[1]],existing_primary_image_id="9")["classification"]=="AMBIGUOUS_REMAINING"
+
+
+def test_each_variant_may_have_one_exclusive_and_preview_never_mutates(tmp_path):
+    products=[Product(f"drc:56:{cid}",f"56:{cid}",56,cid,cid,"DUM VICTORIA",variant_name=name)
+              for cid,name in [(165,"BLANC"),(166,"NOIR"),(167,"SILVER"),(168,"TRANSPARENT"),(169,"GOLD")]]
+    combinations=[{"id":165,"id_product":56,**assoc(204,205,206,207)},
+        {"id":166,"id_product":56,**assoc(205,206,207,208)},
+        {"id":167,"id_product":56,**assoc(203,205,206,207)},
+        {"id":168,"id_product":56,**assoc(202,205,206,207)},
+        {"id":169,"id_product":56,**assoc(198,199,200,201)}]
+    importer,media=setup(tmp_path,FakePrestaShop([{"id":56,**assoc(*range(198,209))}],combinations),products)
+    before=media.repository.db.execute("SELECT * FROM product_media ORDER BY media_id").fetchall()
+    report=importer.preview(); by_id={int(x["combination_id"]):x for x in report["items"]}
+    after=media.repository.db.execute("SELECT * FROM product_media ORDER BY media_id").fetchall()
+    assert {cid:by_id[cid]["candidate_image_id"] for cid in (165,166,167,168)}=={165:"204",166:"208",167:"203",168:"202"}
+    assert all(by_id[cid]["projected_classification"]=="SAFE_BY_COMBINATION_EXCLUSIVITY" for cid in (165,166,167,168))
+    assert by_id[169]["projected_classification"]=="AMBIGUOUS_REMAINING"
+    assert by_id[169]["exclusive_image_ids"]==["198","199","200","201"]
+    assert report["summary"]["safe_by_combination_exclusivity"]==4
+    assert report["summary"]["ambiguous_remaining"]==1
+    assert before==after and importer.client.downloads==[]
+    assert report["families"][0]["common_image_ids"]==[] and len(report["families"][0]["matrix"])==5
+
+
+def test_exclusivity_preview_is_not_an_apply_candidate(tmp_path):
+    products=[Product("drc:1:10","1:10",1,10,1,"A"),Product("drc:1:11","1:11",1,11,2,"A")]
+    combinations=[{"id":10,"id_product":1,**assoc(1,2)},{"id":11,"id_product":1,**assoc(1,3)}]
+    importer,media=setup(tmp_path,FakePrestaShop([{"id":1,**assoc(1,2,3)}],combinations),products)
+    preview=importer.preview()
+    assert preview["summary"]["safe_by_combination_exclusivity"]==2
+    result=importer.apply(preview)
+    assert result["summary"]["processed"]==0 and importer.client.downloads==[]
+    assert all(media.primary(product.drcloud_product_key) is None for product in products)
