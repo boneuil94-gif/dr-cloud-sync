@@ -175,10 +175,34 @@ class MarketingRepository:
         self.path=Path(path); self.db=sqlite3.connect(path,check_same_thread=False); self.db.row_factory=sqlite3.Row
         with self.db:
             self.db.executescript(SCHEMA)
+            self._migrate_social_v1()
             self.db.execute("INSERT OR IGNORE INTO marketing_settings VALUES(1,0,3,2,1,?,?,?,?)",
                 (json.dumps(["INSTAGRAM","FACEBOOK"]),json.dumps(["STORY","SQUARE"]),"[]",json.dumps(asdict(BrandKit()))))
             self.db.execute("INSERT OR IGNORE INTO marketing_automation_rules VALUES(?,?,?,?,?,?,?,?,NULL)",
                 ("rule:media-ready-spotlight","Produit actif avec média PRIMARY",1,"PRODUCT_MEDIA_READY",json.dumps({"product_status":"ACTIVE"}),json.dumps({"opportunity":"PRODUCT_SPOTLIGHT"}),168,1))
+
+    def _migrate_social_v1(self) -> None:
+        """Additive migration for the safe social publishing foundation."""
+        additions={
+            "social_connections": {
+                "display_name":"TEXT", "capabilities_json":"TEXT NOT NULL DEFAULT '[]'",
+                "last_error":"TEXT", "updated_at":"TEXT"},
+            "marketing_schedules": {
+                "account_id":"TEXT", "blocking_reason":"TEXT", "updated_at":"TEXT",
+                "attempts":"INTEGER NOT NULL DEFAULT 0", "last_attempt_at":"TEXT",
+                "next_retry_at":"TEXT", "last_error":"TEXT", "idempotency_key":"TEXT"},
+            "social_post_results": {
+                "creative_id":"TEXT", "schedule_id":"TEXT", "account_id":"TEXT",
+                "status":"TEXT", "provider_metadata_json":"TEXT NOT NULL DEFAULT '{}'",
+                "error":"TEXT", "external_post_id":"TEXT", "idempotency_key":"TEXT"},
+        }
+        for table, columns in additions.items():
+            present={row[1] for row in self.db.execute(f"PRAGMA table_info({table})")}
+            for column, declaration in columns.items():
+                if column not in present:
+                    self.db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+        self.db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_marketing_schedule_key ON marketing_schedules(idempotency_key) WHERE idempotency_key IS NOT NULL")
+        self.db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_social_post_schedule ON social_post_results(schedule_id) WHERE schedule_id IS NOT NULL")
 
     def settings(self) -> dict[str, Any]:
         row=dict(self.db.execute("SELECT * FROM marketing_settings WHERE id=1").fetchone())
@@ -197,7 +221,7 @@ class MarketingRepository:
             (f"audit:{uuid4()}",event,entity_type,entity_id,actor,now(),json.dumps(dict(details),ensure_ascii=False,sort_keys=True)))
 
     def rows(self, table: str, *, status: str | None=None, limit: int=100) -> list[dict[str,Any]]:
-        allowed={"marketing_signals","marketing_opportunities","marketing_proposals","marketing_schedules","marketing_campaigns","marketing_assets","marketing_audit","social_connections","social_post_results"}
+        allowed={"marketing_signals","marketing_opportunities","marketing_proposals","marketing_schedules","marketing_campaigns","marketing_assets","marketing_audit","social_connections","social_post_results","marketing_publication_history"}
         if table not in allowed: raise ValueError("table not allowed")
         query=f"SELECT * FROM {table}"; args=[]
         if status: query+=" WHERE status=?";args.append(status)
@@ -338,7 +362,7 @@ class MarketingAutopilot:
         if not row or row[0]!="APPROVED": raise PermissionError("Only APPROVED proposals can be scheduled")
         datetime.fromisoformat(scheduled_at); identifier=f"schedule:{uuid4()}"
         with self.repo.db:
-            self.repo.db.execute("INSERT INTO marketing_schedules VALUES(?,?,?,?,?,?,?,?)",(identifier,proposal_id,channel,creative_id,scheduled_at,timezone_name,"SCHEDULED",now()));self.repo.db.execute("UPDATE marketing_proposals SET status='SCHEDULED',updated_at=? WHERE proposal_id=?",(now(),proposal_id));self.repo.audit("PROPOSAL_SCHEDULED","MarketingSchedule",identifier,actor,{"proposal_id":proposal_id,"channel":channel,"scheduled_at":scheduled_at})
+            self.repo.db.execute("INSERT INTO marketing_schedules(schedule_id,proposal_id,channel,creative_id,scheduled_at,timezone,status,created_at) VALUES(?,?,?,?,?,?,?,?)",(identifier,proposal_id,channel,creative_id,scheduled_at,timezone_name,"SCHEDULED",now()));self.repo.db.execute("UPDATE marketing_proposals SET status='SCHEDULED',updated_at=? WHERE proposal_id=?",(now(),proposal_id));self.repo.audit("PROPOSAL_SCHEDULED","MarketingSchedule",identifier,actor,{"proposal_id":proposal_id,"channel":channel,"scheduled_at":scheduled_at})
         return identifier
 
     def expire(self,at: str|None=None) -> int:

@@ -78,6 +78,9 @@ class InventoryApp:
         self.marketing=MarketingAutopilot(self.marketing_repository,self.os_repository,self.media.repository,sales=self.sales)
         self.creative_ai=CreativeAIService(self.marketing_repository,self.os_repository,self.media.repository)
         self.creative_review=CreativeReviewService(self.marketing_repository)
+        self.social_connections=SocialConnectionService(self.marketing_repository)
+        self.marketing_scheduling=MarketingSchedulingService(self.marketing_repository)
+        self.social_publishing=SocialPublishingService(self.marketing_repository)
         # Optional external integration: configuration and client are resolved only
         # when an authenticated operator explicitly requests PREVIEW/APPLY.
         self.media_import=PrestaShopMediaProvider(service.repo.path,self.media,self.os_repository,
@@ -179,8 +182,8 @@ class InventoryApp:
                 return self._json(start,self.marketing.transition(identifier,str(body.get("status") or ""),session.get("u","authenticated"),str(body.get("reason") or "")))
             if path.startswith("/api/marketing/proposals/") and path.endswith("/schedule") and method == "POST":
                 identifier=unquote(path.removeprefix("/api/marketing/proposals/").removesuffix("/schedule"));body=self._body(env)
-                schedule=self.marketing.schedule(identifier,str(body.get("channel") or ""),str(body.get("scheduled_at") or ""),str(body.get("timezone") or "UTC"),session.get("u","authenticated"),body.get("creative_id"))
-                return self._json(start,{"schedule_id":schedule},"201 Created")
+                schedule=self.marketing_scheduling.create(identifier,str(body.get("creative_id") or ""),str(body.get("channel") or ""),str(body.get("account_id") or ""),str(body.get("scheduled_at") or ""),str(body.get("timezone") or "UTC"),session.get("u","authenticated"))
+                return self._json(start,{"schedule":schedule},"201 Created")
             if path == "/api/marketing/media" and method == "GET":
                 q=parse_qs(env.get("QUERY_STRING",""));usage=q.get("usage",[""])[0]
                 rows=self.media.repository.db.execute("SELECT * FROM product_media WHERE active=1 ORDER BY product_key,role").fetchall()
