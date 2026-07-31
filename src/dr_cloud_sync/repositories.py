@@ -187,6 +187,7 @@ class SQLiteOSRepository(MemoryCatalogRepository, MemoryAuditRepository):
     Additive columns also upgrade the former JSON-only ``drcloud_products`` table.
     """
     def __init__(self, path: Path, products: list[Product]):
+        self.path = Path(path)
         MemoryCatalogRepository.__init__(self, products)
         MemoryAuditRepository.__init__(self)
         self.db = sqlite3.connect(path, check_same_thread=False)
@@ -229,6 +230,17 @@ class SQLiteOSRepository(MemoryCatalogRepository, MemoryAuditRepository):
         self.db.commit()
         loaded=[self._product(r) for r in self.db.execute("SELECT * FROM drcloud_products ORDER BY drcloud_product_key")]
         self.products={p.drcloud_product_key:p for p in loaded}
+
+    def reload(self) -> list[Product]:
+        """Replace the process-local snapshot with the committed canonical rows."""
+        loaded = [self._product(row) for row in self.db.execute(
+            "SELECT * FROM drcloud_products ORDER BY drcloud_product_key")]
+        self.products = {product.drcloud_product_key: product for product in loaded}
+        return loaded
+
+    def reopened(self):
+        """Return an independent connection, used to prove commit durability."""
+        return type(self)(self.path, [])
 
     def _migrate_legacy_json(self) -> None:
         for row in self.db.execute("SELECT * FROM drcloud_products WHERE prestashop_key IS NULL").fetchall():

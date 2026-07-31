@@ -221,28 +221,50 @@ class CatalogueRehydrationService:
             if changes:
                 self.repository.apply_commercial_changes(raw["product_key"], changes, [])
                 changed += 1; fields_changed += len(changes)
-        after = self._invariants()
-        if before != after: raise RuntimeError("invariant catalogue/identite/stock viole")
+        # Do not certify the in-process objects: a successful UPDATE counter is not
+        # proof that the canonical row survived commit and reconstruction.
+        persisted_repository = self.repository.reopened() if hasattr(self.repository, "reopened") else self.repository
+        try:
+            after = self._invariants(persisted_repository)
+            if before != after:
+                raise RuntimeError("invariant catalogue/identite/stock viole")
+            persisted = {product.drcloud_product_key: product
+                         for product in persisted_repository.all()}
+            for raw in preview["safe"]:
+                product = persisted.get(raw["product_key"])
+                if product is None:
+                    raise RuntimeError(f"verification post-commit impossible: {raw['product_key']}")
+                for name in raw["current"]:
+                    if (name in raw["candidates"] and raw["current"][name] != raw["candidates"][name]
+                            and getattr(product, name) != raw["candidates"][name]):
+                        raise RuntimeError(
+                            f"verification post-commit echouee: {raw['product_key']}:{name}")
+            quality = self._quality(persisted.values())
+        finally:
+            if persisted_repository is not self.repository:
+                persisted_repository.db.close()
         summary = {**preview["summary"], "changed": changed,
                    "unchanged": len(preview["items"])-changed, "fields_changed": fields_changed,
-                   "errors": 0, "backup": str(backup_path)}
+                   "errors": 0, "backup": str(backup_path), "after": quality}
         self.repository.add_activity(ActivityLog("CATALOGUE_REHYDRATION_COMPLETED", "catalogue", "CATALOGUE",
           {"actor": actor, "changed_products": changed, "fields_changed": fields_changed,
            "ambiguous_count": preview["summary"]["ambiguous"]}))
         return summary
 
-    def _invariants(self):
-        products = self.repository.all()
+    def _invariants(self, repository=None):
+        repository = repository or self.repository
+        products = repository.all()
         protected_tables = ("stock_movements", "sessions", "counts", "history",
                             "inventory_stock_proposals", "inventory_stock_proposal_lines",
                             "purchase_orders", "purchase_order_lines", "goods_receipts",
                             "goods_receipt_lines")
-        preserved = tuple((name, self.repository.db.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0])
-                          for name in protected_tables if self._table(name))
+        preserved = tuple((name, repository.db.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0])
+                          for name in protected_tables if self._table(name, repository))
         return (len(products), tuple(sorted(p.drcloud_product_key for p in products)), preserved)
 
-    def _table(self, name):
-        return bool(self.repository.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone())
+    def _table(self, name, repository=None):
+        repository = repository or self.repository
+        return bool(repository.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone())
 
     @staticmethod
     def _quality(products):

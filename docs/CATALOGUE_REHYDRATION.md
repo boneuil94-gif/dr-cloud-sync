@@ -49,11 +49,30 @@ inventée.
 
 ## Incident et vérifications
 
+Les `product_observations` sont des faits externes et ne constituent jamais l'état
+commercial canonique. PREVIEW ne modifie que son rapport; APPLY_SAFE écrit
+`base_name`, `variant_name` et `attributes_json` dans `drcloud_products`. Les métriques
+de succès sont calculées après commit depuis une nouvelle connexion SQLite, puis
+chaque valeur candidate appliquée est comparée au `Product` reconstruit. Un écart
+fait échouer le job et interdit l'événement `CATALOGUE_REHYDRATION_COMPLETED`.
+
+L'incident de persistance apparente venait de deux snapshots repository distincts :
+le worker Administration écrivait correctement les colonnes canoniques, tandis que
+l'API Catalogue continuait à servir le snapshot mémoire chargé au démarrage. Les
+routes Catalogue rechargent désormais les lignes SQLite commitées avant de calculer
+la réponse et ses diagnostics. Le JSON historique `data` ne prime jamais sur les
+colonnes structurées lors de la reconstruction.
+
 Une erreur de sauvegarde arrête le job avant la première mutation. Une erreur
 d'intégrité est critique : ne pas tenter de restauration depuis l'interface, relever
 l'identifiant du job et de la sauvegarde, arrêter l'application et suivre la
 procédure opérateur ci-dessous. Les erreurs API ne révèlent ni chemin de fichier,
 ni configuration, ni contenu de sauvegarde.
+
+Après cet incident : déployer sans lancer APPLY, exécuter PREVIEW, contrôler que les
+champs canoniques manquants sont à nouveau proposés, sauvegarder, lancer explicitement
+APPLY_SAFE, attendre VERIFY, puis exécuter un nouveau PREVIEW. Le résultat 0/0 n'est
+acceptable que si une nouvelle connexion et l'API Catalogue exposent les variantes.
 
 ## Retour arrière
 
