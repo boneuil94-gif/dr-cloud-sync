@@ -351,15 +351,28 @@ class InventoryApp:
         # must therefore reload committed rows instead of serving the startup copy.
         if hasattr(self.os_repository, "reload"):
             self.os_repository.reload()
-        text=query.get("q",[""])[0].casefold(); selected=query.get("filter",["ALL"])[0]; conflicts={p.drcloud_product_key for p in self.os_repository.all() for other in self.os_repository.by_ean(p.ean) if p.ean and other.drcloud_product_key != p.drcloud_product_key}; counts=self.service.repo.counts(self.service.session()["id"]); rows=[]
-        for p in self.os_repository.all():
+        text=query.get("q",[""])[0].casefold(); selected=query.get("filter",["ALL"])[0]
+        allowed={"ALL","INCOMPLETE","WITH_EAN","WITHOUT_EAN","CONFLICT","WITH_IMAGE","WITHOUT_IMAGE","UNKNOWN_VARIANT"}
+        if selected not in allowed: raise ValueError("Filtre catalogue invalide")
+        products=self.os_repository.all()
+        ean_groups={}
+        for product in products:
+            if product.ean: ean_groups.setdefault(product.ean,[]).append(product.drcloud_product_key)
+        conflicts={key for keys in ean_groups.values() if len(keys)>1 for key in keys}
+        counts=self.service.repo.counts(self.service.session()["id"])
+        primaries=self.media.repository.primaries()
+        variants=self.media.repository.variants_for([media.media_id for media in primaries.values()])
+        diagnostics=self.os_repository.all_diagnostics() if hasattr(self.os_repository,"all_diagnostics") else None
+        rows=[]
+        for p in products:
             if text and text not in f"{p.base_name} {p.variant_name} {p.display_name} {p.attributes} {p.ean} {p.reference} {p.prestashop_key} {p.shopcaisse_item_id}".casefold(): continue
-            primary=self.media.primary(p.drcloud_product_key); missing_variant=bool(p.combination_id) and not p.variant_name
+            primary=primaries.get(p.drcloud_product_key); missing_variant=bool(p.combination_id) and not p.variant_name
             incomplete=missing_variant or not p.reference or not p.ean or not primary
             if (selected=="WITH_EAN" and not p.ean) or (selected=="WITHOUT_EAN" and p.ean) or (selected=="CONFLICT" and p.drcloud_product_key not in conflicts) or (selected=="INCOMPLETE" and not incomplete) or (selected=="WITH_IMAGE" and not primary) or (selected=="WITHOUT_IMAGE" and primary) or (selected=="UNKNOWN_VARIANT" and not missing_variant): continue
             row=asdict(p); row["display_name"]=p.display_name; problems=[]
             if p.drcloud_product_key in conflicts: problems.append("EAN dupliqué")
-            problems.extend(x["reason"] for x in self.os_repository.diagnostics(p.drcloud_product_key))
+            product_diagnostics=diagnostics.get(p.drcloud_product_key,[]) if diagnostics is not None else self.os_repository.diagnostics(p.drcloud_product_key)
+            problems.extend(x["reason"] for x in product_diagnostics)
             if not p.variant_name and p.combination_id: problems.append("Variante inconnue")
             if not p.reference: problems.append("Référence absente")
             if not p.ean: problems.append("EAN absent")
@@ -367,9 +380,9 @@ class InventoryApp:
             row["coherence"]="INCOHÉRENT" if any("conflit" in x.casefold() or "diverg" in x.casefold() for x in problems) else "ATTENTION" if problems else "OK"
             row["coherence_issues"]=problems
             row["diagnostics"]=problems
-            row["primary_media"]=self._media_json(primary) if primary else None
+            row["primary_media"]=self._media_json(primary,variants) if primary else None
             row["ean_status"]="CONFLICT" if p.drcloud_product_key in conflicts else "WITH_EAN" if p.ean else "WITHOUT_EAN"; count=counts.get(p.prestashop_key); row["physical_quantity"]=count["physical_quantity"] if count else None; rows.append(row)
-            self._with_media(row,p.drcloud_product_key)
+            self._with_media(row,p.drcloud_product_key,primary=primary,variants=variants)
         return rows
     def _catalogue_quality(self):
         if hasattr(self.os_repository, "reload"):
@@ -379,10 +392,16 @@ class InventoryApp:
         complete=sum(bool((not p.combination_id or p.variant_name) and p.reference and p.ean
                           and self.media.primary(p.drcloud_product_key)) for p in products)
         return {"total":total,"with_variant":sum(bool(p.variant_name) for p in products),"missing_variant":sum(bool(p.combination_id) and not p.variant_name for p in products),"with_ean":sum(bool(p.ean) for p in products),"without_ean":sum(not p.ean for p in products),"ean_conflict":conflicts,"with_image":pictured,"without_image":total-pictured,"complete":complete}
-    def _with_media(self,row,key,display=False):
-        media=self.media.primary(key); row["media_url"]=self.media.url(media,MediaVariantKind.DISPLAY if display else MediaVariantKind.THUMBNAIL); row["media_width"]=(media.width if media else None); row["media_height"]=(media.height if media else None); row["media_status"]="AVAILABLE" if media else "MISSING"; return row
-    def _media_json(self,media):
-        value=asdict(media); value.pop("storage_reference",None); value["url"]=self.media.url(media,MediaVariantKind.ORIGINAL); value["thumbnail_url"]=self.media.url(media); value["display_url"]=self.media.url(media,MediaVariantKind.DISPLAY); return value
+    def _media_url(self,media,kind,variants=None):
+        if not media: return None
+        if variants is None: return self.media.url(media,kind)
+        variant=variants.get((media.media_id,kind))
+        return f"/media/{media.media_id}/{kind.value.lower()}?v={variant.sha256[:16]}" if variant else None
+    def _with_media(self,row,key,display=False,primary=None,variants=None):
+        media=primary if variants is not None else self.media.primary(key); kind=MediaVariantKind.DISPLAY if display else MediaVariantKind.THUMBNAIL
+        row["media_url"]=self._media_url(media,kind,variants); row["media_width"]=(media.width if media else None); row["media_height"]=(media.height if media else None); row["media_status"]="AVAILABLE" if media else "MISSING"; return row
+    def _media_json(self,media,variants=None):
+        value=asdict(media); value.pop("storage_reference",None); value["url"]=f"/media/{media.media_id}/original?v={media.sha256[:16]}"; value["thumbnail_url"]=self._media_url(media,MediaVariantKind.THUMBNAIL,variants); value["display_url"]=self._media_url(media,MediaVariantKind.DISPLAY,variants); return value
     def _media_api(self,path,method,env,start,session):
         parts=path.removeprefix("/api/products/").split("/"); key=unquote(parts[0])
         if len(parts)==2 and parts[1]=="media" and method=="GET": return self._json(start,{"media":[self._media_json(x) for x in self.media.repository.list(key)]})
@@ -403,10 +422,14 @@ class InventoryApp:
         media_id=unquote(parts[1]); kind=MediaVariantKind(parts[2].upper()); media=self.media.repository.get(media_id)
         if not media: raise KeyError(media_id)
         variant=self.media.repository.variant(media_id,kind)
-        if not variant: raise KeyError(kind)
-        content=self.media.storage.read(variant.storage_reference)
+        if kind is MediaVariantKind.ORIGINAL:
+            storage_reference,mime_type=media.storage_reference,media.mime_type
+        elif variant:
+            storage_reference,mime_type=variant.storage_reference,variant.mime_type
+        else: raise KeyError(kind)
+        content=self.media.storage.read(storage_reference)
         headers=[("X-Request-ID",request_id),("Content-Length",str(len(content))),("Cache-Control","public, max-age=31536000, immutable")]
-        return self._send(start,b"" if head else content,variant.mime_type,headers=headers,cache=False)
+        return self._send(start,b"" if head else content,mime_type,headers=headers,cache=False)
     @staticmethod
     def _stock_movement(movement):
         labels={"INVENTORY":"Inventaire","LEGACY":"Historique","GOODS_RECEIPT":"Réception fournisseur"}
