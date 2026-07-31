@@ -48,6 +48,18 @@ def test_same_product_no_write_and_other_product_conflict():
     assert conflict.status == AssignmentStatus.CONFLICT
     assert audit.activities()[-1].event_type == "BARCODE_CONFLICT"
 
+def test_confirmation_rechecks_product_and_ean_for_concurrent_changes():
+    service,catalog,_,_,_=setup(); assignment=service.propose("drc:p:2","96385074")
+    catalog.set_ean("drc:p:2","4006381333930")
+    with pytest.raises(BarcodeError,match="entre-temps"): service.confirm(assignment.id)
+    catalog.set_ean("drc:p:2",""); assignment=service.propose("drc:p:2","96385074")
+    catalog.set_ean("drc:p:1","96385074")
+    with pytest.raises(BarcodeError,match="déjà associé"): service.confirm(assignment.id)
+
+def test_quick_assignment_is_prepared_but_disabled_by_default():
+    service,*_=setup()
+    assert service.ean_quick_assign is False
+
 def test_targets_simple_combination_and_shopcaisse_exact_id():
     simple,combination=products()
     assert prestashop_barcode_target(simple,"x") == {"resource":"products","id":1,"ean13":"x"}
