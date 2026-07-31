@@ -26,10 +26,14 @@ def validate_ean(value: str) -> str:
 
 class AssignBarcodeService:
     def __init__(self, catalog: CatalogRepository, audit: AuditRepository,
-                 prestashop: BarcodeConnector, shopcaisse: BarcodeConnector, mode: str | None = None):
+                 prestashop: BarcodeConnector, shopcaisse: BarcodeConnector, mode: str | None = None,
+                 ean_quick_assign: bool = False):
         self.catalog, self.audit = catalog, audit
         self.prestashop, self.shopcaisse = prestashop, shopcaisse
         self.mode = mode or os.environ.get("BARCODE_SYNC_MODE", "dry-run")
+        # Deliberately not read from an environment variable yet: enabling this
+        # future workflow must be an explicit application decision.
+        self.ean_quick_assign = ean_quick_assign
         if self.mode not in {"dry-run", "live"}: raise BarcodeError("BARCODE_SYNC_MODE invalide")
 
     def propose(self, key: str, value: str) -> BarcodeAssignment:
@@ -50,6 +54,12 @@ class AssignBarcodeService:
         if assignment.status != AssignmentStatus.PENDING_CONFIRMATION: return assignment
         product=self.catalog.get(assignment.drcloud_product_key)
         if not product: raise BarcodeError("Produit DrCloud inconnu")
+        if product.ean != assignment.previous_ean:
+            raise BarcodeError("Ce produit a reçu un EAN entre-temps. Rechargez la fiche.")
+        matches=self.catalog.by_ean(assignment.ean)
+        conflict=next((match for match in matches if match.drcloud_product_key != product.drcloud_product_key),None)
+        if conflict:
+            raise BarcodeError(f"EAN déjà associé à {conflict.name}")
         assignment.confirmed_at=utc_now(); assignment.status=AssignmentStatus.SYNCING
         assignment.payloads={"prestashop":prestashop_barcode_target(product,assignment.ean),"shopcaisse":shopcaisse_barcode_target(product,assignment.ean)}
         if self.mode == "dry-run":
