@@ -210,6 +210,8 @@ class InventoryApp:
             if path == "/api/catalogue/quality": return self._json(start,self._catalogue_quality())
             if path.startswith("/api/catalogue/products/") and path.endswith("/commercial"):
                 key=unquote(path.removeprefix("/api/catalogue/products/").removesuffix("/commercial"))
+                if hasattr(self.os_repository, "reload"):
+                    self.os_repository.reload()
                 if method == "GET":
                     product=self.os_repository.get(key)
                     if product is None: raise KeyError(key)
@@ -319,6 +321,10 @@ class InventoryApp:
         html=html.replace("{{SAFE_BANNER}}",'<div class="safe">Mode sécurisé — écritures externes désactivées</div>' if safe else "").replace("{{CSRF}}",session["csrf"] if session else "")
         return self._send(start,html.encode(),"text/html; charset=utf-8",status,[("X-Request-ID",request_id)])
     def _catalogue(self,query):
+        # Rehydration runs in an isolated worker repository.  Catalogue responses
+        # must therefore reload committed rows instead of serving the startup copy.
+        if hasattr(self.os_repository, "reload"):
+            self.os_repository.reload()
         text=query.get("q",[""])[0].casefold(); selected=query.get("filter",["ALL"])[0]; conflicts={p.drcloud_product_key for p in self.os_repository.all() for other in self.os_repository.by_ean(p.ean) if p.ean and other.drcloud_product_key != p.drcloud_product_key}; counts=self.service.repo.counts(self.service.session()["id"]); rows=[]
         for p in self.os_repository.all():
             if text and text not in f"{p.base_name} {p.variant_name} {p.display_name} {p.attributes} {p.ean} {p.reference} {p.prestashop_key} {p.shopcaisse_item_id}".casefold(): continue
@@ -337,6 +343,8 @@ class InventoryApp:
             self._with_media(row,p.drcloud_product_key)
         return rows
     def _catalogue_quality(self):
+        if hasattr(self.os_repository, "reload"):
+            self.os_repository.reload()
         products=self.os_repository.all(); total=len(products); pictured=sum(bool(self.media.primary(p.drcloud_product_key)) for p in products)
         conflicts=sum(bool(self.os_repository.diagnostics(p.drcloud_product_key)) for p in products)
         complete=sum(bool(p.variant_name and p.reference and p.ean and self.media.primary(p.drcloud_product_key)) for p in products)

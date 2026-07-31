@@ -45,6 +45,42 @@ def test_historical_snapshot_hyper_max_preview_and_apply_is_idempotent(tmp_path)
     assert repo.get(identities[0]).display_name == "AL FAKHER CROWN BAR Hyper Max Prime 50K — PEACH ICE"
     assert all(not p.ean and not p.reference for p in repo.all())
     assert [p.drcloud_product_key for p in repo.all()] == identities
+    repo.db.close()
+    reopened = SQLiteOSRepository(tmp_path / "db.sqlite", [])
+    assert [(p.product_id, int(p.combination_id), p.variant_name) for p in reopened.all()] == [
+        ("100", 710+i, name) for i, name in enumerate(NAMES)]
+    assert reopened.get(identities[0]).attributes == {"AL FAKHER 50K": "PEACH ICE"}
+    sql = reopened.db.execute("""SELECT base_name,variant_name,attributes_json,name,data
+                              FROM drcloud_products WHERE drcloud_product_key=?""",
+                            (identities[0],)).fetchone()
+    assert sql[1] == "PEACH ICE"
+    assert json.loads(sql[2]) == {"AL FAKHER 50K": "PEACH ICE"}
+    # The legacy bootstrap JSON remains old by design; structured columns win.
+    assert json.loads(sql[4])["variant_name"] == ""
+
+
+def test_apply_fails_verify_when_repository_claims_update_without_persisting(tmp_path, monkeypatch):
+    repo = SQLiteOSRepository(tmp_path / "db.sqlite", [product(710)])
+    observation = ProductObservation(repo.all()[0].drcloud_product_key, "PRESTASHOP", "710",
+                                     variant_name="PEACH ICE")
+    monkeypatch.setattr(repo, "apply_commercial_changes", lambda *args: None)
+    with pytest.raises(RuntimeError, match="verification post-commit echouee"):
+        CatalogueRehydrationService(repo, backup=lambda: "backup").apply_safe(
+            [observation], actor="admin")
+    assert repo.db.execute("""SELECT COUNT(*) FROM activity_logs
+                            WHERE json_extract(data,'$.event_type')='CATALOGUE_REHYDRATION_COMPLETED'""").fetchone()[0] == 0
+
+
+def test_apply_metrics_are_read_from_reopened_canonical_repository(tmp_path):
+    repo = SQLiteOSRepository(tmp_path / "db.sqlite", [product(710)])
+    observation = ProductObservation(repo.all()[0].drcloud_product_key, "PRESTASHOP", "710",
+                                     variant_name="PEACH ICE")
+    result = CatalogueRehydrationService(repo, backup=lambda: "backup").apply_safe(
+        [observation], actor="admin")
+    assert result["after"]["variants_known"] == 1
+    with repo.db:
+        repo.db.execute("UPDATE drcloud_products SET variant_name='' WHERE combination_id='710'")
+    assert CatalogueRehydrationService(repo.reopened()).preview([])["before"]["variants_known"] == 0
 
 
 def test_manual_override_conflict_is_never_overwritten(tmp_path):

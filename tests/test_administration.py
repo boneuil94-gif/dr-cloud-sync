@@ -62,6 +62,10 @@ def test_catalogue_rehydration_admin_preview_report_apply_and_csrf(configured, t
     applied = _wait_job(app, cookie)
     assert applied["last_apply"]["status"] == "SUCCEEDED"
     assert applied["last_apply"]["metrics"]["backup"].startswith("drcloud-os-backup-")
+    # The long-lived web repository was created before the worker committed.
+    # The API must nevertheless expose the canonical row, not that stale snapshot.
+    catalogue = json.loads(request(app, "/api/catalogue", cookie=cookie)[2])
+    assert next(row for row in catalogue if str(row["product_id"]) == "0")["reference"] == "REF-0"
     duplicate = json.loads(request(app, "/api/admin/catalogue-rehydration/apply", "POST", body, cookie,
                    {"X-CSRF-Token": csrf})[2])
     assert duplicate["reused"] is True
