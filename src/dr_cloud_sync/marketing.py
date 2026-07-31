@@ -239,8 +239,9 @@ class MarketingRepository:
 class MarketingAutopilot:
     """Deterministic catalogue → signal → opportunity → proposal orchestrator."""
     def __init__(self, repository: MarketingRepository, catalogue: Any, media_repository: Any,
-                 scoring: ConfigurableScoringEngine | None=None):
+                 scoring: ConfigurableScoringEngine | None=None, sales: Any | None=None):
         self.repo=repository; self.catalogue=catalogue; self.media=media_repository
+        self.sales=sales
         self.scoring=scoring or ConfigurableScoringEngine({"media_quality_score":1,"freshness_score":.5,"campaign_fatigue_score":1})
 
     @staticmethod
@@ -250,22 +251,49 @@ class MarketingAutopilot:
     def preview(self, limit: int | None=None) -> dict[str,Any]:
         maximum=min(limit or self.repo.settings()["max_proposals_day"],self.repo.settings()["max_proposals_day"])
         candidates=[]
+        sales_by_key={}
+        ranks={}
+        sales_fresh=False
+        if self.sales:
+            snapshot=self.sales.analytics()
+            sales_fresh=snapshot["status"]["freshness"]=="FRESH"
+            sales_by_key={p["product_key"]:p for p in snapshot["products"]}
+            ranks={p["product_key"]:rank for rank,p in enumerate(snapshot["products"],1)}
         for product in sorted(self.catalogue.all(),key=lambda p:p.drcloud_product_key):
             if str(product.status) not in {"ACTIVE","ProductStatus.ACTIVE"}: continue
             setting=self.repo.db.execute("SELECT marketing_enabled FROM marketing_product_settings WHERE product_key=?",(product.drcloud_product_key,)).fetchone()
             if setting and not setting[0]: continue
             media=self.media.primary(product.drcloud_product_key)
             if not media: continue
-            signal_key=self._key("PRODUCT_MEDIA_READY",product.drcloud_product_key,media.media_id)
-            score=self.scoring.score({"media_quality_score":100.0,"freshness_score":None,"campaign_fatigue_score":self._fatigue(product.drcloud_product_key)})
-            reason=["Produit actif",f"Média PRIMARY disponible ({media.media_id})","Aucune donnée de vente, stock ou saisonnalité inventée"]
+            metric=sales_by_key.get(product.drcloud_product_key) if sales_fresh else None
+            signal_type="PRODUCT_MEDIA_READY"; opportunity="PRODUCT_SPOTLIGHT"; facts=[]
+            velocity=growth=rank_score=None
+            if metric:
+                current=metric["last_7_days"]["units_sold"]; previous=metric["previous_7_days"]["units_sold"]
+                growth=metric["growth_rate"]; rank=ranks[product.drcloud_product_key]
+                velocity=min(100.0,current/25*100);rank_score=max(0,100-(rank-1)*10)
+                facts=[f"{current:g} unités vendues sur 7 jours",f"{previous:g} sur les 7 jours précédents",f"classement #{rank} sur la période"]
+                if current>=10 and growth is not None and growth>=.5:
+                    signal_type="SALES_SPIKE";opportunity="TRENDING_SPOTLIGHT";facts.insert(2,f"variation {growth:+.1%} (minimum 10 unités atteint)")
+                elif previous>=10 and growth is not None and growth<=-.4:
+                    signal_type="SALES_DROP";opportunity="REENGAGEMENT";facts.insert(2,f"variation {growth:+.1%} (historique suffisant)")
+                elif current>=10 and rank<=3:
+                    signal_type="BEST_SELLER";opportunity="BEST_SELLER_SPOTLIGHT"
+                elif current>=8 and growth is not None and growth>=.25:
+                    signal_type="TRENDING_PRODUCT";opportunity="TRENDING_SPOTLIGHT"
+                else: metric=None
+            signal_key=self._key(signal_type,product.drcloud_product_key,datetime.now(timezone.utc).date().isoformat())
+            fatigue=self._fatigue(product.drcloud_product_key)
+            score=self.scoring.score({"sales_velocity_score":velocity if metric else None,"growth_score":min(100,max(0,50+(growth or 0)*50)) if metric and growth is not None else None,"sales_rank_score":rank_score if metric else None,"media_quality_score":100.0,"freshness_score":100.0 if sales_fresh else None,"campaign_fatigue_score":fatigue})
+            reason=(facts if metric else ["Produit actif",f"Média PRIMARY disponible ({media.media_id})","Aucune donnée commerciale exploitable inventée"])+[f"fatigue Marketing {fatigue:.0f}/100"]
             candidates.append({"product_key":product.drcloud_product_key,"product_name":product.name,"media_id":media.media_id,
-                "signal":{"signal_type":"PRODUCT_MEDIA_READY","idempotency_key":signal_key,"reason":reason[1]},
-                "opportunity":{"type":"PRODUCT_SPOTLIGHT","score":score["score"],"score_detail":score,"reason":" · ".join(reason)},
+                "signal":{"signal_type":signal_type,"idempotency_key":signal_key,"reason":" · ".join(reason),"facts":facts},
+                "opportunity":{"type":opportunity,"score":score["score"],"score_detail":score,"reason":" · ".join(reason)},
                 "proposal":{"title":f"Mise en avant — {product.name}","status":"DRAFT","requires_approval":True}})
             if len(candidates)>=maximum: break
-        return {"mode":"PREVIEW","mutated":False,"automation_enabled":self.repo.settings()["automation_enabled"],"candidates":candidates,
-                "unavailable_sources":["sales","stock marketing","weather","holidays","events"]}
+        unavailable=["stock marketing","weather","holidays","events"]
+        if not sales_fresh: unavailable.insert(0,"sales")
+        return {"mode":"PREVIEW","mutated":False,"automation_enabled":self.repo.settings()["automation_enabled"],"candidates":candidates,"unavailable_sources":unavailable}
 
     def _fatigue(self, product_key: str) -> float:
         row=self.repo.db.execute("SELECT MAX(published_at) FROM marketing_publication_history WHERE product_key=?",(product_key,)).fetchone()
@@ -287,16 +315,17 @@ class MarketingAutopilot:
         key=item["signal"]["idempotency_key"]; existing=self.repo.db.execute("SELECT signal_id FROM marketing_signals WHERE idempotency_key=?",(key,)).fetchone()
         if existing:return existing[0]
         identifier=f"signal:{uuid4()}"; stamp=now()
-        self.repo.db.execute("INSERT INTO marketing_signals VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(identifier,"PRODUCT_MEDIA_READY","PRODUCT",item["product_key"],stamp,None,1.0,50,"CATALOGUE",json.dumps({"media_id":item["media_id"]}),"ACTIVE",key))
-        self.repo.audit("SIGNAL_CREATED","MarketingSignal",identifier,actor,{"reason":item["signal"]["reason"],"idempotency_key":key});created["signals"]+=1;return identifier
+        signal_type=item["signal"]["signal_type"]
+        self.repo.db.execute("INSERT INTO marketing_signals VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(identifier,signal_type,"PRODUCT",item["product_key"],stamp,None,1.0,50,"SALES_LEDGER" if signal_type not in {"PRODUCT_MEDIA_READY"} else "CATALOGUE",json.dumps({"media_id":item["media_id"],"facts":item["signal"].get("facts",[])}),"ACTIVE",key))
+        self.repo.audit("MARKETING_SIGNAL_DETECTED","MarketingSignal",identifier,actor,{"reason":item["signal"]["reason"],"idempotency_key":key});created["signals"]+=1;return identifier
 
     def _create_opportunity(self,item,signal_id,actor,created):
-        key=self._key("PRODUCT_SPOTLIGHT",signal_id); existing=self.repo.db.execute("SELECT opportunity_id FROM marketing_opportunities WHERE idempotency_key=?",(key,)).fetchone()
+        key=self._key(item["opportunity"]["type"],signal_id); existing=self.repo.db.execute("SELECT opportunity_id FROM marketing_opportunities WHERE idempotency_key=?",(key,)).fetchone()
         if existing:return existing[0]
         identifier=f"opportunity:{uuid4()}"; stamp=now(); expires=(datetime.now(timezone.utc)+timedelta(days=14)).isoformat()
         score=item["opportunity"]["score"] or 0
-        self.repo.db.execute("INSERT INTO marketing_opportunities VALUES(?,?,?,?,?,?,?,?,?,?,?)",(identifier,"PRODUCT_SPOTLIGHT",json.dumps([item["product_key"]]),json.dumps([signal_id]),score,json.dumps(item["opportunity"]["score_detail"]),item["opportunity"]["reason"],stamp,expires,"OPEN",key))
-        self.repo.audit("OPPORTUNITY_CREATED","MarketingOpportunity",identifier,actor,{"reason":item["opportunity"]["reason"],"score":score});created["opportunities"]+=1;return identifier
+        self.repo.db.execute("INSERT INTO marketing_opportunities VALUES(?,?,?,?,?,?,?,?,?,?,?)",(identifier,item["opportunity"]["type"],json.dumps([item["product_key"]]),json.dumps([signal_id]),score,json.dumps(item["opportunity"]["score_detail"]),item["opportunity"]["reason"],stamp,expires,"OPEN",key))
+        self.repo.audit("MARKETING_OPPORTUNITY_CREATED","MarketingOpportunity",identifier,actor,{"reason":item["opportunity"]["reason"],"score":score});created["opportunities"]+=1;return identifier
 
     def _create_proposal(self,item,opportunity_id,actor,created):
         key=self._key("PROPOSAL",opportunity_id); existing=self.repo.db.execute("SELECT proposal_id FROM marketing_proposals WHERE idempotency_key=?",(key,)).fetchone()
