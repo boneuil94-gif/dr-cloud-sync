@@ -63,7 +63,7 @@ jobs:
           assert report["prestashop_total"] == mapping["prestashop_total"]
           PY
       - name: Publier la table et le rapport
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mapping-prestashop-shopcaisse
           if-no-files-found: error

@@ -47,7 +47,7 @@ jobs:
         run: dr-cloud-sync shopcaisse-import-controlled
       - name: Publier le rapport sans secret
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rapport-import-controle-shopcaisse
           if-no-files-found: error

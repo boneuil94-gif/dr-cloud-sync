@@ -32,7 +32,7 @@ jobs:
           PRESTASHOP_API_URL: ${{ vars.PRESTASHOP_API_URL || 'https://dr-cloudshop.com/api' }}
         run: dr-cloud-sync shopcaisse-import-dry-run
       - name: Publier le dry-run
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dry-run-import-shopcaisse
           if-no-files-found: error

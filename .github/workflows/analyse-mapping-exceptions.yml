@@ -67,7 +67,7 @@ jobs:
           forbidden = ('PRESTASHOP_API_KEY', 'SHOPCAISSE_API_KEY', 'Authorization', 'Bearer ')
           assert not any(value in json.dumps([report, inventory]) for value in forbidden)
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: analyse-mapping-exceptions
           if-no-files-found: error
