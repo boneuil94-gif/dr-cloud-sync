@@ -28,6 +28,10 @@ class PrestaShopClient:
         "stock_availables",
         "manufacturers",
         "suppliers",
+        "orders",
+        "order_details",
+        "order_histories",
+        "order_states",
     )
 
     def __init__(
@@ -72,6 +76,10 @@ class PrestaShopClient:
                 "stock_availables": "stock_available",
                 "manufacturers": "manufacturer",
                 "suppliers": "supplier",
+                "orders": "order",
+                "order_details": "order_detail",
+                "order_histories": "order_history",
+                "order_states": "order_state",
             }[resource]
             container = container.get(singular, container)
         if not container:

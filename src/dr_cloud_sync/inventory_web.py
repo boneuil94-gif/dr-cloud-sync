@@ -25,12 +25,13 @@ from .hydration import ProductHydrationService
 from .admin_rehydration import AdminCatalogueRehydration, RehydrationConflict
 from .rehydration import packaged_historical_snapshot
 from .backup_service import BackupService, configured_backup_dir
-from .prestashop import PrestaShopError
+from .prestashop import PrestaShopClient, PrestaShopError
 from .media_import import PrestaShopIntegrationUnavailable, PrestaShopMediaProvider
 from .marketing import MarketingAutopilot, MarketingRepository
 from .creative_ai import CreativeAIService, CreativeGenerationError
 from .creative_review import CreativeReviewError, CreativeReviewService
 from .sales import SalesLedger, SocialAnalyticsService
+from .sales_ingestion import PrestaShopSalesProvider, SalesSyncService, ShopCaisseCSVProvider
 from .social import MarketingSchedulingService, SocialConnectionService, SocialPublishingService
 
 ROOT = Path(__file__).parent / "static"
@@ -75,6 +76,13 @@ class InventoryApp:
         self.media=ProductMediaService(SQLiteProductMediaRepository(service.repo.path),LocalMediaStorage(media_root),self.os_repository,self.os_repository)
         self.marketing_repository=MarketingRepository(service.repo.path)
         self.sales=SalesLedger(service.repo.path,self.os_repository)
+        sales_providers={}
+        paid_states=[x.strip() for x in os.environ.get("PRESTASHOP_PAID_STATE_IDS","").split(",") if x.strip()]
+        if os.environ.get("PRESTASHOP_API_URL") and os.environ.get("PRESTASHOP_API_KEY") and paid_states:
+            sales_providers["PRESTASHOP"]=PrestaShopSalesProvider(
+                PrestaShopClient(os.environ["PRESTASHOP_API_URL"],os.environ["PRESTASHOP_API_KEY"]),paid_states)
+        self.sales_sync=SalesSyncService(self.sales,sales_providers)
+        self.sales_import_preview=None
         self.social_analytics=SocialAnalyticsService(self.marketing_repository.db)
         self.marketing=MarketingAutopilot(self.marketing_repository,self.os_repository,self.media.repository,sales=self.sales)
         self.creative_ai=CreativeAIService(self.marketing_repository,self.os_repository,self.media.repository)
@@ -113,7 +121,7 @@ class InventoryApp:
                 "/inventory.css": ("inventory.css", "text/css; charset=utf-8"),
                 **{f"/{name}": (name, "text/javascript; charset=utf-8") for name in (
                     "app-shell.js", "inventory.js", "roadmap.js", "dashboard.js",
-                    "administration.js", "stock.js", "purchasing.js", "security.js", "marketing.js",
+                    "administration.js", "stock.js", "purchasing.js", "security.js", "marketing.js", "sales.js",
                 )},
             }
             if path in public_assets:
@@ -139,6 +147,23 @@ class InventoryApp:
             if path == "/stock": return self._html(start,"stock.html",session,request_id)
             if path == "/achats": return self._html(start,"purchasing.html",session,request_id)
             if path == "/marketing": return self._html(start,"marketing.html",session,request_id)
+            if path == "/sales": return self._html(start,"sales.html",session,request_id)
+            if path == "/api/sales/cockpit" and method == "GET":
+                return self._json(start,{"analytics":self.sales.analytics(),"sources":self.sales_sync.diagnostics(),"sales":self.sales_sync.sales(),"unmatched":self.sales_sync.unmatched()})
+            if path == "/api/sales/shopcaisse/preview" and method == "POST":
+                content=str(self._body(env).get("csv") or "");provider=ShopCaisseCSVProvider(content)
+                report=self.sales_sync.preview(provider);self.sales_import_preview={"content":content,"report":report}
+                self.sales._audit("SALES_IMPORT_PREVIEWED",session.get("u","authenticated"),report);return self._json(start,report)
+            if path == "/api/sales/shopcaisse/apply" and method == "POST":
+                content=str(self._body(env).get("csv") or "")
+                if not self.sales_import_preview or content!=self.sales_import_preview["content"]: raise ValueError("a matching preview is required")
+                provider=ShopCaisseCSVProvider(content);self.sales_sync.providers["SHOPCAISSE"]=provider
+                result=self.sales_sync.sync("SHOPCAISSE",actor=session.get("u","authenticated"));self.sales._audit("SALES_IMPORT_APPLIED",session.get("u","authenticated"),result);self.sales_import_preview=None
+                return self._json(start,result)
+            if path == "/api/sales/mappings" and method == "POST":
+                body=self._body(env);self.sales_sync.create_mapping(str(body.get("source") or ""),str(body.get("external_product_id") or ""),str(body.get("external_variant_id") or ""),str(body.get("product_key") or ""),session.get("u","authenticated"));return self._json(start,{"created":True},"201 Created")
+            if path == "/api/sales/sync/prestashop" and method == "POST":
+                return self._json(start,self.sales_sync.sync("PRESTASHOP",actor=session.get("u","authenticated")))
             if path == "/api/sales/status" and method == "GET": return self._json(start,self.sales.status())
             if path == "/api/sales/metrics" and method == "GET": return self._json(start,self.sales.analytics())
             if path.startswith("/api/sales/products/") and method == "GET":
@@ -260,7 +285,7 @@ class InventoryApp:
                     row,duplicates=self.suppliers.update(supplier_id,self._body(env),session.get("u","authenticated"))
                     return self._json(start,{"supplier":asdict(row),"possible_duplicates":[asdict(x) for x in duplicates]})
             if path == "/api/dashboard":
-                road=self.roadmap_service.load(); return self._json(start,{"progress_percent":road["global_progress_percent"],"next":next((m["next"] for m in road["modules"] if m.get("next")),None),"catalogue":len(self.service.items),"inventory":{"session":self.service.session(),"progress":self.service.progress()},"systems":self.admin_status.collect()},headers=[("X-Request-ID",request_id)])
+                road=self.roadmap_service.load(); return self._json(start,{"progress_percent":road["global_progress_percent"],"next":next((m["next"] for m in road["modules"] if m.get("next")),None),"catalogue":len(self.service.items),"inventory":{"session":self.service.session(),"progress":self.service.progress()},"systems":self.admin_status.collect(),"sales":{"last_7_days":self.sales.metrics(None,7),"last_30_days":self.sales.metrics(None,30),"freshness":self.sales.status()["freshness"]}},headers=[("X-Request-ID",request_id)])
             if path == "/api/state": return self._json(start,{"session":self.service.session(),"progress":self.service.progress(),"proposal":self.service.proposal()})
             if path == "/api/roadmap": return self._json(start,self.roadmap_service.load())
             if path == "/api/admin/status": return self._json(start,self.admin_status.collect(),headers=[("X-Request-ID",request_id)])

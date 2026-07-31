@@ -24,7 +24,7 @@ Définitions :
 | Inventaire + EAN | 80 % | IN_PROGRESS | 10 | Sessions, scan, comptage, exports et workflow de rapprochement présents ; validation terrain et activation live absentes. |
 | Stock + synchronisation | 90 % | IN_PROGRESS | 10 | mouvements, ledger, projections, idempotence et observation PrestaShop contrôlée présents ; alertes de stock faible absentes. |
 | Achats + fournisseurs | 80 % | IN_PROGRESS | 10 | fournisseurs, commandes, réceptions, validation et propositions de mouvements présents ; rapprochement catalogue et analyse prix/TVA absents. |
-| Ventes | 46,15 % | IN_PROGRESS | 8 | Le modèle analytique `SaleEvent`, le Sales Ledger SQLite, son idempotence/audit, le PREVIEW/APPLY CSV, le mapping canonique et les analytics 7/30 jours sont livrés ; le domaine de vente opérationnel et ses connecteurs réels restent futurs. |
+| Ventes | 76,92 % | IN_PROGRESS | 8 | Modèle opérationnel canonique, ingestion ShopCaisse CSV preview-first, commandes PrestaShop GET-only à états encaissés configurables, mapping persistant et alimentation automatique du Sales Ledger livrés ; réseau ShopCaisse et retours source complets restent partiels. |
 | Finance + pilotage | 0 % | TODO | 8 | Les analytics du Sales Ledger existent, mais marges fiables, TVA, valeur de stock et rentabilité Finance restent à construire. |
 | Clients + fidélité | 0 % | TODO | 6 | modèles, consentements, rapprochement et fidélité absents. |
 | Marketing + réseaux sociaux | 46,15 % | IN_PROGRESS | 8 | Les quatre fondations précédentes, Sales-driven Marketing v1 et la fondation Social Analytics provider-neutral sont livrés ; providers/conformité/publication réels, analytics sociaux live et intelligence stock/achats restent séparés. |
@@ -48,7 +48,7 @@ Les poids sont inchangés. Marketing compte désormais 6 jalons `DONE` sur 13, s
 
 L'audit de #78 confirme un `SaleEvent` source-neutral, un ledger SQLite append-only, des contraintes d'idempotence et un audit, un import CSV manuel PREVIEW/APPLY, le rapprochement canonique exact, les métriques 7/30 jours et leur cockpit, ainsi que des snapshots Social Analytics provider-neutral persistants aux métriques nullables. Il confirme également l'utilisation réelle du Sales Ledger par Marketing pour les signaux `BEST_SELLER`, `SALES_SPIKE`, `SALES_DROP` et `TRENDING_PRODUCT`, le score de fatigue, les opportunités et propositions testées. Cela justifie `Sales-driven Marketing v1 = DONE`.
 
-En revanche, les identités de source `SHOPCAISSE` et `PRESTASHOP` ne sont pas des connecteurs : elles restent explicitement `NOT_CONFIGURED`. Les modèles ventes opérationnels unifiés sont donc la prochaine dépendance, avant les imports ShopCaisse/PrestaShop réels, paiements, workflows de remboursement/retour et intégration caisse complète. Le Sales Ledger analytique ne rend pas le domaine Ventes opérationnel terminé.
+Ventes v1 ajoute désormais le modèle opérationnel et le flux automatique vers ce même ledger. PrestaShop est lu en GET-only avec une politique d’états encaissés explicite. Aucun endpoint réseau de ventes ShopCaisse n’étant vérifié dans le dépôt, seule l’ingestion d’un export CSV réel avec PREVIEW/APPLY est créditée; l’intégration réseau reste partielle. Les paiements et l’observation exhaustive des remboursements/retours restent futurs.
 
 ## Marketing : frontière v1 / production
 
@@ -60,4 +60,8 @@ Toute PR qui termine un milestone roadmap doit mettre à jour la roadmap canoniq
 
 ## Prochain ordre de livraison
 
-Construire ensuite les modèles ventes opérationnels unifiés, prérequis aux imports ShopCaisse et PrestaShop réels. Le Sales Ledger analytique et Sales-driven Marketing v1 sont livrés, mais ne couvrent ni Finance ni le Learning Loop mesuré. En parallèle, le passage social en production exige des providers homologués, une conformité métier officielle et une activation contrôlée ; Social Analytics live vient seulement après des publications réelles. L'intelligence stock et achats/marge doit rester fondée sur les ledgers existants, sans confondre ports/interfaces et décisions métier.
+Valider ensuite le format ShopCaisse sur export terrain et compléter les faits de remboursement/retour réellement exposés par les sources. Le Sales Ledger analytique et Sales-driven Marketing v1 sont livrés, mais ne couvrent ni Finance ni le Learning Loop mesuré. En parallèle, le passage social en production exige des providers homologués, une conformité métier officielle et une activation contrôlée ; Social Analytics live vient seulement après des publications réelles. L'intelligence stock et achats/marge doit rester fondée sur les ledgers existants, sans confondre ports/interfaces et décisions métier.
+
+## Progression de Ventes v1
+
+Les valeurs sont calculées depuis les jalons pondérés par `RoadmapService`, jamais stockées dans le JSON canonique : **progression globale 53,62 % → 56,08 %** et **Ventes 46,15 % → 76,92 %**.

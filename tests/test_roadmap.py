@@ -41,8 +41,8 @@ def test_module_progress_is_calculated_from_milestones():
 def test_global_and_remaining_are_calculated():
     data = RoadmapService(ROADMAP).load()
     expected = round(sum(m["weight"] * m["progress_percent"] / 100 for m in data["modules"]), 2)
-    assert data["global_progress_percent"] == expected == 53.62
-    assert data["remaining_percent"] == 100 - expected == 46.38
+    assert data["global_progress_percent"] == expected
+    assert data["remaining_percent"] == round(100 - expected, 2)
 
 
 def test_inconsistent_weights_are_rejected():
@@ -99,7 +99,7 @@ def test_dashboard_loads_dynamic_roadmap_and_keeps_existing_routes(service):
     payload = json.loads(roadmap_body)
     assert roadmap_status == "200 OK"
     assert len(payload["modules"]) == len(raw_roadmap()["modules"])
-    assert payload["global_progress_percent"] == 53.62
+    assert payload["global_progress_percent"] == RoadmapService(ROADMAP).load()["global_progress_percent"]
     for path in ("/roadmap", "/catalogue", "/inventaire", "/api/dashboard", "/api/state"):
         assert request(app, path)[0] == "200 OK"
 
@@ -155,12 +155,12 @@ def test_sales_distinguishes_analytic_ledger_from_operational_sales():
     assert all(by_id[f"06-sales-m0{number}"]["status"] == "DONE" for number in range(1, 7))
     assert "Sales Ledger analytique" in by_id["06-sales-m02"]["name"]
     assert "Import analytique manuel" in by_id["06-sales-m04"]["name"]
-    assert by_id["06-sales-m07"]["status"] == "TODO"  # operational models
-    assert by_id["06-sales-m08"]["status"] == "TODO"  # real ShopCaisse import
-    assert by_id["06-sales-m09"]["status"] == "TODO"  # real PrestaShop import
-    assert sales["next"] == by_id["06-sales-m07"]["name"]
+    assert by_id["06-sales-m07"]["status"] == "DONE"  # operational models
+    assert by_id["06-sales-m08"]["status"] == "IN_PROGRESS"  # CSV, no verified network endpoint
+    assert by_id["06-sales-m09"]["status"] == "DONE"  # GET-only paid orders
+    assert "ShopCaisse" in sales["next"]
     assert sales["status"] == "IN_PROGRESS"
-    assert sales["progress_percent"] == 46.15
+    assert sales["progress_percent"] == 76.92
 
 
 def test_canonical_file_contains_no_derived_progress_values():

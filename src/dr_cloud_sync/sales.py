@@ -28,7 +28,7 @@ class SaleKind(StrEnum):
 
 
 class Freshness(StrEnum):
-    FRESH="FRESH"; STALE="STALE"; UNAVAILABLE="UNAVAILABLE"
+    FRESH="FRESH"; STALE="STALE"; UNAVAILABLE="UNAVAILABLE"; ERROR="ERROR"
 
 
 class SalesSourcePort(Protocol):
@@ -129,6 +129,34 @@ class SalesLedger:
             elif row.get("shopcaisse_item_id") and str(getattr(product,"shopcaisse_item_id",''))==str(row["shopcaisse_item_id"]): candidates.append(product.drcloud_product_key)
         unique=set(candidates)
         return next(iter(unique)) if len(unique)==1 else None
+
+    def resolve_candidates(self,row: Mapping[str,Any]) -> list[str]:
+        """Return exact candidates; ambiguity is data, never an automatic match."""
+        keys=[]
+        for product in self.catalogue.all():
+            checks=(
+                row.get("product_key") and product.drcloud_product_key==row["product_key"],
+                row.get("prestashop_combination_id") and str(getattr(product,"combination_id",''))==str(row["prestashop_combination_id"]),
+                row.get("shopcaisse_item_id") and str(getattr(product,"shopcaisse_item_id",''))==str(row["shopcaisse_item_id"]),
+                row.get("ean") and getattr(product,"ean",None)==row["ean"],
+                row.get("reference") and getattr(product,"reference",None)==row["reference"],
+            )
+            if any(checks): keys.append(product.drcloud_product_key)
+        return sorted(set(keys))
+
+    def append(self,event: SaleEvent,*,match_status: str="MATCHED",batch_id: str|None=None) -> bool:
+        """Append one normalized event to the existing ledger (no stock side effect)."""
+        values=asdict(event)
+        cursor=self.db.execute("""INSERT OR IGNORE INTO sale_events VALUES(
+              ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+              (f"sale:{uuid4()}",event.source,event.external_sale_id,event.external_line_id,event.sold_at,event.timezone,
+               event.kind,event.product_key,match_status,str(event.quantity),
+               *[str(values[x]) if values[x] is not None else None for x in ("unit_price_ttc","unit_price_ht","line_total_ttc","line_total_ht","cost_basis")],
+               event.currency,event.channel,event.location,event.raw_reference,_now(),event.source_updated_at,event.idempotency_key,batch_id))
+        return bool(cursor.rowcount)
+
+    def list_events(self,limit: int=200) -> list[dict[str,Any]]:
+        return [dict(row) for row in self.db.execute("SELECT * FROM sale_events ORDER BY sold_at DESC LIMIT ?",(limit,))]
 
     def _parse(self,row: Mapping[str,Any],number: int) -> SaleEvent:
         source=SaleSource(str(row.get("source") or "IMPORT").upper()).value
