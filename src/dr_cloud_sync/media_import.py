@@ -272,6 +272,7 @@ class ProductMediaImportService:
                         "exclusive_image_ids":decision["exclusive_image_ids"],
                         "projected_classification":decision["classification"],
                         "candidate_image_id":decision["candidate_image_id"],
+                        "provenance":"COMBINATION_EXCLUSIVITY" if decision["candidate_image_id"] else None,
                         "deterministic_proof":decision["proof"],
                         "exclusivity_contradictions":decision["contradictions"]})
             family_matrices[parent_id]={"product_id":parent_id,"union_image_ids":union,
@@ -318,7 +319,13 @@ class ProductMediaImportService:
     def apply(self, preview: dict[str, Any] | None = None, *, actor="authenticated", batch_size=None) -> dict[str, Any]:
         # The UI preview is informative only: APPLY always reads PrestaShop and local PRIMARYs again.
         current=self.preview()
-        candidates=[x for x in current["items"] if x["classification"]=="SAFE" and not x["already_imported"]]
+        # This operation deliberately has a narrower gate than the historic generic
+        # importer: only the independently proven exclusivity classification is legal.
+        candidates=[x for x in current["items"]
+                    if x["classification"]=="AMBIGUOUS"
+                    and x["projected_classification"]=="SAFE_BY_COMBINATION_EXCLUSIVITY"
+                    and x["candidate_image_id"] and x["provenance"]=="COMBINATION_EXCLUSIVITY"
+                    and not x["already_imported"]]
         if batch_size is not None: candidates=candidates[:batch_size]
         job=self.jobs.create(job_type=JOB_TYPE,connector="PRESTASHOP",operation="APPLY_SAFE")
         def operation():
@@ -329,8 +336,11 @@ class ProductMediaImportService:
                 raise MediaError("Espace disque insuffisant avant import média")
             identities=sorted((p.drcloud_product_key,p.product_id,p.combination_id) for p in self.catalogue.all())
             business_before=self._business_fingerprint()
+            protected_keys=set(self.media.repository.primaries())
+            protected_before=self._media_snapshot(protected_keys)
             result={"processed":0,"imported":0,"skipped":0,"failed":0,"errors":[],
-                    "backup_id":backup["backup_id"],"repreview":current["summary"]}
+                    "backup_id":backup["backup_id"],"repreview":current["summary"],
+                    "primary_before":len(protected_keys)}
             for item in candidates:
                 result["processed"]+=1
                 reference=self._reference(item["product_id"],item.get("combination_id"),item["candidate_image_id"],item["provenance"])
@@ -354,14 +364,40 @@ class ProductMediaImportService:
             duplicates=self.media.repository.db.execute("""SELECT COUNT(*) FROM
               (SELECT product_key,source,source_reference,COUNT(*) n FROM product_media
                WHERE active=1 GROUP BY product_key,source,source_reference HAVING n>1)""").fetchone()[0]
-            result.update({"total_products":len(after),"products_with_primary":sum(bool(self.media.primary(p.drcloud_product_key)) for p in self.catalogue.all()),
+            primary_after=self.media.repository.primaries()
+            catalogue_by_key={p.drcloud_product_key:p for p in self.catalogue.all()}
+            catalogue_keys=set(catalogue_by_key)
+            orphan_count=self.media.repository.db.execute("""SELECT COUNT(*) FROM product_media
+                WHERE active=1 AND product_key NOT IN (SELECT drcloud_product_key FROM drcloud_products)""").fetchone()[0]
+            wrong_sources=[]
+            for row in self.media.repository.db.execute("""SELECT media_id,product_key,source_reference
+                    FROM product_media WHERE active=1 AND source='PRESTASHOP'"""):
+                try:
+                    reference=json.loads(row[2]); product=catalogue_by_key[row[1]]
+                    valid=(str(reference.get("product_id"))==str(product.product_id)
+                           and reference.get("combination_id")==(
+                               str(product.combination_id) if product.combination_id is not None else None))
+                except (KeyError,TypeError,ValueError,json.JSONDecodeError):
+                    valid=False
+                if not valid: wrong_sources.append(row[0])
+            protected_unchanged=protected_before==self._media_snapshot(protected_keys)
+            result.update({"total_products":len(after),"products_with_primary":len(primary_after),
                 "products_without_primary":sum(not self.media.primary(p.drcloud_product_key) for p in self.catalogue.all()),
-                "ignored_primary_existing":current["summary"]["existing_primary"],"ambiguous":current["summary"]["ambiguous"],
+                "primary_after":len(primary_after),
+                "ignored_primary_existing":current["summary"]["existing_primary"],
+                "ambiguous":current["summary"]["ambiguous_remaining"],
+                "safe_by_combination_exclusivity":current["summary"]["safe_by_combination_exclusivity"],
                 "no_data":current["summary"]["no_image"],"media_files_present":diagnostics["active_assets"]-diagnostics["missing_files"],
                 "missing_files":diagnostics["missing_files"],"corrupt_files":diagnostics["corrupt_files"],
-                "duplicate_product_media":duplicates,"identities_unchanged":identities==after,
+                "duplicate_product_media":duplicates,"orphan_product_media":orphan_count,
+                "wrong_prestashop_associations":wrong_sources,
+                "primary_product_associations_correct":all(key in catalogue_keys and key==media.product_key
+                                                             for key,media in primary_after.items()),
+                "protected_primary_count":len(protected_keys),"protected_primary_unchanged":protected_unchanged,
+                "identities_unchanged":identities==after,
                 "business_data_unchanged":business_before==self._business_fingerprint()})
-            if not result["identities_unchanged"] or not result["business_data_unchanged"]:
+            if (not result["identities_unchanged"] or not result["business_data_unchanged"]
+                    or not protected_unchanged):
                 raise RuntimeError("Invariant métier modifié pendant l'import média")
             self.catalogue.add_activity(ActivityLog(JOB_TYPE,"catalogue","PRODUCT_MEDIA",
                 {"actor":actor,"result":"PARTIAL" if result["failed"] else "SUCCESS",
@@ -371,6 +407,23 @@ class ProductMediaImportService:
         value=asdict(JobRunner(self.jobs).run(job,operation))
         value["status"]=value["status"].value
         return value
+
+    def _media_snapshot(self, product_keys: set[str]) -> tuple:
+        """Capture every media association (including variants) of protected products."""
+        if not product_keys:
+            return ()
+        placeholders=",".join("?" for _ in product_keys)
+        keys=sorted(product_keys)
+        media_rows=self.media.repository.db.execute(
+            f"SELECT * FROM product_media WHERE product_key IN ({placeholders}) ORDER BY media_id",keys).fetchall()
+        media_ids=[row[0] for row in media_rows]
+        variant_rows=[]
+        if media_ids:
+            marks=",".join("?" for _ in media_ids)
+            variant_rows=self.media.repository.db.execute(
+                f"SELECT * FROM product_media_variants WHERE media_id IN ({marks}) ORDER BY media_id,kind",
+                media_ids).fetchall()
+        return (tuple(tuple(row) for row in media_rows),tuple(tuple(row) for row in variant_rows))
 
     def _business_fingerprint(self) -> str:
         """Fingerprint every business table the media workflow must never mutate."""
