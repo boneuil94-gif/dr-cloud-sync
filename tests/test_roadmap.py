@@ -41,8 +41,8 @@ def test_module_progress_is_calculated_from_milestones():
 def test_global_and_remaining_are_calculated():
     data = RoadmapService(ROADMAP).load()
     expected = round(sum(m["weight"] * m["progress_percent"] / 100 for m in data["modules"]), 2)
-    assert data["global_progress_percent"] == expected == 49.3
-    assert data["remaining_percent"] == 100 - expected == 50.7
+    assert data["global_progress_percent"] == expected == 53.62
+    assert data["remaining_percent"] == 100 - expected == 46.38
 
 
 def test_inconsistent_weights_are_rejected():
@@ -80,7 +80,10 @@ def test_roadmap_page_uses_service_and_has_no_hardcoded_percentage(service):
     assert stub.called == 1
     html = (ROOT / "src/dr_cloud_sync/static/roadmap.html").read_text(encoding="utf-8")
     assert 'href="/roadmap"' in render_navigation("roadmap")
+    javascript = (ROOT / "src/dr_cloud_sync/static/roadmap.js").read_text(encoding="utf-8")
     assert "%" not in html
+    for derived_value in ("49.3", "53.62", "46.38", "33.33", "46.15"):
+        assert derived_value not in html and derived_value not in javascript
     assert request(app, "/roadmap")[0] == "200 OK"
 
 
@@ -96,7 +99,7 @@ def test_dashboard_loads_dynamic_roadmap_and_keeps_existing_routes(service):
     payload = json.loads(roadmap_body)
     assert roadmap_status == "200 OK"
     assert len(payload["modules"]) == len(raw_roadmap()["modules"])
-    assert payload["global_progress_percent"] == 49.3
+    assert payload["global_progress_percent"] == 53.62
     for path in ("/roadmap", "/catalogue", "/inventaire", "/api/dashboard", "/api/state"):
         assert request(app, path)[0] == "200 OK"
 
@@ -135,7 +138,29 @@ def test_marketing_recognises_v1_without_claiming_production_future_done():
     assert by_id["09-marketing-m02"]["status"] == "DONE"  # Creative AI v1
     assert by_id["09-marketing-m04"]["status"] == "DONE"  # social pipeline v1
     assert by_id["09-marketing-m05"]["status"] == "BLOCKED"  # real providers
+    assert by_id["09-marketing-m06"]["status"] == "BLOCKED"  # official compliance
+    assert by_id["09-marketing-m07"]["status"] == "BLOCKED"  # real publishing
     assert by_id["09-marketing-m08"]["status"] == "TODO"  # live analytics
+    assert by_id["09-marketing-m09"]["status"] == "DONE"  # sales-driven v1
+    assert by_id["09-marketing-m10"]["status"] == "TODO"  # stock-driven
+    assert by_id["09-marketing-m11"]["status"] == "TODO"  # purchase/margin
+    assert by_id["09-marketing-m12"]["status"] == "TODO"  # measured learning loop
+    assert by_id["09-marketing-m13"]["status"] == "DONE"  # provider-neutral analytics foundation
+    assert marketing["progress_percent"] == 46.15
+
+
+def test_sales_distinguishes_analytic_ledger_from_operational_sales():
+    sales = next(m for m in RoadmapService(ROADMAP).load()["modules"] if m["id"] == "06-sales")
+    by_id = {item["id"]: item for item in sales["milestones"]}
+    assert all(by_id[f"06-sales-m0{number}"]["status"] == "DONE" for number in range(1, 7))
+    assert "Sales Ledger analytique" in by_id["06-sales-m02"]["name"]
+    assert "Import analytique manuel" in by_id["06-sales-m04"]["name"]
+    assert by_id["06-sales-m07"]["status"] == "TODO"  # operational models
+    assert by_id["06-sales-m08"]["status"] == "TODO"  # real ShopCaisse import
+    assert by_id["06-sales-m09"]["status"] == "TODO"  # real PrestaShop import
+    assert sales["next"] == by_id["06-sales-m07"]["name"]
+    assert sales["status"] == "IN_PROGRESS"
+    assert sales["progress_percent"] == 46.15
 
 
 def test_canonical_file_contains_no_derived_progress_values():
