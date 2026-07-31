@@ -8,6 +8,7 @@ import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 from .admin_status import application_metadata
+from .backup_service import BackupService
 
 
 def init_catalog(source: Path, report: Path, database: Path) -> int:
@@ -33,27 +34,11 @@ def init_catalog(source: Path, report: Path, database: Path) -> int:
     return count
 
 
-def backup(database: Path, destination: Path, *, environment: str, safe_mode: bool) -> Path:
-    if not database.exists(): raise FileNotFoundError(f"Base absente: {database}")
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    target = destination / f"drcloud-os-backup-{stamp}"; target.mkdir(parents=True, exist_ok=False)
-    source = sqlite3.connect(database); copy = sqlite3.connect(target / "drcloud.db")
-    with copy: source.backup(copy)
-    source.close(); copy.close()
-    media_source=database.parent/"media"
-    media_target=target/"media"
-    if media_source.is_dir(): shutil.copytree(media_source,media_target,symlinks=False)
-    media_files=[]
-    if media_target.is_dir():
-        for path in sorted(p for p in media_target.rglob("*") if p.is_file()):
-            media_files.append({"path":path.relative_to(target).as_posix(),"size":path.stat().st_size,
-                                "sha256":hashlib.sha256(path.read_bytes()).hexdigest()})
-    metadata = {"application":"drcloud-os", "version":application_metadata()["version"],
-                "commit":os.environ.get("DRCLOUD_BUILD_COMMIT", "unknown"), "created_at":stamp,
-                "media":{"included":True,"files":media_files},
-                "configuration":{"DRCLOUD_ENV":environment,"DRCLOUD_SAFE_MODE":safe_mode,"BARCODE_SYNC_MODE":"dry-run"}}
-    (target / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-    return target
+def backup(database: Path, destination: Path, *, environment: str, safe_mode: bool,
+           reason: str = "MANUAL") -> Path:
+    result = BackupService(destination).create(database, reason=reason, environment=environment,
+        safe_mode=safe_mode, application=application_metadata())
+    return Path(destination) / result["backup_id"]
 
 
 def restore_backup(source: Path, data_dir: Path) -> None:

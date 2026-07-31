@@ -1,5 +1,7 @@
 # Dr Cloud Sync v1
 
+Voir [le stockage persistant des sauvegardes DrCloud OS](docs/backup-storage.md) pour la configuration `DRCLOUD_BACKUP_DIR`, la supervision et la restauration opérateur.
+
 Dr Cloud Sync construit un snapshot local du catalogue dont **PrestaShop est la source maître**.
 La v1 lit le Webservice de `dr-cloudshop.com` et conserve les réponses JSON complètes pour :
 

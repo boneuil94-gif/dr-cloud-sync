@@ -90,7 +90,7 @@ La PWA fournit manifeste, icône et installation à l'écran d'accueil, sans ser
 ## Sauvegarde et restauration
 
 ```bash
-DRCLOUD_DATA_DIR=/data DRCLOUD_BACKUP_DIR=/backups dr-cloud-sync os-backup
+DRCLOUD_DATA_DIR=/data DRCLOUD_BACKUP_DIR=/data/backups dr-cloud-sync os-backup
 ```
 
 La commande utilise l'API de sauvegarde SQLite et crée `drcloud.db` plus `metadata.json` (version et configuration non secrète seulement). La présence de la commande ne signifie pas qu'une sauvegarde a été exécutée : automatiser, chiffrer hors hôte et tester la restauration.

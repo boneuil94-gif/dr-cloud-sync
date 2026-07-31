@@ -8,6 +8,7 @@ import sqlite3
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from .backup_service import BackupService, configured_backup_dir
 
 LOG = logging.getLogger("drcloud.os.admin")
 VALID_STATUSES = {"ok", "warning", "error", "unknown"}
@@ -29,9 +30,11 @@ class AdminStatusService:
     """Collect a deliberately small allow-list of non-sensitive runtime data."""
 
     def __init__(self, database: Path, *, backup_root: Path | None = None,
+                 backup_service: BackupService | None = None,
                  deployment_marker: Path | None = None, now=None, disk_usage=None):
         self.database = Path(database)
-        self.backup_root = Path(backup_root or os.environ.get("DRCLOUD_BACKUP_ROOT", "/backups"))
+        self.backup_root = Path(backup_root) if backup_root else configured_backup_dir(self.database.parent)
+        self.backup_service = backup_service or BackupService(self.backup_root)
         self.deployment_marker = Path(deployment_marker or os.environ.get(
             "DRCLOUD_DEPLOYMENT_MARKER",
             "/run/drcloud-deployment/last-successful-commit"))
@@ -80,34 +83,40 @@ class AdminStatusService:
                 "size_bytes": max(0, size), "check": check}
 
     def _backup(self):
-        if not self.backup_root.is_dir():
-            return {"status": "unknown", "available": False, "count": 0,
-                    "last_backup_at": None, "age_seconds": None}
-        candidates = []
-        for item in self.backup_root.iterdir():
-            if not item.is_dir() or not (item / "drcloud.db").is_file():
-                continue
-            created = datetime.fromtimestamp((item / "drcloud.db").stat().st_mtime, timezone.utc)
-            metadata = item / "metadata.json"
-            if metadata.is_file():
+        health = self.backup_service.health(create=False)
+        if not health["available"]:
+            status = "unknown" if not self.backup_root.exists() else health["status"]
+            return {**health, "status": status, "count": 0, "last_backup_at": None, "age_seconds": None,
+                    "last_backup_id": None, "reason": None, "size_bytes": None}
+        backups = self.backup_service.successful()
+        # Read-only compatibility for bundles produced before atomic metadata v2.
+        if not backups:
+            for item in self.backup_root.iterdir():
+                database = item / "drcloud.db"
+                if not item.is_dir() or not database.is_file():
+                    continue
+                created = datetime.fromtimestamp(database.stat().st_mtime, timezone.utc)
                 try:
                     import json
-                    raw = json.loads(metadata.read_text(encoding="utf-8"))
-                    if raw.get("media",{}).get("included") is not True:
-                        continue
+                    raw = json.loads((item / "metadata.json").read_text(encoding="utf-8"))
                     stamp = raw.get("created_at")
                     if stamp:
                         created = datetime.strptime(stamp, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
                 except (OSError, ValueError, TypeError):
-                    LOG.warning("invalid_backup_metadata backup=%s", item.name)
-            candidates.append(created)
-        if not candidates:
-            return {"status": "warning", "available": True, "count": 0,
-                    "last_backup_at": None, "age_seconds": None}
-        latest = max(candidates); age = max(0, int((self.now() - latest).total_seconds()))
+                    LOG.warning("invalid_legacy_backup_metadata backup=%s", item.name)
+                backups.append({"backup_id": item.name, "created_at": created.isoformat().replace("+00:00", "Z"),
+                                "reason": "LEGACY", "size_bytes": database.stat().st_size})
+        if not backups:
+            return {**health, "status": "warning", "count": 0, "last_backup_at": None,
+                    "age_seconds": None, "last_backup_id": None, "reason": None, "size_bytes": None}
+        last = backups[0]
+        latest = datetime.fromisoformat(last["created_at"].replace("Z", "+00:00"))
+        age = max(0, int((self.now() - latest).total_seconds()))
         status = "ok" if age <= 86400 else "warning" if age <= 172800 else "error"
-        return {"status": status, "available": True, "count": len(candidates),
-                "last_backup_at": latest.isoformat().replace("+00:00", "Z"), "age_seconds": age}
+        return {**health, "status": status, "count": len(backups),
+                "last_backup_at": last["created_at"], "age_seconds": age,
+                "last_backup_id": last["backup_id"], "reason": last["reason"],
+                "size_bytes": last["size_bytes"]}
 
     def _deployment(self, metadata):
         served = self._valid_commit(metadata["commit"])
