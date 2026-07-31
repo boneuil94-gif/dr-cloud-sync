@@ -9,7 +9,7 @@ description = "Synchronisation PrestaShop maître vers le référentiel Dr Cloud
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "Proprietary"}
-dependencies = ["waitress==3.0.2", "Pillow==11.3.0"]
+dependencies = ["waitress==3.0.2", "Pillow==12.3.0"]
 
 [project.scripts]
 dr-cloud-sync = "dr_cloud_sync.cli:main"
