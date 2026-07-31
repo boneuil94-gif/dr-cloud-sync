@@ -1,4 +1,5 @@
 from io import BytesIO
+import json
 from pathlib import Path
 
 from PIL import Image
@@ -200,3 +201,61 @@ def test_exclusivity_preview_is_the_only_apply_candidate_and_is_idempotent(tmp_p
     assert all(media.primary(product.drcloud_product_key) is not None for product in products)
     again=importer.apply(importer.preview())
     assert again["summary"]["processed"]==again["summary"]["imported"]==0
+
+
+def test_manual_resolution_validates_candidates_identity_backup_and_persists(tmp_path):
+    products=[Product("drc:1:10","1:10",1,10,1,"Variant",variant_name="Rouge"),
+              Product("drc:2:0","2:0",2,None,2,"Simple")]
+    client=FakePrestaShop([{"id":1,**assoc(11,12)},{"id":2,**assoc(21,22)}],
+                         [{"id":10,"id_product":1,**assoc(11,12)}])
+    importer,media=setup(tmp_path,client,products)
+    before=importer._business_fingerprint()
+    try: importer.resolve_manual("drc:1:10","999",actor="admin")
+    except ValueError as exc: assert "candidates" in str(exc)
+    else: raise AssertionError("non-candidate accepted")
+    assert client.downloads==[]
+
+    resolved=importer.resolve_manual("drc:1:10","12",actor="admin")
+    primary=media.primary("drc:1:10"); reference=json.loads(primary.source_reference)
+    assert resolved["status"]=="RESOLVED" and reference=={
+        "resource":"images/products/1/12","image_id":"12","product_id":"1",
+        "combination_id":"10","provenance":"MANUAL_AMBIGUITY_RESOLUTION"}
+    assert importer._business_fingerprint()==before
+    assert resolved["summary"]["existing_primary"]==1
+    assert resolved["summary"]["ambiguous_remaining"]==1
+    assert importer.resolve_manual("drc:1:10","12")["status"]=="ALREADY_RESOLVED"
+    assert client.downloads==[("1","12")]
+    try: importer.resolve_manual("drc:1:10","11")
+    except ValueError as exc: assert "PRIMARY" in str(exc)
+    else: raise AssertionError("primary overwritten")
+    assert media.primary("drc:1:10").media_id==primary.media_id
+
+    # Parent candidates and a null combination identity are valid for a simple product.
+    importer.resolve_manual("drc:2:0","21",actor="admin")
+    simple=json.loads(media.primary("drc:2:0").source_reference)
+    assert simple["product_id"]=="2" and simple["combination_id"] is None
+    reopened=SQLiteProductMediaRepository(tmp_path/"drcloud.db")
+    assert reopened.primary("drc:1:10").media_id==primary.media_id
+    events=[x for x in importer.catalogue.activities() if x.event_type=="PRESTASHOP_MEDIA_MANUALLY_RESOLVED"]
+    assert [(x.drcloud_product_key,x.metadata["image_id"]) for x in events]==[("drc:1:10","12"),("drc:2:0","21")]
+
+
+def test_manual_resolution_simulates_final_478_counters_without_catalogue_writes(tmp_path):
+    products=[]; parents=[]; combinations=[]
+    for index in range(478):
+        pid=index+1; key=f"drc:{pid}:0"
+        products.append(Product(key,f"{pid}:0",pid,None,pid,f"Produit {pid}"))
+        parents.append({"id":pid,**assoc(pid*10+1,pid*10+2)})
+    client=FakePrestaShop(parents,combinations)
+    importer,media=setup(tmp_path,client,products)
+    # Model the 467 protected production PRIMARYs; only the eleven ambiguous cases use the resolver.
+    for product in products[:467]: media.add(product.drcloud_product_key,png("blue"))
+    catalogue_before=importer._business_fingerprint()
+    for product in products[467:]:
+        importer.resolve_manual(product.drcloud_product_key,str(product.product_id*10+1),actor="test")
+    final=importer.preview()["summary"]
+    assert final["processed"]==478 and final["existing_primary"]==478
+    assert final["no_image"]==final["ambiguous"]==final["ambiguous_remaining"]==0
+    assert final["safe_by_combination_exclusivity"]==0
+    assert importer._business_fingerprint()==catalogue_before
+    assert len(client.downloads)==11  # GET downloads only; the fake exposes no write method.
