@@ -47,7 +47,7 @@ class CreativeBrief:
     objective: str; audience: str; angle: str; required_assets: tuple[str, ...]
     packaging_policy: str = "PRESERVE_ORIGINAL"
     style: str = "Identité DrCloud"
-    formats: tuple[str, ...] = ("INSTAGRAM_STORY", "INSTAGRAM_POST", "FACEBOOK", "SNAPCHAT")
+    formats: tuple[str, ...] = ("STORY", "SQUARE")
     cta: str = "Disponible chez DrCloud."
 
 
@@ -55,13 +55,13 @@ class CreativeBrief:
 class BrandKit:
     brand_kit_id: str = "brandkit:drcloud"
     logo_asset: str = "/drcloud-logo.png"
-    colors: tuple[str, ...] = ()
+    colors: tuple[str, ...] = ("#111111", "#FFFFFF", "#16A366")
     typography_rules: tuple[str, ...] = ("Utiliser uniquement les typographies approuvées",)
-    tone: str = "Clair, utile et fidèle à DrCloud"
+    tone: str = "Moderne, premium, très propre et fidèle à DrCloud"
     preferred_ctas: tuple[str, ...] = ("Disponible chez DrCloud.",)
     allowed_elements: tuple[str, ...] = ("assets officiels", "PRIMARY produit original")
     forbidden_elements: tuple[str, ...] = ("logo approximatif", "packaging modifié", "saveur inventée")
-    templates: tuple[str, ...] = ()
+    templates: tuple[str, ...] = ("DRCLOUD_CLEAN_PRODUCT",)
     safe_zones: Mapping[str, Any] = field(default_factory=dict)
 
 

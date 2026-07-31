@@ -29,6 +29,8 @@ class ProductCreativeFacts:
     reference: str
     ean: str
     primary_media_id: str
+    primary_media_url: str
+    primary_media_sha256: str
 
 
 @dataclass(frozen=True)
@@ -93,6 +95,7 @@ class CreativeAIService:
     """Hydrate a ContentProposal into generated copy + creative variants."""
 
     GENERATABLE={ProposalStatus.DRAFT.value, ProposalStatus.READY_FOR_REVIEW.value}
+    SUPPORTED_FORMATS={"STORY","SQUARE"}
 
     def __init__(self, repository: MarketingRepository, catalogue: Any, media_repository: Any,
                  generator: CreativeContentGeneratorPort | None=None):
@@ -147,15 +150,19 @@ class CreativeAIService:
                 reference=str(getattr(product,"reference",None) or ""),
                 ean=str(getattr(product,"ean",None) or ""),
                 primary_media_id=str(media.media_id),
+                primary_media_url=f"/media/{media.media_id}/original?v={media.sha256[:16]}",
+                primary_media_sha256=str(media.sha256),
             ))
         return facts
 
-    def generate(self, proposal_id: str, actor: str="authenticated") -> dict[str,Any]:
+    def generate(self, proposal_id: str, actor: str="authenticated", *, regenerate: bool=False) -> dict[str,Any]:
         row=self.repo.db.execute("SELECT * FROM marketing_proposals WHERE proposal_id=?",(proposal_id,)).fetchone()
         if not row:
             raise KeyError(proposal_id)
         if row["status"] not in self.GENERATABLE:
             raise CreativeGenerationError("Only DRAFT or READY_FOR_REVIEW proposals can be generated")
+        if regenerate and row["status"] != ProposalStatus.READY_FOR_REVIEW.value:
+            raise CreativeGenerationError("Only READY_FOR_REVIEW proposals can be regenerated")
 
         facts=self._facts(proposal_id)
         brief=self._brief(row["creative_brief_json"])
@@ -163,6 +170,8 @@ class CreativeAIService:
             raise CreativeGenerationError("Unsupported packaging policy")
         brand_kit=self._brand_kit(self.repo.settings()["brand_kit"])
         formats=tuple(json.loads(row["formats_json"])) or brief.formats
+        if not formats or any(str(value) not in self.SUPPORTED_FORMATS for value in formats):
+            raise CreativeGenerationError("Creative AI v1 supports STORY and SQUARE formats only")
         fingerprint=self._hash(
             proposal_id,
             json.dumps([asdict(f) for f in facts],ensure_ascii=False,sort_keys=True),
@@ -172,10 +181,13 @@ class CreativeAIService:
         )
 
         previous=self.repo.db.execute(
-            "SELECT details_json FROM marketing_audit WHERE event_type='CREATIVE_GENERATED' AND entity_id=? ORDER BY rowid DESC LIMIT 1",
+            "SELECT details_json FROM marketing_audit WHERE event_type IN ('CREATIVE_GENERATED','CREATIVE_REGENERATED') AND entity_id=? ORDER BY rowid DESC LIMIT 1",
             (proposal_id,)).fetchone()
         if previous and json.loads(previous[0]).get("fingerprint")==fingerprint:
-            return self.get(proposal_id) | {"idempotent":True}
+            result=self.get(proposal_id) | {"idempotent":True}
+            if regenerate:
+                self._audit_generation("CREATIVE_REGENERATED",proposal_id,actor,facts,result["creative_assets"],fingerprint)
+            return result
 
         copy=self.generator.generate_copy(brief,facts,brand_kit)
         if not copy.headline.strip() or not copy.body.strip() or not copy.cta.strip():
@@ -188,6 +200,12 @@ class CreativeAIService:
                 raise CreativeGenerationError("Generator changed requested format")
             if visual.composition.get("packaging_policy") != "PRESERVE_ORIGINAL":
                 raise CreativeGenerationError("Generated visual does not preserve packaging")
+            product_assets=visual.composition.get("product_assets")
+            expected={fact.primary_media_id for fact in facts}
+            if not isinstance(product_assets,list) or {item.get("media_id") for item in product_assets} != expected:
+                raise CreativeGenerationError("Generated visual changed canonical PRIMARY media")
+            if any(item.get("policy") != "PRESERVE_ORIGINAL" for item in product_assets):
+                raise CreativeGenerationError("Generated visual attempts to alter packaging")
             visuals.append(visual)
 
         stamp=now()
@@ -202,13 +220,20 @@ class CreativeAIService:
                     "INSERT INTO marketing_assets VALUES(?,?,?,?,?,?,?,?)",
                     (f"creative:{uuid4()}",proposal_id,visual.format,"CREATIVE_AI","PREVIEW",
                      json.dumps(dict(visual.composition),ensure_ascii=False,sort_keys=True),"PRESERVE_ORIGINAL",stamp))
-            self.repo.audit("CREATIVE_GENERATED","ContentProposal",proposal_id,actor,{
-                "fingerprint":fingerprint,
-                "formats":[visual.format for visual in visuals],
-                "product_keys":[fact.product_key for fact in facts],
-                "packaging_policy":"PRESERVE_ORIGINAL",
-            })
+            assets=[a for a in self.repo.rows("marketing_assets",limit=500) if a["proposal_id"]==proposal_id]
+            self._audit_generation("CREATIVE_REGENERATED" if regenerate else "CREATIVE_GENERATED",proposal_id,actor,facts,assets,fingerprint)
         return self.get(proposal_id) | {"idempotent":False}
+
+    def regenerate(self, proposal_id: str, actor: str="authenticated") -> dict[str,Any]:
+        return self.generate(proposal_id,actor,regenerate=True)
+
+    def _audit_generation(self,event,proposal_id,actor,facts,assets,fingerprint):
+        self.repo.audit(event,"ContentProposal",proposal_id,actor,{
+            "fingerprint":fingerprint,"formats":[a["format"] for a in assets],
+            "product_keys":[fact.product_key for fact in facts],
+            "creative_ids":[a["creative_id"] for a in assets],
+            "packaging_policy":"PRESERVE_ORIGINAL",
+        })
 
     def get(self, proposal_id: str) -> dict[str,Any]:
         row=self.repo.db.execute("SELECT * FROM marketing_proposals WHERE proposal_id=?",(proposal_id,)).fetchone()
@@ -217,4 +242,6 @@ class CreativeAIService:
         proposal=self.repo._decoded(dict(row))
         assets=self.repo.rows("marketing_assets",limit=500)
         proposal["creative_assets"]=[asset for asset in assets if asset["proposal_id"]==proposal_id]
+        proposal["products"]=[asdict(fact) for fact in self._facts(proposal_id)]
+        proposal["brand_kit"]=asdict(self._brand_kit(self.repo.settings()["brand_kit"]))
         return proposal

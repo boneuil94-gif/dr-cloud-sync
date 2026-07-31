@@ -70,3 +70,30 @@ def test_generation_preserves_canonical_product_snapshot(tmp_path):
 
     after=[(p.drcloud_product_key,p.name,p.ean,p.reference) for p in catalogue.all()]
     assert after==before
+
+
+def test_regeneration_is_explicit_idempotent_and_audited(tmp_path):
+    repository,catalogue,media,proposal,_=foundation(tmp_path)
+    service=CreativeAIService(repository,catalogue,media)
+    first=service.generate(proposal,"admin")
+    regenerated=service.regenerate(proposal,"reviewer")
+
+    assert regenerated["idempotent"] is True
+    assert {a["creative_id"] for a in regenerated["creative_assets"]} == {
+        a["creative_id"] for a in first["creative_assets"]}
+    audit=next(a for a in repository.rows("marketing_audit")
+               if a["event_type"]=="CREATIVE_REGENERATED")
+    assert audit["actor"]=="reviewer"
+    assert set(audit["details"]["formats"])=={"STORY","SQUARE"}
+    assert audit["details"]["packaging_policy"]=="PRESERVE_ORIGINAL"
+
+
+def test_creative_detail_exposes_canonical_facts_brand_and_brief(tmp_path):
+    repository,catalogue,media,proposal,key=foundation(tmp_path)
+    detail=CreativeAIService(repository,catalogue,media).generate(proposal,"admin")
+
+    assert detail["products"][0]["product_key"]==key
+    assert detail["products"][0]["ean"]==""
+    assert detail["products"][0]["primary_media_url"].startswith("/media/media:1/original")
+    assert detail["creative_brief"]["packaging_policy"]=="PRESERVE_ORIGINAL"
+    assert detail["brand_kit"]["colors"]==("#111111","#FFFFFF","#16A366")
