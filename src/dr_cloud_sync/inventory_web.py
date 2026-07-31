@@ -30,6 +30,7 @@ from .media_import import PrestaShopIntegrationUnavailable, PrestaShopMediaProvi
 from .marketing import MarketingAutopilot, MarketingRepository
 from .creative_ai import CreativeAIService, CreativeGenerationError
 from .creative_review import CreativeReviewError, CreativeReviewService
+from .social import MarketingSchedulingService, SocialConnectionService, SocialPublishingService
 
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
@@ -75,6 +76,9 @@ class InventoryApp:
         self.marketing=MarketingAutopilot(self.marketing_repository,self.os_repository,self.media.repository)
         self.creative_ai=CreativeAIService(self.marketing_repository,self.os_repository,self.media.repository)
         self.creative_review=CreativeReviewService(self.marketing_repository)
+        self.social_connections=SocialConnectionService(self.marketing_repository)
+        self.marketing_scheduling=MarketingSchedulingService(self.marketing_repository)
+        self.social_publishing=SocialPublishingService(self.marketing_repository)
         # Optional external integration: configuration and client are resolved only
         # when an authenticated operator explicitly requests PREVIEW/APPLY.
         self.media_import=PrestaShopMediaProvider(service.repo.path,self.media,self.os_repository,
@@ -133,7 +137,23 @@ class InventoryApp:
             if path == "/achats": return self._html(start,"purchasing.html",session,request_id)
             if path == "/marketing": return self._html(start,"marketing.html",session,request_id)
             if path == "/api/marketing/dashboard" and method == "GET":
-                return self._json(start,{"settings":self.marketing_repository.settings(),"preview":self.marketing.preview(),"proposals":self.marketing_repository.rows("marketing_proposals"),"opportunities":self.marketing_repository.rows("marketing_opportunities"),"schedules":self.marketing_repository.rows("marketing_schedules")})
+                return self._json(start,{"settings":self.marketing_repository.settings(),"preview":self.marketing.preview(),"proposals":self.marketing_repository.rows("marketing_proposals"),"opportunities":self.marketing_repository.rows("marketing_opportunities"),"schedules":self.marketing_repository.rows("marketing_schedules"),"connections":self.marketing_repository.rows("social_connections")})
+            if path == "/api/marketing/social-connections" and method == "POST":
+                body=self._body(env); value=self.social_connections.configure(str(body.get("channel") or ""),str(body.get("account_id") or ""),str(body.get("credential_reference") or ""),session.get("u","authenticated"),body.get("display_name"))
+                return self._json(start,{"connection":value},"201 Created")
+            if path.startswith("/api/marketing/social-connections/") and path.endswith("/check") and method == "POST":
+                identifier=unquote(path.removeprefix("/api/marketing/social-connections/").removesuffix("/check"))
+                return self._json(start,{"connection":self.social_connections.check_connection(identifier,session.get("u","authenticated"))})
+            if path.startswith("/api/marketing/schedules/") and path.endswith("/cancel") and method == "POST":
+                identifier=unquote(path.removeprefix("/api/marketing/schedules/").removesuffix("/cancel"))
+                return self._json(start,{"schedule":self.marketing_scheduling.cancel(identifier,session.get("u","authenticated"))})
+            if path.startswith("/api/marketing/schedules/") and path.endswith("/prerequisites") and method == "GET":
+                identifier=unquote(path.removeprefix("/api/marketing/schedules/").removesuffix("/prerequisites")); item=self.marketing_scheduling.get(identifier)
+                check=self.marketing_scheduling.prerequisites(item["proposal_id"],item["creative_id"],item["channel"],item["account_id"],item["scheduled_at"],item["timezone"])
+                return self._json(start,{"publishable":check.publishable,"reasons":check.reasons})
+            if path.startswith("/api/marketing/schedules/") and method == "PATCH":
+                identifier=unquote(path.removeprefix("/api/marketing/schedules/")); body=self._body(env)
+                return self._json(start,{"schedule":self.marketing_scheduling.update(identifier,str(body.get("scheduled_at") or ""),str(body.get("timezone") or "UTC"),session.get("u","authenticated"))})
             if path.startswith("/api/marketing/proposals/") and "/creative" in path:
                 tail=path.removeprefix("/api/marketing/proposals/"); identifier=unquote(tail.split("/creative",1)[0])
                 action=tail.split("/creative",1)[1].strip("/")
@@ -165,8 +185,8 @@ class InventoryApp:
                 return self._json(start,self.marketing.transition(identifier,str(body.get("status") or ""),session.get("u","authenticated"),str(body.get("reason") or "")))
             if path.startswith("/api/marketing/proposals/") and path.endswith("/schedule") and method == "POST":
                 identifier=unquote(path.removeprefix("/api/marketing/proposals/").removesuffix("/schedule"));body=self._body(env)
-                schedule=self.marketing.schedule(identifier,str(body.get("channel") or ""),str(body.get("scheduled_at") or ""),str(body.get("timezone") or "UTC"),session.get("u","authenticated"),body.get("creative_id"))
-                return self._json(start,{"schedule_id":schedule},"201 Created")
+                schedule=self.marketing_scheduling.create(identifier,str(body.get("creative_id") or ""),str(body.get("channel") or ""),str(body.get("account_id") or ""),str(body.get("scheduled_at") or ""),str(body.get("timezone") or "UTC"),session.get("u","authenticated"))
+                return self._json(start,{"schedule":schedule},"201 Created")
             if path == "/api/marketing/media" and method == "GET":
                 q=parse_qs(env.get("QUERY_STRING",""));usage=q.get("usage",[""])[0]
                 rows=self.media.repository.db.execute("SELECT * FROM product_media WHERE active=1 ORDER BY product_key,role").fetchall()
