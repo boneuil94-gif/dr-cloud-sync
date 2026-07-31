@@ -24,6 +24,7 @@ from .domain import MediaVariantKind
 from .hydration import ProductHydrationService
 from .admin_rehydration import AdminCatalogueRehydration, RehydrationConflict
 from .rehydration import packaged_historical_snapshot
+from .backup_service import BackupService, configured_backup_dir
 
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
@@ -51,7 +52,11 @@ class InventoryApp:
         self.os_repository=os_repository or SQLiteOSRepository(service.repo.path,products)
         self.barcodes=AssignBarcodeService(self.os_repository,self.os_repository,DisabledConnector(),DisabledConnector())
         self.roadmap_service=roadmap_service or RoadmapService(DEFAULT_ROADMAP); self.failures={}
-        self.admin_status=AdminStatusService(service.repo.path)
+        data_dir = settings.data_dir if settings else service.repo.path.parent
+        self.backup_service = BackupService(configured_backup_dir(data_dir))
+        # Startup only prepares/tests infrastructure; it never mutates business data.
+        self.backup_service.health(create=True)
+        self.admin_status=AdminStatusService(service.repo.path, backup_service=self.backup_service)
         self.stock=StockProjectionService(service.repo,self.os_repository)
         self.external_stock=ExternalStockQueryService(service.repo.path,self.os_repository.all(),service.repo)
         self.suppliers=SupplierService(SQLiteSupplierRepository(service.repo.path),self.os_repository)
@@ -59,14 +64,14 @@ class InventoryApp:
         self.goods_receipts=GoodsReceiptService(SQLiteGoodsReceiptRepository(service.repo.path,service.repo.db),self.purchase_orders,service.repo,self.os_repository)
         self.credentials=CredentialStore(service.repo.path,settings.admin_password) if settings else None
         self.password_failures={}
-        media_root=(settings.data_dir if settings else service.repo.path.parent)/"media"/"products"
+        media_root=data_dir/"media"/"products"
         self.media=ProductMediaService(SQLiteProductMediaRepository(service.repo.path),LocalMediaStorage(media_root),self.os_repository,self.os_repository)
         self.hydration=ProductHydrationService(self.os_repository)
         self.admin_status.media_diagnostics=self.media.diagnostics
         self.catalogue_rehydration = AdminCatalogueRehydration(
             service.repo.path,
             Path(os.environ["DRCLOUD_REHYDRATION_SNAPSHOT"]) if os.environ.get("DRCLOUD_REHYDRATION_SNAPSHOT") else packaged_historical_snapshot(),
-            Path(os.environ.get("DRCLOUD_BACKUP_DIR", (settings.data_dir if settings else service.repo.path.parent) / "backups")),
+            self.backup_service.root,
             environment=settings.environment if settings else "development",
             safe_mode=settings.safe_mode if settings else True)
 

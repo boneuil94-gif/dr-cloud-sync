@@ -43,7 +43,6 @@ cat >/etc/apt/apt.conf.d/52drcloud-unattended <<'EOF'
 Unattended-Upgrade::Automatic-Reboot "false";
 EOF
 dpkg-reconfigure -f noninteractive unattended-upgrades
-install -d -m 0750 -o root -g docker /var/backups/drcloud
 
 echo "Préparation terminée. 8080 n'est pas autorisé par UFW et l'application le lie à 127.0.0.1."
 echo "Vérifier dans une seconde session SSH avant tout durcissement SSH ultérieur."

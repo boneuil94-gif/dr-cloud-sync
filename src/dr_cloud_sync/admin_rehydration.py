@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from .jobs import JobRunner, JobStatus, SqliteJobRepository
 from .os_admin import backup
+from .backup_service import BackupService
 from .rehydration import (CatalogueRehydrationService, HistoricalCatalogueUnavailable,
                           historical_observations, validate_historical_snapshot)
 from .repositories import SQLiteOSRepository
@@ -64,6 +65,9 @@ class AdminCatalogueRehydration:
                 "prestashop": {"status": "NOT_USED", "available": False},
                 "shopcaisse": {"status": "NOT_USED", "available": False}}
 
+    def backup_storage(self):
+        return BackupService(self.backup_root).health(create=True)
+
     @staticmethod
     def _fingerprint(repository, observations) -> str:
         products = [{"key": p.drcloud_product_key, "product_id": p.product_id,
@@ -111,6 +115,8 @@ class AdminCatalogueRehydration:
 
     def request_apply(self, report_id: str, actor: str) -> dict[str, Any]:
         with self._lock:
+            if not self.backup_storage()["available"]:
+                raise RehydrationConflict("Sauvegarde impossible : le stockage des sauvegardes n'est pas disponible.")
             row = self._report_row(report_id)
             if not row: raise RehydrationConflict("Analyse réussie introuvable; relancez une analyse")
             if row["applied_job_id"]:
@@ -143,7 +149,7 @@ class AdminCatalogueRehydration:
                 raise RehydrationConflict("Analyse obsolète; le catalogue a changé, relancez une analyse")
             service = CatalogueRehydrationService(repository, backup=lambda: backup(
                 self.database, self.backup_root, environment=self.environment,
-                safe_mode=self.safe_mode))
+                safe_mode=self.safe_mode, reason="CATALOGUE_REHYDRATION_APPLY_SAFE"))
             result = service.apply_safe(observations, actor=actor)
             result["backup"] = Path(result["backup"]).name
             result["invariants"] = {"product_count": True, "identities": True,
@@ -167,7 +173,7 @@ class AdminCatalogueRehydration:
         return {"state": "NEVER" if not current else current.status.value,
                 "current_job": self.public_job(current),
                 "last_preview": self.public_job(preview), "last_apply": self.public_job(apply),
-                "sources": self.sources()}
+                "sources": self.sources(), "backup_storage": self.backup_storage()}
 
     def report(self, report_id: str | None, *, page=1, per_page=25,
                classification="ALL", search=""):
