@@ -79,3 +79,7 @@ Les pourcentages ne sont pas écrits dans cette documentation : `/api/roadmap` l
 | Ventes | Sales Ledger et imports | Source PrestaShop réelle déclarée seulement si configurée ; ShopCaisse reste honnêtement non configuré hors import |
 
 Qonto n'est **pas connecté** : son port testable est livré, mais l'activation attend les credentials secrets et un contrat officiel validé. L'alerting externe avec cooldown demeure une étape ultérieure ; le cockpit expose dès maintenant les signaux sources/jobs.
+
+## Security Hardening V1 — audit honnête
+
+Le modèle User/Role/Permission, la matrice RBAC, l'autorisation centralisée fail-closed, les sessions persistées/révocables, la gestion des utilisateurs, le cockpit et les tests ciblés sont livrés. Le domaine n'est volontairement **pas déclaré à 100 %** : l'AuditLog central ne remplace pas encore chaque journal métier historique, l'administration de `SystemSetting` n'a pas encore son API/UI, et les connecteurs historiques PrestaShop/ShopCaisse ne consomment pas tous une `secret_ref`. Ces trois jalons restent `IN_PROGRESS` avec sous-étapes vérifiables dans la roadmap canonique.
