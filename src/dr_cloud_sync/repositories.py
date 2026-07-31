@@ -375,6 +375,16 @@ class SQLiteOSRepository(MemoryCatalogRepository, MemoryAuditRepository):
         return [dict(row) for row in self.db.execute(
             "SELECT reason,status FROM product_diagnostics WHERE product_key=? ORDER BY reason",(key,))]
 
+    def all_diagnostics(self) -> dict[str, list[dict]]:
+        result: dict[str, list[dict]] = {}
+        for row in self.db.execute(
+            "SELECT product_key,reason,status FROM product_diagnostics ORDER BY product_key,reason"
+        ):
+            result.setdefault(row["product_key"], []).append(
+                {"reason": row["reason"], "status": row["status"]}
+            )
+        return result
+
     def save_assignment(self, assignment: BarcodeAssignment) -> None:
         super().save_assignment(assignment)
         data=asdict(assignment); data.update(status=str(assignment.status), prestashop_status=str(assignment.prestashop_status), shopcaisse_status=str(assignment.shopcaisse_status))

@@ -134,6 +134,34 @@ class SQLiteProductMediaRepository:
     def primary(self, product_key: str) -> ProductMedia | None:
         return self._media(self.db.execute("SELECT * FROM product_media WHERE product_key=? AND role='PRIMARY' AND active=1",(product_key,)).fetchone())
 
+    def primaries(self) -> dict[str, ProductMedia]:
+        """Return the active PRIMARY relation for every product in one snapshot.
+
+        Catalogue is a bulk read path.  Looking up the relation again for every
+        filter, diagnostic and URL made its cost proportional to the number of
+        products (and particularly visible once hundreds of images were imported).
+        """
+        rows = self.db.execute(
+            "SELECT * FROM product_media WHERE role='PRIMARY' AND active=1"
+        ).fetchall()
+        return {row["product_key"]: self._media(row) for row in rows}
+
+    def variants_for(self, media_ids: list[str]) -> dict[tuple[str, MediaVariantKind], ProductMediaVariant]:
+        if not media_ids:
+            return {}
+        placeholders = ",".join("?" for _ in media_ids)
+        rows = self.db.execute(
+            f"SELECT * FROM product_media_variants WHERE media_id IN ({placeholders})",
+            media_ids,
+        ).fetchall()
+        return {
+            (row["media_id"], MediaVariantKind(row["kind"])): ProductMediaVariant(
+                row["media_id"], row["kind"], row["storage_reference"], row["mime_type"],
+                row["width"], row["height"], row["file_size"], row["sha256"]
+            )
+            for row in rows
+        }
+
     def by_source_reference(self, product_key: str, source: MediaSource,
                             source_reference: str) -> ProductMedia | None:
         return self._media(self.db.execute(
