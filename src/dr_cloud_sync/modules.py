@@ -35,7 +35,7 @@ MODULES = (
     Module("sales", "Ventes", "Opérations", 50, "↑", "06-sales"),
     Module("finance", "Finance", "Pilotage", 10, "◫", "07-finance"),
     Module("customers", "Clients", "Pilotage", 20, "♙", "08-customers"),
-    Module("marketing", "Marketing", "Pilotage", 30, "◎", "09-marketing"),
+    Module("marketing", "Marketing", "Pilotage", 30, "◎", "09-marketing", "/marketing", "marketing.html", "marketing.js"),
     Module("synchronizations", "Synchronisations", "Automatisation", 10, "↻", "04-stock"),
     Module("automation", "Automatisations + IA", "Automatisation", 20, "✦", "10-automation"),
     Module("administration", "Administration", "Système", 10, "⚙", route="/administration", page_template="administration.html", script="administration.js"),
