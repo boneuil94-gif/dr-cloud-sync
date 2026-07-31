@@ -41,7 +41,7 @@ def test_official_logo_route_uses_png_mime(configured, tmp_path, monkeypatch):
 def test_dashboard_only_contains_real_routes_and_no_fictional_metrics():
     html = (STATIC / "dashboard.html").read_text(encoding="utf-8")
     assert {module.route for module in MODULES if module.available} == {
-        "/", "/roadmap", "/catalogue", "/inventaire", "/stock", "/achats", "/sales", "/marketing", "/administration", "/securite"
+        "/", "/roadmap", "/catalogue", "/inventaire", "/stock", "/achats", "/sales", "/finance", "/marketing", "/administration", "/securite"
     }
     for fictional in ("marge", "bénéfice", "clients"):
         assert fictional not in html.casefold()

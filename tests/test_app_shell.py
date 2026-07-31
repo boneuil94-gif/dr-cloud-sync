@@ -145,7 +145,7 @@ def test_registry_declares_every_target_and_stock_is_available():
     ]
     assert set(available_pages()) == {
             "dashboard.html", "roadmap.html", "catalogue.html", "inventory.html",
-            "administration.html", "stock.html", "purchasing.html", "security.html", "marketing.html", "sales.html",
+                "administration.html", "stock.html", "purchasing.html", "security.html", "marketing.html", "sales.html", "finance.html",
     }
     assert all(module.roadmap_id for module in MODULES if module.id not in {"roadmap", "administration"})
 
@@ -161,8 +161,8 @@ def test_future_modules_are_non_interactive_and_explicitly_unavailable():
             '<span class="dc-nav-future"', 1
         )[1]
         assert 'aria-disabled="true"' in item
-    assert navigation.count("À venir") == 5
-    assert navigation.count("<a href=") == 10
+    assert navigation.count("À venir") == 4
+    assert navigation.count("<a href=") == 11
 
 
 def test_navigation_renders_every_registry_module_once_with_complete_items():
@@ -203,7 +203,7 @@ def test_future_routes_are_not_registered_or_rendered(configured):
     app, _ = configured
     _, cookie = login(app)
     future_routes = (
-        "/ventes", "/finance", "/clients",
+        "/ventes", "/clients",
         "/synchronisations", "/automatisations", "/production",
     )
     navigation = render_navigation("stock")

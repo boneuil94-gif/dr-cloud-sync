@@ -57,6 +57,11 @@
           "id": "01-core-m10",
           "name": "Configuration centralisée",
           "status": "TODO"
+        },
+        {
+          "id": "01-core-m11",
+          "name": "Data Hub provider-neutral et runtime SQLite",
+          "status": "DONE"
         }
       ]
     },
@@ -717,6 +722,11 @@
           "id": "11-dashboard-m10",
           "name": "Rafraîchissement fiable",
           "status": "TODO"
+        },
+        {
+          "id": "11-dashboard-m11",
+          "name": "Projection Finance et état Data Hub",
+          "status": "DONE"
         }
       ]
     },
@@ -883,6 +893,11 @@
           "id": "13-production-m17",
           "name": "Actions de restauration et rollback dans l’interface",
           "status": "TODO"
+        },
+        {
+          "id": "13-production-m18",
+          "name": "Freshness et santé des connecteurs dans Administration",
+          "status": "DONE"
         }
       ]
     }
