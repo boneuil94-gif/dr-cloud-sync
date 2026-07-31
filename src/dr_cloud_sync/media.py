@@ -47,7 +47,9 @@ class LocalMediaStorage:
         target = self._resolve(relative.as_posix())
         target.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
         temporary = target.with_suffix(target.suffix + ".tmp")
-        temporary.write_bytes(data); os.chmod(temporary, 0o640); temporary.replace(target)
+        with temporary.open("wb") as stream:
+            stream.write(data); stream.flush(); os.fsync(stream.fileno())
+        os.chmod(temporary, 0o640); temporary.replace(target)
         return relative.as_posix()
 
     def read(self, reference: str) -> bytes:

@@ -72,9 +72,12 @@ produits archivés et leur historique média ne sont pas supprimés.
    est sans mutation et affiche les candidats, fallbacks, PRIMARY existants,
    absences, ambiguïtés et téléchargements requis.
 4. Examiner les ambiguïtés, puis déclencher explicitement **Importer les images
-   sûres**. Chaque job `PRODUCT_MEDIA_IMPORT` traite au plus 25 candidats; relancer
-   PREVIEW/APPLY pour reprendre les lots suivants. Les erreurs unitaires n'arrêtent
-   pas le lot.
+   sûres**. APPLY ignore le rapport affiché, refait un PREVIEW complet, crée et
+   vérifie un bundle officiel (base et médias), puis traite tous les SAFE courants.
+   Une impossibilité de sauvegarde interrompt le job avant le premier téléchargement.
+   Chaque image est validée et normalisée avant l'écriture atomique; sa ligne
+   `ProductMedia` n'est créée qu'après les fichiers. Les erreurs unitaires n'arrêtent
+   pas le lot et ne créent aucune ligne pointant vers un fichier invalide ou absent.
 5. Créer et vérifier un nouveau bundle après import, puis effectuer un restore de
    recette et contrôler DB, original et thumbnail avant toute exploitation.
 
@@ -87,3 +90,9 @@ manuel. Cette PR ne lance ni import de production, ni déploiement, ni IA Market
 et APPLY écrit uniquement dans la base et le volume média locaux après validation
 et action CSRF explicite. Aucun produit, mouvement de stock, quantité, EAN,
 référence, achat ou réception n'est modifié par ce workflow.
+
+Le rollback consiste à arrêter l'application, puis restaurer le bundle identifié
+dans le `JobRun`/`ActivityLog`; il contient l'instantané SQLite cohérent et le volume
+média antérieurs. Les limites restantes sont l'absence de checksum fourni par
+PrestaShop et l'atomicité volontairement limitée à chaque produit (un lot peut donc
+réussir partiellement, avec erreurs agrégées et produits non concernés intacts).
