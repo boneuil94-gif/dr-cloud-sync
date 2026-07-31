@@ -296,66 +296,77 @@
       "id": "06-sales",
       "name": "Ventes",
       "weight": 8,
-      "next": "Modèles vente unifiés",
+      "next": "Modèles ventes opérationnels unifiés",
       "milestones": [
         {
           "id": "06-sales-m01",
-          "name": "Frontière domaine documentée",
-          "status": "IN_PROGRESS",
-          "steps": [
-            {
-              "name": "Frontière Sales documentée",
-              "done": true
-            },
-            {
-              "name": "Modèles locaux implémentés",
-              "done": false
-            }
-          ]
+          "name": "Modèle analytique SaleEvent source-neutral",
+          "status": "DONE",
+          "evidence": "sales.py (SaleEvent, SaleSource, SaleKind); tests/test_sales_ledger.py"
         },
         {
           "id": "06-sales-m02",
-          "name": "Modèles vente unifiés",
-          "status": "TODO"
+          "name": "Sales Ledger analytique append-only persistant (SQLite)",
+          "status": "DONE",
+          "evidence": "sales.py (SalesLedger, sale_events); tests/test_sales_ledger.py"
         },
         {
           "id": "06-sales-m03",
-          "name": "Import ShopCaisse",
-          "status": "TODO"
+          "name": "Idempotence et audit du Sales Ledger",
+          "status": "DONE",
+          "evidence": "sales.py (idempotency_key, contraintes SQLite, sales_audit); tests/test_sales_ledger.py"
         },
         {
           "id": "06-sales-m04",
-          "name": "Import PrestaShop",
-          "status": "TODO"
+          "name": "Import analytique manuel CSV avec PREVIEW/APPLY",
+          "status": "DONE",
+          "evidence": "sales.py (preview_csv, apply_csv, sales_import_batches); tests/test_sales_ledger.py"
         },
         {
           "id": "06-sales-m05",
-          "name": "Paiements",
-          "status": "TODO"
+          "name": "Rapprochement exact avec le produit canonique et conservation UNMATCHED",
+          "status": "DONE",
+          "evidence": "sales.py (SalesLedger._resolve, match_status); tests/test_sales_ledger.py"
         },
         {
           "id": "06-sales-m06",
-          "name": "Remboursements",
-          "status": "TODO"
+          "name": "Métriques ventes et cockpit analytics 7/30 jours",
+          "status": "DONE",
+          "evidence": "sales.py (metrics, product_metrics, analytics); static/marketing.*; tests/test_sales_ledger.py"
         },
         {
           "id": "06-sales-m07",
-          "name": "Retours",
+          "name": "Modèles ventes opérationnels unifiés",
           "status": "TODO"
         },
         {
           "id": "06-sales-m08",
-          "name": "Mouvements idempotents",
+          "name": "Import ShopCaisse réel",
           "status": "TODO"
         },
         {
           "id": "06-sales-m09",
-          "name": "Rapprochement catalogue",
+          "name": "Import PrestaShop réel",
           "status": "TODO"
         },
         {
           "id": "06-sales-m10",
-          "name": "Tests bout en bout",
+          "name": "Paiements opérationnels",
+          "status": "TODO"
+        },
+        {
+          "id": "06-sales-m11",
+          "name": "Remboursements et retours opérationnels",
+          "status": "TODO"
+        },
+        {
+          "id": "06-sales-m12",
+          "name": "Intégration caisse complète",
+          "status": "TODO"
+        },
+        {
+          "id": "06-sales-m13",
+          "name": "Tests bout en bout avec connecteurs de vente réels",
           "status": "TODO"
         }
       ]
@@ -531,8 +542,9 @@
         },
         {
           "id": "09-marketing-m09",
-          "name": "Sales-driven Marketing",
-          "status": "TODO"
+          "name": "Sales-driven Marketing v1",
+          "status": "DONE",
+          "evidence": "sales.py; marketing.py (Sales Ledger, signaux BEST_SELLER/SALES_SPIKE/SALES_DROP/TRENDING_PRODUCT, fatigue, scoring et opportunités); static/marketing.*; tests/test_sales_ledger.py"
         },
         {
           "id": "09-marketing-m10",
@@ -548,6 +560,12 @@
           "id": "09-marketing-m12",
           "name": "Learning Loop mesuré",
           "status": "TODO"
+        },
+        {
+          "id": "09-marketing-m13",
+          "name": "Social Analytics foundation provider-neutral (snapshots persistants, métriques nullables)",
+          "status": "DONE",
+          "evidence": "sales.py (SocialAnalyticsService, SocialAnalyticsPort); tests/test_sales_ledger.py"
         }
       ]
     },

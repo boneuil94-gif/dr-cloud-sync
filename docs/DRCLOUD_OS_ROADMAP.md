@@ -1,6 +1,6 @@
 # Roadmap officielle DrCloud OS
 
-**Version :** 2.0.0 — **audit du dépôt :** 2026-07-31 — **progression calculée : 49,30 %** — **reste : 50,70 %**.
+**Version :** 2.0.0 — **audit du dépôt :** 2026-07-31 — **progression calculée : 53,62 %** — **reste : 46,38 %**.
 
 ## Source d'autorité et calcul
 
@@ -24,27 +24,31 @@ Définitions :
 | Inventaire + EAN | 80 % | IN_PROGRESS | 10 | Sessions, scan, comptage, exports et workflow de rapprochement présents ; validation terrain et activation live absentes. |
 | Stock + synchronisation | 90 % | IN_PROGRESS | 10 | mouvements, ledger, projections, idempotence et observation PrestaShop contrôlée présents ; alertes de stock faible absentes. |
 | Achats + fournisseurs | 80 % | IN_PROGRESS | 10 | fournisseurs, commandes, réceptions, validation et propositions de mouvements présents ; rapprochement catalogue et analyse prix/TVA absents. |
-| Ventes | 5 % | IN_PROGRESS | 8 | frontière documentée à moitié du premier jalon ; aucun Sales Ledger ni imports de ventes locaux. |
-| Finance + pilotage | 0 % | TODO | 8 | Sales Analytics, marges, TVA, valeur de stock et rentabilité restent à construire. |
+| Ventes | 46,15 % | IN_PROGRESS | 8 | Le modèle analytique `SaleEvent`, le Sales Ledger SQLite, son idempotence/audit, le PREVIEW/APPLY CSV, le mapping canonique et les analytics 7/30 jours sont livrés ; le domaine de vente opérationnel et ses connecteurs réels restent futurs. |
+| Finance + pilotage | 0 % | TODO | 8 | Les analytics du Sales Ledger existent, mais marges fiables, TVA, valeur de stock et rentabilité Finance restent à construire. |
 | Clients + fidélité | 0 % | TODO | 6 | modèles, consentements, rapprochement et fidélité absents. |
-| Marketing + réseaux sociaux | 33,33 % | IN_PROGRESS | 8 | Marketing Foundation, Creative AI v1, Human Review et Social Publishing Pipeline v1 sont livrés ; providers/conformité/publication réels, analytics live et intelligence pilotée par ventes/stock/achats restent séparés. |
+| Marketing + réseaux sociaux | 46,15 % | IN_PROGRESS | 8 | Les quatre fondations précédentes, Sales-driven Marketing v1 et la fondation Social Analytics provider-neutral sont livrés ; providers/conformité/publication réels, analytics sociaux live et intelligence stock/achats restent séparés. |
 | Automatisations + IA | 5 % | IN_PROGRESS | 8 | règles READ/PROPOSE/EXECUTE documentées ; permissions, moteur générique, déclencheurs, actions et assistant restent futurs. |
 | Dashboard | 20 % | IN_PROGRESS | 5 | frontière et roadmap dynamique présentes ; projections métier live absentes. |
 | Sécurité + utilisateurs | 38,46 % | IN_PROGRESS | authentification et credentials durables présents ; RBAC et autorisation par action absents. |
 | Production + PWA | 76,47 % | IN_PROGRESS | Docker, PWA, sauvegardes, observabilité, CI/CD et administration présents ; domaine, rollback UI/automatique et monitoring externe incomplets. |
-| **Total** | **49,30 %** | **IN_PROGRESS** | **100** | Somme pondérée calculée depuis les jalons. |
+| **Total** | **53,62 %** | **IN_PROGRESS** | **100** | Somme pondérée calculée depuis les jalons. |
 
 ## Ancien pourcentage global
 
-**47,43 %**. Le service recalculait déjà ce nombre, mais depuis une liste ancienne. Le JSON et la documentation contenaient aussi des copies dérivées obsolètes, ce qui rendait l'audit trompeur même si l'API écrasait la copie au chargement.
+**49,30 %**, dont **Marketing 33,33 %** et **Ventes 5 %**.
 
 ## Nouveau pourcentage global calculé
 
-**49,30 %**.
+**53,62 %**, dont **Marketing 46,15 %** et **Ventes 46,15 %**.
 
 ## Pourquoi il change
 
-Les merges Creative AI/Human Review et Social Connections/Publishing n'étaient jamais entrés dans les jalons Marketing : ce domaine restait décrit comme un simple `ProductMedia → MarketingAsset`. L'audit reconnaît maintenant quatre livraisons v1 prouvées par le code, les routes, le cockpit et les tests. Il conserve explicitement à zéro les providers sociaux réels, la conformité officielle, l'activation de publication, les analytics live, Sales-driven/Stock-driven Marketing, l'intelligence achats/marge et le Learning Loop. La hausse est donc seulement la conséquence déterministe de la roadmap corrigée, pas une valeur saisie à la main.
+Les poids sont inchangés. Marketing compte désormais 6 jalons `DONE` sur 13, soit `6 / 13 × 100 = 46,15 %` ; son apport pondéré passe de `8 × 33,33 % = 2,67` à `8 × 46,15 % = 3,69`. Ventes compte également 6 capacités analytiques `DONE` sur 13, soit `6 / 13 × 100 = 46,15 %` ; son apport passe de `8 × 5 % = 0,40` à `8 × 46,15 % = 3,69`. Avec les arrondis appliqués par `RoadmapService`, le total devient `49,30 - 0,40 - 2,67 + 3,69 + 3,69 = 53,62 %`.
+
+L'audit de #78 confirme un `SaleEvent` source-neutral, un ledger SQLite append-only, des contraintes d'idempotence et un audit, un import CSV manuel PREVIEW/APPLY, le rapprochement canonique exact, les métriques 7/30 jours et leur cockpit, ainsi que des snapshots Social Analytics provider-neutral persistants aux métriques nullables. Il confirme également l'utilisation réelle du Sales Ledger par Marketing pour les signaux `BEST_SELLER`, `SALES_SPIKE`, `SALES_DROP` et `TRENDING_PRODUCT`, le score de fatigue, les opportunités et propositions testées. Cela justifie `Sales-driven Marketing v1 = DONE`.
+
+En revanche, les identités de source `SHOPCAISSE` et `PRESTASHOP` ne sont pas des connecteurs : elles restent explicitement `NOT_CONFIGURED`. Les modèles ventes opérationnels unifiés sont donc la prochaine dépendance, avant les imports ShopCaisse/PrestaShop réels, paiements, workflows de remboursement/retour et intégration caisse complète. Le Sales Ledger analytique ne rend pas le domaine Ventes opérationnel terminé.
 
 ## Marketing : frontière v1 / production
 
@@ -52,8 +56,8 @@ Creative AI v1 est provider-neutral : son générateur déterministe produit des
 
 ## Maintenance
 
-Lorsqu'un bloc est livré, modifier dans la même PR le jalon canonique et son `evidence`. Passer à `DONE` seulement après vérification du code, de la persistance, des routes/UI pertinentes et des tests. Pour un travail partiel, ajouter des `steps` binaires et utiliser `IN_PROGRESS`. Ajouter un futur résultat comme jalon distinct plutôt que d'élargir après coup une fondation terminée. Ne jamais écrire un pourcentage dans JSON, Python, HTML ou JavaScript : il est une projection de `RoadmapService`.
+Toute PR qui termine un milestone roadmap doit mettre à jour la roadmap canonique et ses tests dans la même PR. Lorsqu’un bloc est livré, modifier aussi son `evidence`. Passer à `DONE` seulement après vérification du code, de la persistance, des routes/UI pertinentes et des tests. Pour un travail partiel, ajouter des `steps` binaires et utiliser `IN_PROGRESS`. Ajouter un futur résultat comme jalon distinct plutôt que d'élargir après coup une fondation terminée. Ne jamais écrire un pourcentage dans JSON, Python, HTML ou JavaScript : il est une projection de `RoadmapService`.
 
 ## Prochain ordre de livraison
 
-Construire d'abord le Sales Ledger et ses imports idempotents, puis Sales Analytics. Ces faits pourront alimenter Finance, Sales-driven Marketing et le Learning Loop. En parallèle, le passage social en production exige des providers homologués, une conformité métier officielle et une activation contrôlée ; Social Analytics live vient seulement après des publications réelles. L'intelligence stock et achats/marge doit rester fondée sur les ledgers existants, sans confondre ports/interfaces et décisions métier.
+Construire ensuite les modèles ventes opérationnels unifiés, prérequis aux imports ShopCaisse et PrestaShop réels. Le Sales Ledger analytique et Sales-driven Marketing v1 sont livrés, mais ne couvrent ni Finance ni le Learning Loop mesuré. En parallèle, le passage social en production exige des providers homologués, une conformité métier officielle et une activation contrôlée ; Social Analytics live vient seulement après des publications réelles. L'intelligence stock et achats/marge doit rester fondée sur les ledgers existants, sans confondre ports/interfaces et décisions métier.
