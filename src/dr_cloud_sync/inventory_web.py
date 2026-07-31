@@ -191,6 +191,18 @@ class InventoryApp:
                     self.media_import.mark_unavailable()
                     return self._json(start,{"error":"Import PrestaShop indisponible — service externe inaccessible","integration":self.media_import.status()},"503 Service Unavailable")
                 return self._json(start,self.media_import_preview)
+            if path == "/api/admin/product-media-import/candidate-image" and method == "GET":
+                q=parse_qs(env.get("QUERY_STRING","")); key=q.get("product_key",[""])[0]; image_id=q.get("image_id",[""])[0]
+                data,mime=self.media_import.service().download_manual_candidate(key,image_id)
+                return self._send(start,data,mime,headers=[("X-Request-ID",request_id),
+                    ("Cache-Control","private, no-store"),("Content-Length",str(len(data)))],cache=False)
+            if path == "/api/admin/product-media-import/resolve" and method == "POST":
+                body=self._body(env)
+                result=self.media_import.service().resolve_manual(
+                    str(body.get("drcloud_product_key") or ""),str(body.get("image_id") or ""),
+                    actor=session.get("u","authenticated"))
+                self.media_import_preview=None
+                return self._json(start,result)
             if path == "/api/admin/product-media-import/apply" and method == "POST":
                 if not self.media_import_preview:
                     return self._json(start,{"error":"Un PREVIEW courant est requis"},"409 Conflict")

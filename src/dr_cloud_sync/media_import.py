@@ -408,6 +408,76 @@ class ProductMediaImportService:
         value["status"]=value["status"].value
         return value
 
+    def manual_candidate(self, product_key: str, image_id: str) -> tuple[dict[str, Any], str]:
+        """Return the current, exact ambiguous item containing ``image_id``.
+
+        This is deliberately a fresh PrestaShop read.  Neither a stale browser
+        preview nor a guessed identifier is an authority for a manual decision.
+        """
+        product_key=str(product_key); image_id=str(image_id)
+        item=next((row for row in self.preview()["items"]
+                   if row["drcloud_product_key"] == product_key), None)
+        if item is None: raise KeyError("Produit DrCloud introuvable")
+        if item["classification"] != "AMBIGUOUS" or \
+                item["projected_classification"] != "AMBIGUOUS_REMAINING":
+            raise ValueError("Ce produit n'est plus un cas ambigu à résoudre")
+        if image_id not in set(map(str,item["candidates"])):
+            raise ValueError("L'image choisie ne fait pas partie des candidates actuelles")
+        return item,image_id
+
+    def download_manual_candidate(self, product_key: str, image_id: str) -> tuple[bytes,str]:
+        item,image_id=self.manual_candidate(product_key,image_id)
+        data,mime=self.client.download_product_image(item["product_id"],image_id,max_bytes=MAX_FILE_SIZE)
+        if mime not in ALLOWED_MIME: raise MediaError(f"Content-Type PrestaShop refusé: {mime}")
+        return data,mime
+
+    def resolve_manual(self, product_key: str, image_id: str, *, actor="authenticated") -> dict[str,Any]:
+        """Persist one operator-selected PRIMARY without ever writing to PrestaShop."""
+        product_key=str(product_key); image_id=str(image_id)
+        existing=self.media.primary(product_key)
+        if existing:
+            try: reference=json.loads(existing.source_reference or "{}")
+            except json.JSONDecodeError: reference={}
+            if (existing.source is MediaSource.PRESTASHOP and
+                    reference.get("provenance")=="MANUAL_AMBIGUITY_RESOLUTION" and
+                    str(reference.get("image_id"))==image_id):
+                return {"status":"ALREADY_RESOLVED","product_key":product_key,
+                        "image_id":image_id,"media_id":existing.media_id,
+                        "summary":self.preview()["summary"]}
+            raise ValueError("Ce produit possède déjà une image PRIMARY protégée")
+        item,image_id=self.manual_candidate(product_key,image_id)
+        backup=self.backup_service.create(self.database,reason="PRESTASHOP_MEDIA_MANUAL_RESOLUTION",
+            environment=self.environment,safe_mode=self.safe_mode,application=application_metadata())
+        identities=sorted((p.drcloud_product_key,p.product_id,p.combination_id) for p in self.catalogue.all())
+        business_before=self._business_fingerprint()
+        protected_keys=set(self.media.repository.primaries())
+        protected_before=self._media_snapshot(protected_keys)
+        # Re-check after the backup, immediately before the only local mutation.
+        item,image_id=self.manual_candidate(product_key,image_id)
+        if self.media.primary(product_key):
+            raise ValueError("Ce produit possède déjà une image PRIMARY protégée")
+        data,mime=self.client.download_product_image(item["product_id"],image_id,max_bytes=MAX_FILE_SIZE)
+        if mime not in ALLOWED_MIME: raise MediaError(f"Content-Type PrestaShop refusé: {mime}")
+        reference=self._reference(item["product_id"],item.get("combination_id"),image_id,
+                                  "MANUAL_AMBIGUITY_RESOLUTION")
+        media=self.media.add(product_key,data,filename=f"prestashop-{image_id}",
+            role=MediaRole.PRIMARY.value,source=MediaSource.PRESTASHOP.value,
+            source_reference=reference,marketing_usage=MarketingUsage.UNKNOWN.value,
+            protected_original=True,actor=actor)
+        after=sorted((p.drcloud_product_key,p.product_id,p.combination_id) for p in self.catalogue.all())
+        if (identities!=after or business_before!=self._business_fingerprint() or
+                protected_before!=self._media_snapshot(protected_keys)):
+            raise RuntimeError("Invariant métier modifié pendant la résolution manuelle")
+        self.catalogue.add_activity(ActivityLog("PRESTASHOP_MEDIA_MANUALLY_RESOLVED",product_key,
+            "PRODUCT_MEDIA",{"actor":actor,"media_id":media.media_id,"image_id":image_id,
+             "product_id":str(item["product_id"]),
+             "combination_id":str(item["combination_id"]) if item.get("combination_id") is not None else None,
+             "backup_id":backup["backup_id"]}))
+        refreshed=self.preview()
+        return {"status":"RESOLVED","product_key":product_key,"image_id":image_id,
+                "media_id":media.media_id,"backup_id":backup["backup_id"],
+                "summary":refreshed["summary"]}
+
     def _media_snapshot(self, product_keys: set[str]) -> tuple:
         """Capture every media association (including variants) of protected products."""
         if not product_keys:
