@@ -27,6 +27,7 @@ from .rehydration import packaged_historical_snapshot
 from .backup_service import BackupService, configured_backup_dir
 from .prestashop import PrestaShopError
 from .media_import import PrestaShopIntegrationUnavailable, PrestaShopMediaProvider
+from .marketing import MarketingAutopilot, MarketingRepository
 
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
@@ -68,6 +69,8 @@ class InventoryApp:
         self.password_failures={}
         media_root=data_dir/"media"/"products"
         self.media=ProductMediaService(SQLiteProductMediaRepository(service.repo.path),LocalMediaStorage(media_root),self.os_repository,self.os_repository)
+        self.marketing_repository=MarketingRepository(service.repo.path)
+        self.marketing=MarketingAutopilot(self.marketing_repository,self.os_repository,self.media.repository)
         # Optional external integration: configuration and client are resolved only
         # when an authenticated operator explicitly requests PREVIEW/APPLY.
         self.media_import=PrestaShopMediaProvider(service.repo.path,self.media,self.os_repository,
@@ -99,7 +102,7 @@ class InventoryApp:
                 "/inventory.css": ("inventory.css", "text/css; charset=utf-8"),
                 **{f"/{name}": (name, "text/javascript; charset=utf-8") for name in (
                     "app-shell.js", "inventory.js", "roadmap.js", "dashboard.js",
-                    "administration.js", "stock.js", "purchasing.js", "security.js",
+                    "administration.js", "stock.js", "purchasing.js", "security.js", "marketing.js",
                 )},
             }
             if path in public_assets:
@@ -124,6 +127,32 @@ class InventoryApp:
             if path == "/securite": return self._html(start,"security.html",session,request_id)
             if path == "/stock": return self._html(start,"stock.html",session,request_id)
             if path == "/achats": return self._html(start,"purchasing.html",session,request_id)
+            if path == "/marketing": return self._html(start,"marketing.html",session,request_id)
+            if path == "/api/marketing/dashboard" and method == "GET":
+                return self._json(start,{"settings":self.marketing_repository.settings(),"preview":self.marketing.preview(),"proposals":self.marketing_repository.rows("marketing_proposals"),"opportunities":self.marketing_repository.rows("marketing_opportunities"),"schedules":self.marketing_repository.rows("marketing_schedules")})
+            if path == "/api/marketing/autopilot/preview" and method == "POST":
+                return self._json(start,self.marketing.preview())
+            if path == "/api/marketing/autopilot/activation" and method == "POST":
+                enabled=self._body(env).get("enabled") is True
+                self.marketing_repository.set_automation(enabled,session.get("u","authenticated"))
+                return self._json(start,{"automation_enabled":enabled})
+            if path == "/api/marketing/autopilot/run" and method == "POST":
+                return self._json(start,self.marketing.run(session.get("u","authenticated")))
+            if path == "/api/marketing/proposals" and method == "POST":
+                body=self._body(env); identifier=self.marketing.create_manual_proposal(str(body.get("title") or ""),body.get("product_keys") or [],str(body.get("reason") or ""),session.get("u","authenticated"))
+                return self._json(start,{"proposal_id":identifier},"201 Created")
+            if path.startswith("/api/marketing/proposals/") and path.endswith("/status") and method == "POST":
+                identifier=unquote(path.removeprefix("/api/marketing/proposals/").removesuffix("/status"));body=self._body(env)
+                return self._json(start,self.marketing.transition(identifier,str(body.get("status") or ""),session.get("u","authenticated"),str(body.get("reason") or "")))
+            if path.startswith("/api/marketing/proposals/") and path.endswith("/schedule") and method == "POST":
+                identifier=unquote(path.removeprefix("/api/marketing/proposals/").removesuffix("/schedule"));body=self._body(env)
+                schedule=self.marketing.schedule(identifier,str(body.get("channel") or ""),str(body.get("scheduled_at") or ""),str(body.get("timezone") or "UTC"),session.get("u","authenticated"),body.get("creative_id"))
+                return self._json(start,{"schedule_id":schedule},"201 Created")
+            if path == "/api/marketing/media" and method == "GET":
+                q=parse_qs(env.get("QUERY_STRING",""));usage=q.get("usage",[""])[0]
+                rows=self.media.repository.db.execute("SELECT * FROM product_media WHERE active=1 ORDER BY product_key,role").fetchall()
+                values=[dict(row) for row in rows if not usage or row["marketing_usage"]==usage]
+                return self._json(start,{"media":values,"filters":["ALLOWED","UNKNOWN","FORBIDDEN","PRODUCTS","CAMPAIGNS","GENERATED"]})
             if path.startswith("/achats/fournisseurs/"):
                 return self._html(start,"purchasing.html",session,request_id)
             if path.startswith("/achats/commandes"):
