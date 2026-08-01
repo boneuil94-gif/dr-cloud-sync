@@ -18,8 +18,12 @@ class QontoError(RuntimeError):
 
 class EnvironmentSecretProvider:
     """Resolve an opaque environment-variable reference without persisting it."""
-    def __init__(self, environment): self.environment = environment
-    def get(self, reference: str) -> str | None: return self.environment.get(reference) if reference else None
+    def __init__(self, environment, references=None): self.environment = environment; self.references=dict(references or {})
+    def resolve(self, reference: str) -> str | None:
+        if not reference: return None
+        variable=self.references.get(reference) or "DRCLOUD_SECRET_"+reference.upper().replace(".","_").replace("-","_")
+        return self.environment.get(variable)
+    def get(self, reference: str) -> str | None: return self.resolve(reference)
 
 
 class QontoBankProvider:

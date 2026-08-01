@@ -33,6 +33,21 @@ ROLE_PERMISSIONS = {
 }
 SENSITIVE = re.compile(r"(?i)(password|passwd|secret|token|api.?key|authorization|cookie|credential)")
 
+@dataclass(frozen=True)
+class SettingDefinition:
+    key: str; value_type: str; default: Any; category: str; description: str
+    runtime_editable: bool = True; choices: tuple[Any, ...] = ()
+
+SETTING_REGISTRY = {
+    item.key: item for item in (
+        SettingDefinition("safe_mode", "bool", True, "security", "Bloque les opérations externes destructrices."),
+        SettingDefinition("data_hub.freshness_minutes", "int", 60, "data_hub", "Seuil de fraîcheur du Data Hub."),
+        SettingDefinition("stock.low_threshold", "int", 5, "stock", "Seuil d’alerte de stock faible."),
+        SettingDefinition("alerts.cooldown_minutes", "int", 30, "alerts", "Délai minimal entre deux alertes."),
+        SettingDefinition("dashboard.compact", "bool", False, "dashboard", "Active l’affichage compact du tableau de bord."),
+    )
+}
+
 def _now() -> str: return datetime.now(timezone.utc).isoformat()
 
 def sanitise(value: Any) -> Any:
@@ -83,9 +98,16 @@ class SecurityStore:
         CREATE TABLE IF NOT EXISTS audit_logs(audit_id TEXT PRIMARY KEY,timestamp TEXT NOT NULL,actor_id TEXT,action TEXT NOT NULL,entity_type TEXT NOT NULL,entity_id TEXT,request_id TEXT,source TEXT,metadata_json TEXT NOT NULL,success INTEGER NOT NULL CHECK(success IN (0,1)));
         CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp DESC);
         CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_logs(actor_id,timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action,timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_logs(entity_type,entity_id,timestamp DESC);
         CREATE TABLE IF NOT EXISTS secret_references(secret_ref TEXT PRIMARY KEY,provider TEXT NOT NULL,purpose TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('ACTIVE','INVALID','REVOKED')),created_at TEXT NOT NULL,updated_at TEXT NOT NULL,last_rotated_at TEXT);
         CREATE TABLE IF NOT EXISTS system_settings(setting_key TEXT PRIMARY KEY,value_json TEXT NOT NULL,description TEXT NOT NULL,updated_at TEXT NOT NULL,updated_by TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS activity_logs(id TEXT PRIMARY KEY,timestamp TEXT NOT NULL,data TEXT NOT NULL);
+        """)
+        # Defense in depth: even accidental/raw application SQL cannot rewrite history.
+        self.db.executescript("""
+        CREATE TRIGGER IF NOT EXISTS audit_logs_no_update BEFORE UPDATE ON audit_logs BEGIN SELECT RAISE(ABORT,'audit log is append-only'); END;
+        CREATE TRIGGER IF NOT EXISTS audit_logs_no_delete BEFORE DELETE ON audit_logs BEGIN SELECT RAISE(ABORT,'audit log is append-only'); END;
         """)
         stamp=_now()
         with self.db:
@@ -168,8 +190,74 @@ class SecurityStore:
         self.db.execute(query,args)
     def active_sessions(self): return [dict(r) for r in self.db.execute("SELECT s.session_id,s.user_id,u.username,s.created_at,s.last_seen_at,s.expires_at FROM security_sessions s JOIN security_users u ON u.user_id=s.user_id WHERE s.revoked_at IS NULL AND s.expires_at>? ORDER BY s.last_seen_at DESC",(_now(),))]
     def audit(self,actor,action,entity_type,entity_id=None,request_id=None,source=None,metadata=None,success=True):
-        with self.db: self.db.execute("INSERT INTO audit_logs VALUES(?,?,?,?,?,?,?,?,?,?)",(str(uuid.uuid4()),_now(),actor,action,entity_type,entity_id,request_id,source,json.dumps(sanitise(metadata or {}),ensure_ascii=False),int(success)))
-    def audits(self,limit=50): return [{**dict(r),"metadata":json.loads(r["metadata_json"])} for r in self.db.execute("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT ?",(min(max(int(limit),1),200),))]
+        values=(str(uuid.uuid4()),_now(),actor,action,entity_type,entity_id,request_id,source,json.dumps(sanitise(metadata or {}),ensure_ascii=False),int(success))
+        if self.db.in_transaction: self.db.execute("INSERT INTO audit_logs VALUES(?,?,?,?,?,?,?,?,?,?)",values)
+        else:
+            with self.db: self.db.execute("INSERT INTO audit_logs VALUES(?,?,?,?,?,?,?,?,?,?)",values)
+    def audits(self,limit=50,*,actor=None,entity_type=None,action=None,success=None,since=None,until=None):
+        clauses=[]; args=[]
+        for column,value in (("actor_id",actor),("entity_type",entity_type),("action",action)):
+            if value: clauses.append(f"{column}=?"); args.append(value)
+        if success is not None: clauses.append("success=?"); args.append(int(success))
+        if since: clauses.append("timestamp>=?"); args.append(since)
+        if until: clauses.append("timestamp<=?"); args.append(until)
+        where=" WHERE "+" AND ".join(clauses) if clauses else ""
+        args.append(min(max(int(limit),1),200))
+        rows=self.db.execute("SELECT * FROM audit_logs"+where+" ORDER BY timestamp DESC LIMIT ?",args)
+        return [{**dict(r),"metadata":json.loads(r["metadata_json"])} for r in rows]
+
+    @staticmethod
+    def _setting_value(definition,value):
+        if SENSITIVE.search(definition.key): raise ValueError("Une clé de secret est interdite dans SystemSetting")
+        if definition.value_type=="bool":
+            if not isinstance(value,bool): raise ValueError("Valeur booléenne requise")
+        elif definition.value_type=="int":
+            if isinstance(value,bool) or not isinstance(value,int): raise ValueError("Valeur entière requise")
+            if value < 0 or value > 10080: raise ValueError("Valeur hors limites")
+        elif definition.value_type=="float":
+            if isinstance(value,bool) or not isinstance(value,(int,float)): raise ValueError("Valeur numérique requise")
+        elif definition.value_type in {"string","enum"}:
+            if not isinstance(value,str) or len(value)>500: raise ValueError("Chaîne invalide")
+        else: raise ValueError("Type de setting inconnu")
+        if definition.choices and value not in definition.choices: raise ValueError("Valeur non autorisée")
+        if isinstance(value,str) and (SENSITIVE.search(value) or re.search(r"(?i)bearer\s+\S+",value)):
+            raise ValueError("Une valeur ressemblant à un secret est interdite")
+        return value
+
+    def settings(self):
+        stored={r["setting_key"]:r for r in self.db.execute("SELECT * FROM system_settings")}
+        result=[]
+        for key,definition in SETTING_REGISTRY.items():
+            row=stored.get(key); value=json.loads(row["value_json"]) if row else definition.default
+            result.append({"key":key,"value":value,"value_type":definition.value_type,"category":definition.category,
+                           "description":definition.description,"runtime_editable":definition.runtime_editable,
+                           "updated_at":row["updated_at"] if row else None,"updated_by":row["updated_by"] if row else None})
+        return result
+
+    def set_setting(self,key,value,actor,*,request_id=None,source="security-api"):
+        definition=SETTING_REGISTRY.get(key)
+        if not definition: raise KeyError("Setting inconnu")
+        if not definition.runtime_editable: raise PermissionError("Setting non modifiable à chaud")
+        value=self._setting_value(definition,value); stamp=_now()
+        with self.db:
+            self.db.execute("INSERT INTO system_settings VALUES(?,?,?,?,?) ON CONFLICT(setting_key) DO UPDATE SET value_json=excluded.value_json,description=excluded.description,updated_at=excluded.updated_at,updated_by=excluded.updated_by",(key,json.dumps(value),definition.description,stamp,actor))
+            self.audit(actor,"SYSTEM_SETTING_CHANGED","SYSTEM_SETTING",key,request_id,source,{"value":value})
+        return next(item for item in self.settings() if item["key"]==key)
+
+    def register_secret_reference(self,secret_ref,provider,purpose,actor,*,status="ACTIVE",request_id=None):
+        if not re.fullmatch(r"[a-z][a-z0-9_-]*(?:\.[a-z0-9_-]+)+",secret_ref): raise ValueError("Référence de secret invalide")
+        if status not in {"ACTIVE","INVALID","REVOKED"}: raise ValueError("État de secret invalide")
+        stamp=_now()
+        with self.db:
+            self.db.execute("INSERT INTO secret_references VALUES(?,?,?,?,?,?,NULL) ON CONFLICT(secret_ref) DO UPDATE SET provider=excluded.provider,purpose=excluded.purpose,status=excluded.status,updated_at=excluded.updated_at",(secret_ref,provider,purpose,status,stamp,stamp))
+            self.audit(actor,"SECRET_REFERENCE_CHANGED","SECRET_REFERENCE",secret_ref,request_id,"security-api",{"provider":provider,"purpose":purpose,"status":status})
+        return dict(self.db.execute("SELECT * FROM secret_references WHERE secret_ref=?",(secret_ref,)).fetchone())
+
+class AuditService:
+    """Only supported application entry point for the immutable audit ledger."""
+    def __init__(self,store: SecurityStore): self.store=store
+    def record(self,*,actor,action,entity_type,entity_id=None,success=True,request_id=None,source=None,metadata=None):
+        self.store.audit(actor,action,entity_type,entity_id,request_id,source,metadata,success)
 
 class AuthorizationService:
     def __init__(self,store): self.store=store

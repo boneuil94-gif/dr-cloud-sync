@@ -13,3 +13,14 @@ Toutes les mutations authentifiées requièrent le jeton CSRF. CSP, anti-frame, 
 ## Audit et incidents
 
 Les connexions, refus, changements d'accès, révocations et mutations sensibles produisent des entrées uniquement ajoutées avec acteur, cible, request ID, IP, résultat et métadonnées récursivement expurgées. L'application n'expose aucune route update/delete d'audit. Une rafale de refus ou login failures est un événement à examiner; le login limite chaque IP à cinq échecs par cinq minutes sans verrou permanent exploitable.
+
+## Configuration et journal central
+
+`SystemSetting` est une registry fermée de valeurs non secrètes typées. Toute clé
+inconnue, valeur du mauvais type ou ressemblant à un credential est refusée; lecture
+et écriture exigent respectivement `settings.read` et `settings.write`. L'écriture et
+son audit partagent la transaction SQLite.
+
+`AuditService`/`SecurityStore.audit` est le point d'entrée du ledger transversal. Les
+triggers SQLite interdisent UPDATE et DELETE, les indexes couvrent date, acteur,
+action et cible, et l'API de consultation est uniquement en lecture avec filtres.

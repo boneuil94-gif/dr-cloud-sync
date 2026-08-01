@@ -18,6 +18,7 @@ from .config import ConfigurationError, resolve_prestashop_api_url
 from .backup_service import BackupService
 from .domain import ActivityLog
 from .admin_status import application_metadata
+from .qonto import EnvironmentSecretProvider
 
 ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp"}
 JOB_TYPE = "PRESTASHOP_MEDIA_IMPORT"
@@ -35,10 +36,12 @@ class PrestaShopMediaProvider:
         self.database=Path(database); self.media=media; self.catalogue=catalogue
         self.environ=environ if environ is not None else os.environ
         self.client_factory=client_factory or PrestaShopClient; self._service=None; self._unavailable=False
+        self.secret_ref=self.environ.get("PRESTASHOP_SECRET_REF") or "prestashop.production"
+        self.secrets=EnvironmentSecretProvider(self.environ,{self.secret_ref:"PRESTASHOP_API_KEY"})
         self.backup_service=backup_service or BackupService(Path(database).parent / "backups")
 
     def status(self) -> dict[str, Any]:
-        key=self.environ.get("PRESTASHOP_API_KEY", "").strip()
+        key=self.secrets.resolve(self.secret_ref)
         if not key or key == "CHANGE_ME":
             return {"status":"warning","state":"NOT_CONFIGURED","configured":False,
                     "message":"Intégration non configurée"}
@@ -66,8 +69,10 @@ class PrestaShopMediaProvider:
         if self._service is None:
             url=resolve_prestashop_api_url(self.environ.get("PRESTASHOP_API_URL"))
             timeout=float(self.environ.get("PRESTASHOP_TIMEOUT_SECONDS", "10"))
-            client=self.client_factory(url,self.environ["PRESTASHOP_API_KEY"].strip(),
-                                       timeout=timeout,retries=2)
+            if self.client_factory is PrestaShopClient:
+                client=PrestaShopClient.from_secret_ref(url,self.secret_ref,self.secrets,timeout=timeout,retries=2)
+            else:  # injectable test adapter; the real adapter always resolves by ref
+                client=self.client_factory(url,self.secrets.resolve(self.secret_ref),timeout=timeout,retries=2)
             self._service=ProductMediaImportService(self.database,client,self.media,self.catalogue,
                 backup_service=self.backup_service,
                 environment=self.environ.get("DRCLOUD_ENV", "development"),
