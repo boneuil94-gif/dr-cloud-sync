@@ -16,8 +16,8 @@ def _money(value,available=True,currency="EUR",source="",method=""):
     return {"value":str(value) if available else None,"currency":currency,"available":available,"source":source,"method":method}
 
 class FinanceProjection:
- def __init__(self,bank,sales,purchases=None,purchase_costs=None):
-  self.bank,self.sales,self.purchases,self.purchase_costs=bank,sales,purchases,purchase_costs; self.db=bank.db
+ def __init__(self,bank,sales,purchases=None,purchase_costs=None,sumup_transactions=None,sumup_settlements=None):
+  self.bank,self.sales,self.purchases,self.purchase_costs=bank,sales,purchases,purchase_costs; self.sumup_transactions=sumup_transactions;self.sumup_settlements=sumup_settlements;self.db=bank.db
   self.db.executescript("""
   CREATE TABLE IF NOT EXISTS finance_recurring_charges(charge_id TEXT PRIMARY KEY,label TEXT NOT NULL,category TEXT NOT NULL,amount TEXT NOT NULL,currency TEXT NOT NULL,frequency TEXT NOT NULL,next_due_at TEXT,status TEXT NOT NULL,vat_amount TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS finance_snapshots(fingerprint TEXT PRIMARY KEY,period_start TEXT NOT NULL,period_end TEXT NOT NULL,payload_json TEXT NOT NULL,created_at TEXT NOT NULL);
@@ -47,6 +47,12 @@ class FinanceProjection:
   total_revenue=sum((_d(r["line_total_ttc"]) for r in cost_rows),Decimal()); coverage=(covered_revenue/total_revenue*100 if total_revenue else Decimal())
   profitability={"covered_revenue":_money(covered_revenue,source="Sales Ledger",method="sales with historical cost_basis"),"uncovered_revenue":_money(total_revenue-covered_revenue,source="Sales Ledger"),"gross_margin":_money(covered_revenue-cost,bool(covered),source="Sales Ledger",method="covered revenue - attributed historical cost"),"coverage_percent":str(coverage),"available":bool(covered)}
   result={"period":{"start":start.isoformat(),"end":end.isoformat(),"days":days},"currency":"EUR","revenue":revenue,"cashflow":cash,"tax":tax,"profitability":profitability,"balances":balances,"current_balance":_money(sum((_d(b["current_balance"]) for b in balances),Decimal()),bool(balances),source="Bank Ledger/Qonto",method="sum latest account balances"),"freshness":{"sales":sales_fresh["freshness"],"sales_observed_at":sales_fresh["last_import"],"bank":"UNAVAILABLE" if not bank_latest else "FRESH","bank_observed_at":bank_latest},"reconciliations":self._reconciliation_counts(),"warnings":["Pilotage estimatif, pas une comptabilité certifiée"]}
+  if self.sumup_transactions:
+   payments=[r for r in self.sumup_transactions.rows() if start<=_iso(r['timestamp'])<end];payouts=self.sumup_settlements.rows() if self.sumup_settlements else []
+   gross=sum((_d(r['amount']) for r in payments if str(r['status']).upper() not in {'FAILED','CANCELLED'}),Decimal());fees=sum((_d(r['fee']) for r in payments),Decimal())
+   refunds=sum((_d(r['amount']) for r in payments if 'REFUND' in str(r['status']).upper()),Decimal());chargebacks=sum((_d(r['amount']) for r in payments if 'CHARGE' in str(r['status']).upper()),Decimal())
+   paid=sum((_d(r['amount']) for r in payouts if str(r['status']).upper() in {'PAID','SUCCESSFUL','COMPLETED'}),Decimal());pending=sum((_d(r['amount']) for r in payouts if str(r['status']).upper() not in {'PAID','SUCCESSFUL','COMPLETED','FAILED'}),Decimal())
+   result['payments']={'gross':_money(gross,source='SumUp Transaction Ledger'),'fees':_money(fees,source='SumUp Transaction Ledger'),'refunds':_money(refunds,source='SumUp Transaction Ledger'),'chargebacks':_money(chargebacks,source='SumUp Transaction Ledger'),'net':_money(gross-fees-refunds-chargebacks,source='SumUp Transaction Ledger'),'payouts_pending':_money(pending,source='Payment Settlement Ledger'),'payouts_paid':_money(paid,source='Payment Settlement Ledger'),'revenue_included':False}
   # Compatibility for the original cockpit/dashboard consumers.
   result.update(inflows_30d=str(credits),outflows_30d=str(debits),net_cashflow_30d=str(credits-debits),sales_revenue_30d=str(ttc) if ttc is not None else None,vat_collected=str(collected) if tax_available else "unavailable",vat_deductible="unavailable",unknown_flows=sum(t["category"]=="UNKNOWN" for t in tx),bank_fees=str(-_d(by_category["BANK_FEE"])),refunds=str(refunds),current_balance=result["current_balance"]["value"])
   return result
