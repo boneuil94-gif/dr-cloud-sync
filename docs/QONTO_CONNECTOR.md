@@ -11,3 +11,6 @@ Le client est strictement read-only : aucun virement, bénéficiaire, carte ou p
 3. Redémarrer les services. La source demeure `NOT_CONFIGURED` sans secret et ne devient `CONNECTED` qu'après le vrai `GET /v2/organization`.
 
 La cadence est `DATA_HUB_BANK_INTERVAL_SECONDS` (1 800 secondes par défaut). Un backfill contrôlé est obtenu en réinitialisant le curseur du job puis en relançant le job ; l'upsert par identifiant Qonto rend cette opération idempotente.
+
+## Activation production vérifiable
+Le workflow transmet `QONTO_CREDENTIAL` au script protégé, qui établit la référence opaque `qonto.production`. Le provider reste désactivé si la résolution échoue et CONNECTED exige le GET organisation réel. Le contrôle final doit conserver uniquement comptes/transactions/counts, dates et erreurs assainies; jamais l’en-tête Authorization. Voir `CONNECTOR_ACTIVATION_AUDIT.md` pour les limites de preuve de cette livraison.

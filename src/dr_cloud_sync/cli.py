@@ -205,7 +205,9 @@ def main(argv: list[str] | None = None) -> int:
         from .inventory_web import create_app
         settings=OSSettings.from_env(); app=create_app(settings); delay=int(os.environ.get("AUTOMATION_TICK_SECONDS","30"))
         while True:
-            try: app.data_hub.run_due(app.automation_operations())
+            try:
+                app.data_hub.heartbeat()
+                app.data_hub.run_due(app.automation_operations())
             except Exception as exc: print(f"automation cycle degraded: {type(exc).__name__}",file=sys.stderr)
             time.sleep(delay)
     else:

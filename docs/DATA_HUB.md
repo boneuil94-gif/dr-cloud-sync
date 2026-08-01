@@ -29,3 +29,6 @@ Le safe mode n'autorise aucune écriture externe. Les synchronisations n'altère
 ## Inventaire External Platforms V1
 
 Les états normalisés sont `CONNECTED`, `PARTIAL`, `NOT_CONFIGURED`, `DISABLED`, `ERROR`, `UNSUPPORTED`; la fraîcheur est `FRESH`, `STALE`, `ERROR`, `NOT_CONFIGURED` ou `DISABLED` (une source non supportée demeure indisponible). La réponse expose désormais aussi le prochain run calculé depuis les jobs, en plus du curseur, des compteurs et erreurs assainies. Les sources fournisseurs et chacun des quatre réseaux sociaux sont visibles sans être artificiellement vertes. La matrice d'autorité complète est dans `EXTERNAL_PLATFORMS.md`.
+
+## Diagnostic d’activation externe
+La réponse authentifiée `/api/data-hub` inclut `runtime.database_fingerprint`, les heartbeats worker et `handler_registered` par job. Ces éléments prouvent le câblage sans révéler un secret. CONNECTED résulte d’un health réel; FRESH seulement d’un run réussi. Le tableau avant/après et les limites de preuve production figurent dans `CONNECTOR_ACTIVATION_AUDIT.md`.
