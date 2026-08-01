@@ -83,3 +83,7 @@ Qonto n'est **pas connecté** : son port testable est livré, mais l'activation 
 ## Security Hardening V1 — audit honnête
 
 Le modèle User/Role/Permission, la matrice RBAC, l'autorisation centralisée fail-closed, les sessions persistées/révocables, la gestion des utilisateurs, le cockpit et les tests ciblés sont livrés. Le domaine n'est volontairement **pas déclaré à 100 %** : l'AuditLog central ne remplace pas encore chaque journal métier historique, l'administration de `SystemSetting` n'a pas encore son API/UI, et les connecteurs historiques PrestaShop/ShopCaisse ne consomment pas tous une `secret_ref`. Ces trois jalons restent `IN_PROGRESS` avec sous-étapes vérifiables dans la roadmap canonique.
+
+## Purchase Cost Ledger & Profitability V1 — 2026-08-01
+
+Progression calculée depuis les jalons (aucun pourcentage dans le JSON): **globale 63,48 % → 68,79 %**, **Achats 80 % → 100 %**, **Finance 50 % → 80 %**, **Dashboard 27,27 % → 45,45 %**, **Marketing 46,15 % → 46,15 %**. Achats gagne le rapprochement exact et l'analyse prix/TVA. Finance gagne coûts d'achat, TVA disponible, valeur du stock et rentabilité produit. Dashboard consomme les projections marge/stock. La rentabilité catégorie, les achats/remboursements Finance, la projection réceptions Dashboard et Purchase/margin intelligence Marketing restent volontairement non livrés.
