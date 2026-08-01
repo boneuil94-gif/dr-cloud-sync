@@ -45,6 +45,21 @@ def test_prestashop_invalid_date_is_rejected():
     else:
         raise AssertionError("invalid PrestaShop date was accepted")
 
+
+def test_failed_sale_identity_and_exact_cause_are_exposed(tmp_path):
+    class InvalidPS(PS):
+        def iter_resource(self,name):
+            if name=="order_details": return iter([])
+            return iter([{"id":"bad-7","current_state":"2","date_add":"not-a-date"}])
+    service=SalesSyncService(SalesLedger(tmp_path/"db",Catalogue()),{"PRESTASHOP":PrestaShopSalesProvider(InvalidPS(),[2])})
+    try:
+        service.sync("PRESTASHOP")
+    except ValueError:
+        pass
+    diagnostic=next(item for item in service.diagnostics() if item["source"]=="PRESTASHOP")
+    assert diagnostic["failed_count"]==1
+    assert diagnostic["failed_sales"]==[{"sale":"bad-7","line":None,"error":"PrestaShop sale bad-7: invalid PrestaShop date: not-a-date"}]
+
 def test_prestashop_utc_dates_are_persisted_in_sqlite(tmp_path):
     class NaivePS(PS):
         def iter_resource(self,name):
