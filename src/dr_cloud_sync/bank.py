@@ -59,16 +59,16 @@ class BankLedger:
                 metadata={k:v for k,v in (t.raw_metadata or {}).items() if not any(x in k.lower() for x in ("token","secret","password","authorization","api_key"))}
                 values=(f"bank:{key}","BANK",provider,t.external_transaction_id,t.account_id,t.booked_at,t.value_at,str(t.amount),t.currency,direction,t.label,t.counterparty,t.reference,t.status,str(t.category),"PROPOSED",json.dumps(metadata),now(),key)
                 existing=self.db.execute("SELECT 1 FROM bank_transactions WHERE idempotency_key=?",(key,)).fetchone()
-                self.db.execute("""INSERT INTO bank_transactions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                self.db.execute("""INSERT INTO bank_transactions (transaction_id,source,provider,external_transaction_id,account_id,booked_at,value_at,amount,currency,direction,label,counterparty,reference,status,category,category_state,raw_metadata_json,imported_at,idempotency_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                   ON CONFLICT(idempotency_key) DO UPDATE SET booked_at=excluded.booked_at,value_at=excluded.value_at,amount=excluded.amount,direction=excluded.direction,label=excluded.label,counterparty=excluded.counterparty,reference=excluded.reference,status=excluded.status,raw_metadata_json=excluded.raw_metadata_json,imported_at=excluded.imported_at""",values)
                 inserted+=not bool(existing)
         return {"rows_imported":inserted,"duplicates":len(page.transactions)-inserted,"cursor":page.next_cursor}
     def store_balances(self,provider,balances):
         with self.db:
-            for b in balances:self.db.execute("""INSERT INTO bank_balances VALUES(?,?,?,?,?,?,?) ON CONFLICT(account_id,provider) DO UPDATE SET current_balance=excluded.current_balance,available_balance=excluded.available_balance,currency=excluded.currency,observed_at=excluded.observed_at,imported_at=excluded.imported_at""",(b.account_id,provider,str(b.current),str(b.available) if b.available is not None else None,b.currency,b.observed_at,now()))
+            for b in balances:self.db.execute("""INSERT INTO bank_balances (account_id,provider,current_balance,available_balance,currency,observed_at,imported_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(account_id,provider) DO UPDATE SET current_balance=excluded.current_balance,available_balance=excluded.available_balance,currency=excluded.currency,observed_at=excluded.observed_at,imported_at=excluded.imported_at""",(b.account_id,provider,str(b.current),str(b.available) if b.available is not None else None,b.currency,b.observed_at,now()))
     def store_accounts(self,provider,accounts):
         with self.db:
-            for a in accounts:self.db.execute("""INSERT INTO bank_accounts VALUES(?,?,?,?,?) ON CONFLICT(account_id,provider) DO UPDATE SET name=excluded.name,currency=excluded.currency,imported_at=excluded.imported_at""",(a.account_id,provider,a.name,a.currency,now()))
+            for a in accounts:self.db.execute("""INSERT INTO bank_accounts (account_id,provider,name,currency,imported_at) VALUES(?,?,?,?,?) ON CONFLICT(account_id,provider) DO UPDATE SET name=excluded.name,currency=excluded.currency,imported_at=excluded.imported_at""",(a.account_id,provider,a.name,a.currency,now()))
     def accounts(self): return [dict(r) for r in self.db.execute("SELECT * FROM bank_accounts ORDER BY account_id")]
     def transactions(self): return [dict(r) for r in self.db.execute("SELECT * FROM bank_transactions ORDER BY booked_at DESC")]
     def balances(self): return [dict(r) for r in self.db.execute("SELECT * FROM bank_balances ORDER BY account_id")]
