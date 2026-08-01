@@ -89,3 +89,18 @@ def test_ambiguous_and_unmatched_are_preserved(tmp_path):
         def fetch(self,**kwargs): return ProviderBatch((sale,),"c1")
     service=SalesSyncService(ledger,{"SHOPCAISSE":Fake()});report=service.sync("SHOPCAISSE")
     assert report["ambiguous"]==1 and report["unmatched"]==1 and len(service.unmatched())==2
+
+def test_shopcaisse_failure_diagnostic_contains_operator_fields(tmp_path):
+    ledger=SalesLedger(tmp_path/"db",Catalogue())
+    invalid=CanonicalSale("SHOPCAISSE","ticket-3","2026-08-01T09:30:00+00:00","UTC","STORE","EUR","COMPLETED",
+        (CanonicalSaleLine("line-1",Decimal(0),line_total_ttc=Decimal("42.50")),),location="Paris")
+    class Fake:
+        source="SHOPCAISSE"; configured=True
+        def fetch(self,**kwargs): return ProviderBatch((invalid,),"cursor")
+    service=SalesSyncService(ledger,{"SHOPCAISSE":Fake()})
+    assert service.sync("SHOPCAISSE")["invalid"]==1
+    failure=service.failed_sales()["failures"][0]
+    assert failure=={"shopcaisse_id":"ticket-3","date":"2026-08-01T09:30:00+00:00",
+        "amount":"42.50","currency":"EUR","store":"Paris","stage":"INGESTION_LINE",
+        "category":"VALIDATION","message":"invalid line identity or quantity",
+        "retryable":False,"permanent":True}

@@ -253,6 +253,8 @@ class InventoryApp:
             if path == "/api/data-hub/diagnostics" and method == "GET":
                 query=parse_qs(env.get("QUERY_STRING", "")); return self._json(start,{"diagnostics":self.data_hub.diagnostics.recent(query.get("source_id",[None])[0],query.get("limit",[10])[0])})
             if path == "/api/data-hub" and method == "GET": return self._json(start,{**self.data_hub.health(),"sales_diagnostics":self.sales_sync.diagnostics(),"runtime":{**self.data_hub.runtime(self.automation_operations()),"configuration":{"prestashop_paid_state_ids":"CONFIGURED" if self.prestashop_paid_states_configured else "MISSING"}}})
+            if path == "/api/admin/shopcaisse-sales/failures" and method == "GET":
+                return self._json(start,self.sales_sync.failed_sales("SHOPCAISSE"))
             if path.startswith("/api/data-hub/sources/") and path.endswith("/test") and method == "POST":
                 source_id=unquote(path.removeprefix("/api/data-hub/sources/").removesuffix("/test")); sources={s["source_id"]:s for s in self.data_hub.sources()}
                 source=sources.get(source_id); client=self.shopcaisse_client if source_id=="shopcaisse_sales" else self.prestashop_client if source_id in {"prestashop_sales","prestashop_catalog"} else None
