@@ -4,7 +4,11 @@
 
 Le Data Hub est le **plan de contrôle provider-neutral** des lectures externes. Il réutilise SQLite et les jobs applicatifs : `data_sources`, `sync_jobs` et `data_hub_sync_runs` conservent configuration, curseur, exécutions, erreurs assainies et verrou. Il ne remplace ni le Sales Ledger, ni le Bank Ledger, ni le Stock Ledger.
 
-Sources déclarées : `SHOPCAISSE_SALES`, `PRESTASHOP_SALES`, `PRESTASHOP_CATALOG`, `BANK`, `PURCHASES`, `STOCK`. Un provider n'est `CONNECTED` que si son adapter réel est configuré. PrestaShop ventes l'est avec URL, clé et états payés ; ShopCaisse l'est lorsque l'inbox d'exports CSV réels existe ; Qonto l'est uniquement après un health check authentifié réussi. Sans ces prérequis, la source reste `NOT_CONFIGURED`.
+Sources déclarées : `SHOPCAISSE_SALES`, `PRESTASHOP_SALES`, `PRESTASHOP_CATALOG`, `BANK`, `PURCHASES`, `STOCK`. Un provider n'est `CONNECTED` que si son adapter réel est configuré. PrestaShop ventes l'est avec URL, clé et états payés ; ShopCaisse l'est après validation authentifiée de `SHOPCAISSE_API_KEY` (l'inbox d'exports CSV réels reste un repli) ; Qonto l'est uniquement après un health check authentifié réussi. Sans ces prérequis, la source reste `NOT_CONFIGURED`, ou `UNAVAILABLE` si un secret présent ne permet pas le health check.
+
+Le connecteur ShopCaisse lit les routes documentées `GET /stores`, `GET /stores/{store}/sales` et `GET /stores/{store}/stocks`. Chaque vente/ticket, ligne et paiement conserve son identifiant externe ; les contraintes SQLite et les clés du Sales Ledger rendent les reprises et chevauchements de curseur idempotents. Le curseur temporel n'avance qu'après la transaction d'import réussie. Un chevauchement d'une milliseconde protège la frontière incrémentale sans doublon. Les stocks exposés par l'API sont des observations courantes (stock et réservations), pas des mouvements historiques inventés.
+
+Les erreurs réseau et HTTP transitoires utilisent le retry exponentiel borné du client puis le backoff du Data Hub. Une lease `RUNNING` expirée peut être réclamée après interruption du worker. Les exécutions, erreurs assainies, durées, compteurs de ventes et paiements, dernière réussite et freshness sont exposés dans `/api/data-hub` et Administration.
 
 ## Jobs, planification et reprise
 

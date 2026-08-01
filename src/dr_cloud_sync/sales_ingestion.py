@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Mapping, Protocol, Sequence
 from uuid import uuid4
 from .sales import SaleEvent, SaleKind, SaleSource, SalesLedger, _decimal, _now, _utc
+from .shopcaisse import ShopCaisseClient
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,14 @@ class CanonicalSaleLine:
     line_total_ht: Decimal|None = None
     tax_rate: Decimal|None = None
 
+@dataclass(frozen=True)
+class CanonicalPayment:
+    external_payment_id: str
+    payment_type: str
+    amount: Decimal
+    name: str|None = None
+    description: str|None = None
+
 
 @dataclass(frozen=True)
 class CanonicalSale:
@@ -39,6 +48,7 @@ class CanonicalSale:
     lines: tuple[CanonicalSaleLine,...]
     location: str|None = None
     source_updated_at: str|None = None
+    payments: tuple[CanonicalPayment,...] = ()
 
 
 @dataclass(frozen=True)
@@ -65,6 +75,13 @@ CREATE TABLE IF NOT EXISTS sale_lines(
  unit_price_ttc TEXT,unit_price_ht TEXT,line_total_ttc TEXT,line_total_ht TEXT,tax_rate TEXT,
  mapping_status TEXT NOT NULL,mapping_reason TEXT,event_kind TEXT NOT NULL,UNIQUE(sale_id,external_line_id,event_kind),
  FOREIGN KEY(sale_id) REFERENCES sales(sale_id));
+CREATE TABLE IF NOT EXISTS sale_payments(
+ payment_id TEXT PRIMARY KEY,sale_id TEXT NOT NULL,external_payment_id TEXT NOT NULL,payment_type TEXT NOT NULL,
+ amount TEXT NOT NULL,name TEXT,description TEXT,UNIQUE(sale_id,external_payment_id),
+ FOREIGN KEY(sale_id) REFERENCES sales(sale_id));
+CREATE TABLE IF NOT EXISTS shopcaisse_stock_observations(
+ store_id TEXT NOT NULL,item_id TEXT NOT NULL,stock TEXT NOT NULL,reserved_customers TEXT NOT NULL,
+ reserved_suppliers TEXT NOT NULL,observed_at TEXT NOT NULL,PRIMARY KEY(store_id,item_id));
 CREATE TABLE IF NOT EXISTS sales_product_mappings(
  mapping_id TEXT PRIMARY KEY,source TEXT NOT NULL,external_product_id TEXT NOT NULL,external_variant_id TEXT NOT NULL DEFAULT '',
  source_ean TEXT,source_reference TEXT,product_key TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,
@@ -111,6 +128,43 @@ class ShopCaisseSalesProvider(ShopCaisseCSVProvider):
             content+="\n".join(rows[1:])+"\n"
         self.content=content
         return super().fetch(cursor=cursor,since=since)
+
+
+class ShopCaisseAPISalesProvider:
+    """Read-only adapter for the documented ShopCaisse store sales API."""
+    source=SaleSource.SHOPCAISSE.value
+    def __init__(self,client: ShopCaisseClient,db: sqlite3.Connection,*,stock_board_type="DEFAULT"):
+        self.client,self.db,self.stock_board_type=client,db,stock_board_type
+    @property
+    def configured(self): return True
+    def fetch(self,*,cursor=None,since=None)->ProviderBatch:
+        # One millisecond overlap makes boundary records safe; ledger keys remove replays.
+        from_ms=int(_utc(cursor).timestamp()*1000)-1 if cursor else (int(since.timestamp()*1000) if since else None)
+        sales=[]; newest=cursor
+        for store in self.client.pull_stores():
+            store_id=str(store["id"])
+            for row in self.client.pull_store_sales(store_id,from_ms=from_ms):
+                timestamp=int(row["timestamp"]); sold=datetime.fromtimestamp(timestamp/1000,timezone.utc).isoformat()
+                newest=max(newest or sold,sold)
+                lines=[]
+                for line in row.get("lines",[]):
+                    price=line.get("price") or {}; item=line.get("item") or {}
+                    lines.append(CanonicalSaleLine(str(line["id"]),_decimal(line["quantity"],required=True),
+                        "REFUND" if str(row.get("type","")).upper() in {"REFUND","RETURN"} else "SALE",
+                        str(item.get("id") or "") or None,None,str(item.get("reference") or "") or None,
+                        (str((item.get("barcodes") or [""])[0]) or None),None,_decimal(line.get("unitPrice")),None,
+                        _decimal(price.get("vatIncluded")),_decimal(price.get("vatExcluded")),_decimal(price.get("vatRate"))))
+                payments=tuple(CanonicalPayment(str(p.get("id") or f"{row['id']}:{i}"),str(p.get("type") or "UNKNOWN"),
+                    _decimal(p.get("amount"),required=True),p.get("name"),p.get("description")) for i,p in enumerate(row.get("payments",[])))
+                sales.append(CanonicalSale(self.source,str(row["id"]),sold,"UTC","STORE","EUR",str(row.get("status") or "UNKNOWN").upper(),
+                    tuple(lines),store_id,sold,payments))
+            observed=_now()
+            stocks=self.client.pull_store_stocks(store_id,self.stock_board_type)
+            with self.db:
+                for stock in stocks:
+                    self.db.execute("INSERT INTO shopcaisse_stock_observations VALUES(?,?,?,?,?,?) ON CONFLICT(store_id,item_id) DO UPDATE SET stock=excluded.stock,reserved_customers=excluded.reserved_customers,reserved_suppliers=excluded.reserved_suppliers,observed_at=excluded.observed_at",
+                        (store_id,str(stock["item"]),str(stock["stock"]),str(stock.get("reservedForCustomers",0)),str(stock.get("reservedForSuppliers",0)),observed))
+        return ProviderBatch(tuple(sales),newest)
 
 
 class PrestaShopSalesProvider:
@@ -169,7 +223,7 @@ class SalesSyncService:
         source=SaleSource(source.upper()).value; provider=self.providers.get(source)
         if not provider or not provider.configured: raise RuntimeError(f"{source} sales provider unavailable")
         state=self.db.execute("SELECT * FROM sales_sync_states WHERE source=?",(source,)).fetchone();cursor=None if force or not state else state["cursor"]
-        attempt=_now(); report={"source":source,"imported":0,"duplicates":0,"unmatched":0,"ambiguous":0,"invalid":0,"refunds":0,"errors":[]}
+        attempt=_now(); report={"source":source,"imported":0,"sales":0,"payments":0,"duplicates":0,"unmatched":0,"ambiguous":0,"invalid":0,"refunds":0,"errors":[]}
         with self.db:
             self.db.execute("INSERT INTO sales_sync_states(source,last_attempt_at,status) VALUES(?,?,'RUNNING') ON CONFLICT(source) DO UPDATE SET last_attempt_at=excluded.last_attempt_at,status='RUNNING',last_error=NULL",(source,attempt))
             self.ledger._audit("SALES_SYNC_STARTED",actor,{"source":source})
@@ -177,6 +231,7 @@ class SalesSyncService:
             batch=provider.fetch(cursor=cursor,since=since)
             with self.db:
                 for sale in batch.sales:
+                    report["sales"]+=1
                     sale_id=f"sale:{source}:{sale.external_sale_id}"
                     self.db.execute("INSERT OR IGNORE INTO sales VALUES(?,?,?,?,?,?,?,?,?,?,?)",(sale_id,source,sale.external_sale_id,sale.sold_at,sale.timezone,sale.channel,sale.location,sale.currency,sale.status,sale.source_updated_at,_now()))
                     for line in sale.lines:
@@ -193,6 +248,9 @@ class SalesSyncService:
                             if line.kind in {"REFUND","RETURN","CANCELLATION"}:report["refunds"]+=1
                             self.db.execute("INSERT OR IGNORE INTO sale_lines VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(f"sale-line:{uuid4()}",sale_id,line.external_line_id,line.source_product_id,line.source_variant_id,line.source_reference,line.source_ean,product,str(line.quantity),*[str(x) if x is not None else None for x in (line.unit_price_ttc,line.unit_price_ht,line.line_total_ttc,line.line_total_ht,line.tax_rate)],status,reason,line.kind))
                         except (ValueError,TypeError) as exc: report["invalid"]+=1;report["errors"].append({"sale":sale.external_sale_id,"line":line.external_line_id,"error":str(exc)})
+                    for payment in sale.payments:
+                        inserted=self.db.execute("INSERT OR IGNORE INTO sale_payments VALUES(?,?,?,?,?,?,?)",(f"payment:{source}:{sale.external_sale_id}:{payment.external_payment_id}",sale_id,payment.external_payment_id,payment.payment_type,str(payment.amount),payment.name,payment.description)).rowcount
+                        report["payments"]+=inserted
                 now=_now();self.db.execute("INSERT INTO sales_sync_states VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(source) DO UPDATE SET last_success_at=excluded.last_success_at,last_attempt_at=excluded.last_attempt_at,status=excluded.status,cursor=excluded.cursor,last_error=NULL,imported_count=excluded.imported_count,unmatched_count=excluded.unmatched_count",(source,now,attempt,"SUCCESS",batch.cursor,None,report["imported"],report["unmatched"]+report["ambiguous"]))
                 self.ledger._audit("SALES_SYNC_COMPLETED",actor,report)
             return report
@@ -234,6 +292,9 @@ class SalesSyncService:
             if value.get("status")=="ERROR":value["freshness"]="ERROR"
             elif not value.get("last_success_at"):value["freshness"]="UNAVAILABLE"
             else:value["freshness"]="FRESH" if now-_utc(value["last_success_at"])<=timedelta(hours=self.stale_after_hours) else "STALE"
+        for value in states.values():
+            value["sales_count"]=self.db.execute("SELECT count(*) FROM sales WHERE source=?",(value["source"],)).fetchone()[0]
+            value["payments_count"]=self.db.execute("SELECT count(*) FROM sale_payments p JOIN sales s USING(sale_id) WHERE s.source=?",(value["source"],)).fetchone()[0]
         return list(states.values())
 
     def sales(self):
