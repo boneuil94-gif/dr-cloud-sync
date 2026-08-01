@@ -4,13 +4,13 @@ Connectors remain read-only adapters.  This module owns scheduling and state, no
 the Sales, Stock or Bank ledgers which remain separate authorities.
 """
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
-import hashlib, json, sqlite3
+import hashlib, json, sqlite3, time, uuid
 from pathlib import Path
 from typing import Callable, Mapping, Any
-from .connector_diagnostics import DiagnosticRepository, from_exception
+from .connector_diagnostics import ConnectorDiagnostic, DiagnosticRepository, from_exception
 
 class SourceStatus(StrEnum):
     CONNECTED="CONNECTED"; PARTIAL="PARTIAL"; NOT_CONFIGURED="NOT_CONFIGURED"; DISABLED="DISABLED"; ERROR="ERROR"; UNSUPPORTED="UNSUPPORTED"; UNAVAILABLE="UNAVAILABLE"
@@ -65,6 +65,28 @@ class DataHub:
         with self.connect() as db: db.execute("""INSERT INTO sync_jobs(job_id,source_id,job_type,interval_seconds,dependencies_json,max_attempts,next_run_at)
           VALUES(?,?,?,?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET interval_seconds=excluded.interval_seconds,dependencies_json=excluded.dependencies_json,max_attempts=excluded.max_attempts""",
           (job.job_id,job.source_id,job.job_type,job.interval_seconds,json.dumps(job.dependencies),job.max_attempts,iso(self.clock())))
+    def connector_health_check(self, source_id, provider, check, *, operation, stage,
+                               endpoint_path, request_id=None):
+        """Run and persist a connector health check, shared by startup and the UI."""
+        request_id=request_id or str(uuid.uuid4()); started=time.monotonic()
+        try:
+            check(); duration=int((time.monotonic()-started)*1000)
+            diagnostic=ConnectorDiagnostic(source_id,provider,operation,stage,"UNKNOWN",
+                "Test de lecture réussi",iso(self.clock()),endpoint_path=endpoint_path,
+                duration_ms=duration,request_id=request_id,success=True)
+            status=SourceStatus.CONNECTED
+        except Exception as exc:
+            duration=int((time.monotonic()-started)*1000)
+            diagnostic=from_exception(source_id=source_id,provider=provider,operation=operation,
+                stage=stage,exc=exc,duration_ms=duration,request_id=request_id)
+            diagnostic=replace(diagnostic,operation=operation,stage=stage,endpoint_path=endpoint_path)
+            status=SourceStatus.ERROR
+        diagnostic_id=self.diagnostics.add(diagnostic)
+        with self.connect() as db:
+            db.execute("UPDATE data_sources SET status=?,last_attempt_at=?,last_success_at=CASE WHEN ? THEN ? ELSE last_success_at END,last_error=CASE WHEN ? THEN NULL ELSE ? END WHERE source_id=?",
+                (status.value,diagnostic.occurred_at,int(diagnostic.success),diagnostic.occurred_at,
+                 int(diagnostic.success),None if diagnostic.success else diagnostic.message,source_id))
+        return diagnostic_id, diagnostic
     def sources(self):
         now=self.clock(); result=[]
         with self.connect() as db: rows=db.execute("SELECT * FROM data_sources ORDER BY source_id").fetchall()

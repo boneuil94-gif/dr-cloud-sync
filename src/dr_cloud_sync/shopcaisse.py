@@ -13,6 +13,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlparse
 from urllib.request import Request, urlopen
 from .connectors import assert_external_write_allowed
+from .connector_diagnostics import safe_path, sanitize
 
 
 API_URL = "https://api.shop-caisse.com/v1"
@@ -22,9 +23,16 @@ class ShopCaisseError(RuntimeError):
     """A sanitized API error which never contains credentials."""
 
     def __init__(self, message: str, *, retryable: bool = False, diagnostic: dict[str, Any] | None = None) -> None:
-        super().__init__(message)
+        context = dict(diagnostic or {})
+        context["endpoint_path"] = safe_path(context.get("endpoint_path"))
+        context["response_excerpt"] = sanitize(context.get("response_excerpt"), limit=1000)
+        super().__init__(sanitize(message, limit=500) or "Erreur ShopCaisse")
         self.retryable = retryable
-        self.diagnostic = diagnostic or {}
+        self.diagnostic = context
+        self.status_code = context.get("http_status")
+        self.path = context.get("endpoint_path")
+        self.category = context.get("category")
+        self.response_excerpt = context.get("response_excerpt")
 
 
 class ShopCaisseClient:

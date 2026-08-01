@@ -5,6 +5,7 @@ from urllib.error import HTTPError, URLError
 import pytest
 
 from dr_cloud_sync.connector_diagnostics import DiagnosticRepository, from_exception, safe_path, sanitize
+from dr_cloud_sync.data_hub import DataHub
 from dr_cloud_sync.prestashop import PrestaShopClient, PrestaShopError
 from dr_cloud_sync.shopcaisse import ShopCaisseClient, ShopCaisseError
 
@@ -45,6 +46,42 @@ def test_shopcaisse_timeout_and_invalid_json():
         def read(self): return b"not-json"
     with pytest.raises(ShopCaisseError) as caught: ShopCaisseClient("key",opener=lambda *_a,**_k:Response()).health()
     assert caught.value.diagnostic["category"]=="PARSING"
+
+
+def test_shopcaisse_network_diagnostic():
+    def network(*_a, **_k): raise URLError("Bearer private-token")
+    with pytest.raises(ShopCaisseError) as caught:
+        ShopCaisseClient("private-token", opener=network, retries=1).health()
+    item=from_exception(source_id="shopcaisse_sales",provider="ShopCaisse",
+        operation="authentication",stage="startup_health",exc=caught.value)
+    assert item.category == "NETWORK"
+    assert "private-token" not in json.dumps(item.__dict__)
+
+
+def test_shared_health_layer_updates_state_and_makes_old_failure_historical(tmp_path):
+    hub=DataHub(tmp_path/"hub.sqlite")
+    hub.register_source("shopcaisse_sales","SHOPCAISSE_SALES","ShopCaisse",status="ERROR")
+    old=ShopCaisseError("denied",diagnostic={"category":"AUTH","http_status":401,
+        "endpoint_path":"/authentication"})
+    hub.connector_health_check("shopcaisse_sales","ShopCaisse",lambda: (_ for _ in ()).throw(old),
+        operation="authentication",stage="startup_health",endpoint_path="/authentication")
+    assert hub.sources()[0]["status"] == "ERROR"
+    _, current=hub.connector_health_check("shopcaisse_sales","ShopCaisse",lambda: {"status":"CONNECTED"},
+        operation="authentication",stage="startup_health",endpoint_path="/authentication")
+    source=hub.sources()[0]
+    history=hub.diagnostics.recent("shopcaisse_sales",10)
+    assert current.success and source["status"] == "CONNECTED" and source["last_success_at"]
+    assert history[0]["historical"] is True and history[0]["current"] is False
+
+
+def test_shopcaisse_error_exposes_only_sanitized_http_context():
+    error=ShopCaisseError("Bearer top-secret",diagnostic={"category":"AUTH","http_status":401,
+        "endpoint_path":"https://host/authentication?api_key=top-secret",
+        "response_excerpt":{"cookie":"top-secret","message":"denied"}})
+    assert error.status_code == 401 and error.category == "AUTH"
+    assert error.path == "/authentication?api_key=%5BREDACTED%5D"
+    assert "[REDACTED]" in error.response_excerpt and "denied" in error.response_excerpt
+    assert "top-secret" not in str(error) + json.dumps(error.diagnostic)
 
 
 def test_prestashop_stages_empty_invalid_and_pagination():
