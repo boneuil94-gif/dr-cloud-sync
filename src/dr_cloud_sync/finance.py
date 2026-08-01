@@ -50,7 +50,9 @@ class FinanceProjection:
   if self.sumup_transactions:
    payments=[r for r in self.sumup_transactions.rows() if start<=_iso(r['timestamp'])<end];payouts=self.sumup_settlements.rows() if self.sumup_settlements else []
    gross=sum((_d(r['amount']) for r in payments if str(r['status']).upper() not in {'FAILED','CANCELLED'}),Decimal());fees=sum((_d(r['fee']) for r in payments),Decimal())
-   refunds=sum((_d(r['amount']) for r in payments if 'REFUND' in str(r['status']).upper()),Decimal());chargebacks=sum((_d(r['amount']) for r in payments if 'CHARGE' in str(r['status']).upper()),Decimal())
+   # Refund/chargeback totals are event-derived columns on the original payment;
+   # do not infer them from transaction status and accidentally count gross twice.
+   refunds=sum((_d(r.get('refunded_amount')) for r in payments),Decimal());chargebacks=sum((_d(r.get('chargeback_amount')) for r in payments),Decimal())
    paid=sum((_d(r['amount']) for r in payouts if str(r['status']).upper() in {'PAID','SUCCESSFUL','COMPLETED'}),Decimal());pending=sum((_d(r['amount']) for r in payouts if str(r['status']).upper() not in {'PAID','SUCCESSFUL','COMPLETED','FAILED'}),Decimal())
    result['payments']={'gross':_money(gross,source='SumUp Transaction Ledger'),'fees':_money(fees,source='SumUp Transaction Ledger'),'refunds':_money(refunds,source='SumUp Transaction Ledger'),'chargebacks':_money(chargebacks,source='SumUp Transaction Ledger'),'net':_money(gross-fees-refunds-chargebacks,source='SumUp Transaction Ledger'),'payouts_pending':_money(pending,source='Payment Settlement Ledger'),'payouts_paid':_money(paid,source='Payment Settlement Ledger'),'revenue_included':False}
   # Compatibility for the original cockpit/dashboard consumers.

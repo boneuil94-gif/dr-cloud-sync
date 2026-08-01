@@ -1,32 +1,105 @@
-# Connecteur SumUp read-only
+# Connecteur SumUp : contrat, couverture et limites
 
-SumUp est l'autorité des encaissements carte, commissions, remboursements,
-chargebacks et versements. Il ne crée jamais une vente : le chiffre d'affaires
-reste exclusivement calculé depuis le **Sales Ledger**.
+Audit réalisé le **1er août 2026** à partir du contrat public SumUp et du code
+déployable. Aucun secret Dr Cloud n'est présent dans le dépôt ou l'environnement
+d'audit : l'accessibilité effective du compte ne peut donc pas être affirmée.
+Une réponse `403` doit être classée `SCOPE_MISSING`, jamais contournée.
 
-## Configuration
+Sources officielles : [API SumUp](https://developer.sumup.com/api),
+[authentification/scopes](https://developer.sumup.com/api/authentication),
+[Readers API](https://developer.sumup.com/terminal-payments/introduction/).
 
-Le secret `SUMUP_API_KEY` est résolu à l'exécution par `secret_ref` et n'est
-jamais stocké en SQLite. La variable `SUMUP_MERCHANT_CODE` est obligatoire.
-`SUMUP_API_URL` (défaut `https://api.sumup.com`) et
-`SUMUP_SYNC_INTERVAL_SECONDS` (défaut 900) sont optionnels. Les mêmes variables
-sont injectées au service web et à l'automation-worker via leur fichier
-d'environnement partagé.
+## Endpoints GET implémentés
 
-La clé doit disposer des autorisations de lecture de l'historique des
-transactions et des payouts du commerçant (scopes OAuth équivalents
-`transactions.history` et `payouts`). Aucun scope d'écriture n'est requis.
+| Ressource | Endpoint | Scope/permission attendu | État |
+|---|---|---|---|
+| Merchant | `GET /v0.1/me` | profil en lecture (`user.app-settings`) | implémenté, à homologuer compte |
+| Historique | `GET /v2.1/merchants/{merchant_code}/transactions/history` | `transactions.history` | implémenté |
+| Détail | `GET /v2.1/merchants/{merchant_code}/transactions?id={id}` | `transactions.history` | implémenté |
+| Payout events | `GET /v1.0/merchants/{merchant_code}/payouts?start_date&end_date&format=json` | `payouts` | implémenté |
+| Readers | `GET /v0.1/merchants/{merchant_code}/readers` | `payment_instruments` | implémenté, conditionnel |
 
-## API officielle utilisée
+Le connecteur n'appelle aucun endpoint d'écriture. Les refunds, chargebacks,
+reversals, tips, taxes, frais et rattachements payout ne sont pas supposés avoir
+des endpoints de liste indépendants : ils sont extraits du détail transaction ou
+des événements payout quand ils y figurent.
 
-* `GET /v2.1/merchants/{merchant_code}/transactions/history`
-* `GET /v2.1/merchants/{merchant_code}/transactions`
-* `GET /v1.0/merchants/{merchant_code}/payouts`
+## Matrice du contrat réel
 
-Les données sont conservées dans `sumup_transactions`, `sumup_payouts` et
-`payment_settlements`, séparément de `sale_events` et `bank_transactions`.
-La pagination, le curseur Data Hub, le chevauchement temporel, les upserts
-idempotents, le retry/backoff et la reprise de lease sont pris en charge.
+`R` = récupéré, `N` = normalisé, `P` = persisté. Le payload brut filtré est
+toujours persisté, ce qui évite qu'un champ métier additionnel soit perdu.
 
-Le rapprochement payout ↔ Qonto reste volontairement à réaliser lorsque le
-contrat Qonto de production et les références bancaires auront été homologués.
+| Domaine | Endpoint | Champ | Disponible API | R | N | P | Utilisé | Manquant / raison |
+|---|---|---|---:|---:|---:|---:|---|---|
+| Merchant | `/v0.1/me` | merchant code, legal/trading name, country, currency, timezone, status | conditionnel | oui | oui | oui | identité | `SCOPE_MISSING` si 403 |
+| Merchant | `/v0.1/me` | payout settings | si présent | oui | oui | oui | diagnostic | `API_NOT_EXPOSED` si absent |
+| Transaction | history/detail | id/code, amount/currency, timestamp, status/simple status | oui | oui | oui | oui | Finance/rapprochement | — |
+| Transaction | detail | payment/entry/card type, terminal, client/foreign ids | si présent | oui | oui | oui | rapprochement | `API_NOT_EXPOSED` si absent |
+| Transaction | detail | product summary, VAT, tip, reference/description, receipt URL | si présent | oui | oui | oui | diagnostic/Finance | `API_NOT_EXPOSED` si absent |
+| Event | detail | historique, refunds, reversals, chargebacks, payout events | si présent | oui | oui | oui | Finance/settlement | — |
+| Fee | detail | type, amount, currency, adjustments | si présent | oui | oui | oui | Finance | ajustement seulement si exposé |
+| Refund | detail events | id, original tx, amount/date/status, partial/full, reason | si présent | oui | oui | oui | Finance | reason `API_NOT_EXPOSED` si absent |
+| Chargeback | detail events | id, original tx, amount/date/status/reason | si présent | oui | oui | oui | Finance | dispute autonome `API_NOT_EXPOSED` |
+| Payout | payouts | id/date/status/amount/currency/fee/reference | oui selon scope | oui | oui | oui | settlement | — |
+| Payout | payouts | period, paid date, included items/deductions/adjustments | si présent | oui | oui | oui | settlement | réserve/balance `API_NOT_EXPOSED` si absent |
+| Reader | readers | id/name/model/status/store/last seen/software | selon produit/scope | oui | oui | oui | Data Hub | `UNSUPPORTED` si compte sans Readers API |
+| Webhook | — | événement/signature/retry | non retenu | non | non | non | aucun | `API_NOT_EXPOSED` pour ces lectures; polling déterministe |
+
+Les données carte sensibles (PAN complet, CVV, token d'autorisation) ne sont ni
+nécessaires ni conservées. Le filtre est récursif pour les secrets ; seules les
+métadonnées carte non sensibles éventuellement renvoyées sont admises.
+
+## Persistence et idempotence
+
+Les tables sont volontairement séparées : `sumup_merchants`,
+`sumup_transactions`, `sumup_transaction_events`, `sumup_fees`,
+`sumup_refunds`, `sumup_chargebacks`, `sumup_payouts`, `sumup_payout_items`,
+`sumup_readers` et `payment_settlements`. Elles ne sont ni le Sales Ledger, ni
+le Bank Ledger/Qonto. Les identifiants fournisseur sont les clés primaires ; à
+défaut, une empreinte déterministe est employée. Les upserts rendent le replay
+idempotent.
+
+Un lien transaction → payout n'est `MATCHED` que sur transaction id/code exact.
+Une heuristique faible ne produit jamais de match automatique. Payout → crédit
+Qonto reste à homologuer. Le CA reste exclusivement issu du Sales Ledger.
+
+## Backfill contrôlé
+
+* transactions : `oldest_time`/`newest_time`, pages de 100 maximum, détail pour
+  chaque ligne, watermark persistant et chevauchement configurable ;
+* payouts : `start_date` et `end_date` obligatoires, fenêtres de 31 jours par
+  défaut, offset persistant, chevauchement à la frontière et reprise ;
+* aucune limite globale à 100 ; le curseur est sauvegardé par le Data Hub ;
+* avant un très gros backfill, exécuter des fenêtres courtes pour estimer le
+  volume et la durée (un appel détail est fait par transaction).
+
+SumUp ne publie pas de quota universel garanti ni de fenêtre de rétention unique
+dans le contrat consommé : `429` respecte `Retry-After`, les `5xx` et timeouts
+sont retentés avec backoff. La profondeur réellement retournée doit être mesurée
+sur le compte et consignée comme couverture historique ; elle n'est pas inventée.
+
+## Audit de couverture final
+
+| Domaine | Champs audités | Complets | Partiels | Non exposés/conditionnels | Couverture code |
+|---|---:|---:|---:|---:|---:|
+| Merchant | 7 | 7 | 0 | 0 | 100 % |
+| Transactions/détail | 27 | 27 | 0 | 0 | 100 % |
+| Refund/chargeback/event | 19 | 19 | 0 | 0 | 100 % |
+| Fees | 4 | 4 | 0 | 0 | 100 % |
+| Payout/items | 18 | 18 | 0 | 0 | 100 % |
+| Readers | 8 | 8 | 0 | 0 | 100 % |
+| Webhooks/réserves/disputes autonomes | 3 | 0 | 0 | 3 | 0 % (`API_NOT_EXPOSED`) |
+
+Cette couverture mesure le **contrat géré par le code**, pas les données du
+compte. Après homologation, chaque champ absent doit être classé parmi
+`API_NOT_EXPOSED`, `SCOPE_MISSING`, `ENDPOINT_NOT_IMPLEMENTED`,
+`CLIENT_IGNORES_FIELD`, `PROVIDER_DROPS_FIELD`, `MODEL_MISSING`,
+`LEDGER_MISSING`, `UNSUPPORTED` ou `UNKNOWN` dans le diagnostic d'exploitation.
+
+### Couverture avant/après
+
+Avant : transactions aplaties et payouts, sans sous-ledgers ; dates payout non
+bornées. Après : 5 endpoints GET, 10 tables indépendantes, événements/frais/
+refunds/chargebacks/items typés, payload complet filtré, fenêtres et reprise.
+L'historique importé pendant cet audit est **0** (aucun credential de production,
+donc aucun appel au compte), et cette limite est explicitement observable.
