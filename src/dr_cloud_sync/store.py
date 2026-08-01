@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import sqlite3
 from typing import Any, Iterator
+from .schema import ensure_schema
 
 
 SCHEMA = """
@@ -40,7 +41,7 @@ class SnapshotStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(self.path)
         try:
-            connection.executescript(SCHEMA)
+            ensure_schema(connection, SCHEMA, owner="PrestaShop snapshot")
             yield connection
         finally:
             connection.close()

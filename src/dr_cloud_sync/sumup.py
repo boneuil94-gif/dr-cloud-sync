@@ -17,6 +17,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from .schema import ensure_schema
 
 
 class SumUpError(RuntimeError):
@@ -219,14 +220,6 @@ PAYOUT_COLUMNS = (
 )
 
 
-def _migrate_sumup_schema(db):
-    """Bring pre-existing SumUp databases forward without rebuilding their tables."""
-    columns = {row[1] for row in db.execute("PRAGMA table_info(sumup_payouts)")}
-    for name in ("start_date", "end_date", "paid_date"):
-        if name not in columns:
-            db.execute(f"ALTER TABLE sumup_payouts ADD COLUMN {name} TEXT")
-
-
 def _payout_values(row, payout_id, stamp):
     return (
         payout_id, row.get("type"),
@@ -242,7 +235,7 @@ class SumUpTransactionLedger:
     def __init__(self, path: Path | sqlite3.Connection):
         self.db = path if isinstance(path, sqlite3.Connection) else sqlite3.connect(path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
-        self.db.executescript(SCHEMA); _migrate_sumup_schema(self.db); self.db.commit()
+        ensure_schema(self.db, SCHEMA, owner="SumUp")
 
     def import_merchant(self, row):
         profile = row.get("merchant_profile", row)
@@ -308,7 +301,7 @@ class SumUpTransactionLedger:
 class PaymentSettlementLedger:
     def __init__(self, path: Path | sqlite3.Connection):
         self.db = path if isinstance(path, sqlite3.Connection) else sqlite3.connect(path, check_same_thread=False)
-        self.db.row_factory = sqlite3.Row; self.db.executescript(SCHEMA); _migrate_sumup_schema(self.db); self.db.commit()
+        self.db.row_factory = sqlite3.Row; ensure_schema(self.db, SCHEMA, owner="SumUp")
 
     def import_page(self, page):
         inserted = 0; stamp = datetime.now(timezone.utc).isoformat()

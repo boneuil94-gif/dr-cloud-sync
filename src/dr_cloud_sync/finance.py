@@ -7,6 +7,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import hashlib, json, sqlite3
+from .schema import ensure_schema
+
+SCHEMA="""
+CREATE TABLE IF NOT EXISTS finance_recurring_charges(charge_id TEXT PRIMARY KEY,label TEXT NOT NULL,category TEXT NOT NULL,amount TEXT NOT NULL,currency TEXT NOT NULL,frequency TEXT NOT NULL,next_due_at TEXT,status TEXT NOT NULL,vat_amount TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS finance_snapshots(fingerprint TEXT PRIMARY KEY,period_start TEXT NOT NULL,period_end TEXT NOT NULL,payload_json TEXT NOT NULL,created_at TEXT NOT NULL);
+"""
 
 CATEGORIES=("SALES_SETTLEMENT","SUPPLIER_PAYMENT","BANK_FEE","RENT","TAX","PAYROLL","FINANCING","TRANSFER","REFUND","OTHER","UNKNOWN")
 
@@ -18,10 +24,7 @@ def _money(value,available=True,currency="EUR",source="",method=""):
 class FinanceProjection:
  def __init__(self,bank,sales,purchases=None,purchase_costs=None,sumup_transactions=None,sumup_settlements=None):
   self.bank,self.sales,self.purchases,self.purchase_costs=bank,sales,purchases,purchase_costs; self.sumup_transactions=sumup_transactions;self.sumup_settlements=sumup_settlements;self.db=bank.db
-  self.db.executescript("""
-  CREATE TABLE IF NOT EXISTS finance_recurring_charges(charge_id TEXT PRIMARY KEY,label TEXT NOT NULL,category TEXT NOT NULL,amount TEXT NOT NULL,currency TEXT NOT NULL,frequency TEXT NOT NULL,next_due_at TEXT,status TEXT NOT NULL,vat_amount TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS finance_snapshots(fingerprint TEXT PRIMARY KEY,period_start TEXT NOT NULL,period_end TEXT NOT NULL,payload_json TEXT NOT NULL,created_at TEXT NOT NULL);
-  """);self.db.commit()
+  ensure_schema(self.db,SCHEMA,owner="Finance")
  def _period(self,days,now): return now-timedelta(days=days),now
  def _transactions(self,start,end): return [t for t in self.bank.transactions() if start<=_iso(t["booked_at"])<end]
  def _sales(self,start,end): return self.db.execute("SELECT * FROM sale_events WHERE sold_at>=? AND sold_at<?",(start.isoformat(),end.isoformat())).fetchall()

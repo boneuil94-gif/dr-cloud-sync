@@ -10,6 +10,7 @@ from uuid import uuid4
 from .sales import SaleEvent, SaleKind, SaleSource, SalesLedger, _decimal, _now, _utc
 from .shopcaisse import ShopCaisseClient
 from .connector_diagnostics import sanitize
+from .schema import ensure_schema
 
 
 @dataclass(frozen=True)
@@ -227,9 +228,7 @@ class SalesSyncService:
     def __init__(self,ledger: SalesLedger,providers: Mapping[str,SalesProvider]|None=None,*,stale_after_hours=48):
         self.ledger=ledger;self.db=ledger.db;self.providers=dict(providers or {});self.stale_after_hours=stale_after_hours
         with self.db:
-            self.db.executescript(OPERATIONAL_SCHEMA)
-            columns={row[1] for row in self.db.execute("PRAGMA table_info(sales_sync_states)")}
-            if "last_report_json" not in columns:self.db.execute("ALTER TABLE sales_sync_states ADD COLUMN last_report_json TEXT")
+            ensure_schema(self.db, OPERATIONAL_SCHEMA, owner="ShopCaisse/PrestaShop sales")
 
     def _mapping(self,source,line):
         row=self.db.execute("SELECT product_key FROM sales_product_mappings WHERE source=? AND external_product_id=? AND external_variant_id=? AND status='ACTIVE'",
