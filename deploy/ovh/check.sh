@@ -18,6 +18,9 @@ docker volume inspect drcloud-data >/dev/null
 web_policy="$(docker compose exec -T drcloud-os python -c 'import hashlib,os; value=os.environ.get("PRESTASHOP_PAID_STATE_IDS",""); assert value; print(hashlib.sha256(value.encode()).hexdigest())')"
 worker_policy="$(docker compose exec -T automation-worker python -c 'import hashlib,os; value=os.environ.get("PRESTASHOP_PAID_STATE_IDS",""); assert value; print(hashlib.sha256(value.encode()).hexdigest())')"
 [[ "$web_policy" == "$worker_policy" ]] || { echo "ERREUR: policy PrestaShop différente entre web et worker." >&2; exit 1; }
+web_shopcaisse_key="$(docker compose exec -T drcloud-os python -c 'import hashlib,os; value=os.environ.get("SHOPCAISSE_API_KEY",""); assert value; print(hashlib.sha256(value.encode()).hexdigest())')"
+worker_shopcaisse_key="$(docker compose exec -T automation-worker python -c 'import hashlib,os; value=os.environ.get("SHOPCAISSE_API_KEY",""); assert value; print(hashlib.sha256(value.encode()).hexdigest())')"
+[[ "$web_shopcaisse_key" == "$worker_shopcaisse_key" ]] || { echo "ERREUR: configuration ShopCaisse différente entre web et worker." >&2; exit 1; }
 df -h / /var/lib/docker
 usage="$(df --output=pcent /var/lib/docker | tail -1 | tr -dc '0-9')"
 (( usage < 90 )) || { echo "ERREUR: espace Docker critique: ${usage}%" >&2; exit 1; }
