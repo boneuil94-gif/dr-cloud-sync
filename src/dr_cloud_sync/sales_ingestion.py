@@ -116,7 +116,10 @@ class ShopCaisseSalesProvider(ShopCaisseCSVProvider):
 class PrestaShopSalesProvider:
     """GET-only paid-order adapter. Accepted state ids must be configured explicitly."""
     source=SaleSource.PRESTASHOP.value
-    def __init__(self,client,paid_state_ids: Sequence[str|int]): self.client=client; self.paid={str(x) for x in paid_state_ids}
+    def __init__(self,client,paid_state_ids: Sequence[str|int],*,cancelled_state_ids=(),refunded_state_ids=(),partially_refunded_state_ids=()):
+        self.client=client; self.paid={str(x) for x in paid_state_ids}
+        self.cancelled={str(x) for x in cancelled_state_ids}; self.refunded={str(x) for x in refunded_state_ids}
+        self.partially_refunded={str(x) for x in partially_refunded_state_ids}
     @property
     def configured(self): return bool(self.client and self.paid)
     def fetch(self,*,cursor=None,since=None)->ProviderBatch:
@@ -125,18 +128,25 @@ class PrestaShopSalesProvider:
         for row in self.client.iter_resource("order_details"): details.setdefault(str(row.get("id_order")),[]).append(row)
         result=[]
         for order in self.client.iter_resource("orders"):
-            if str(order.get("current_state")) not in self.paid: continue
+            state=str(order.get("current_state"))
+            if state not in self.paid|self.cancelled|self.refunded|self.partially_refunded: continue
             sold=_utc(str(order.get("date_upd") or order.get("date_add"))).isoformat()
             if since and _utc(sold)<since.astimezone(timezone.utc): continue
             lines=[]
             for row in details.get(str(order.get("id")),[]):
                 quantity=_decimal(row.get("product_quantity"),required=True)
                 ttc=_decimal(row.get("total_price_tax_incl")); ht=_decimal(row.get("total_price_tax_excl"))
-                lines.append(CanonicalSaleLine(str(row.get("id")),quantity,"SALE",str(row.get("product_id") or "") or None,
+                # State policy is explicit.  A partial refund cannot safely be valued
+                # from an order state alone, so it remains absent until a verified
+                # structured refund line is available.
+                kind="CANCELLATION" if state in self.cancelled else "REFUND" if state in self.refunded else "SALE"
+                if state in self.partially_refunded: continue
+                lines.append(CanonicalSaleLine(str(row.get("id")),quantity,kind,str(row.get("product_id") or "") or None,
                     str(row.get("product_attribute_id") or "") or None,str(row.get("product_reference") or "") or None,
                     str(row.get("product_ean13") or "") or None,None,_decimal(row.get("unit_price_tax_incl")),
                     _decimal(row.get("unit_price_tax_excl")),ttc,ht,None))
-            result.append(CanonicalSale(self.source,str(order["id"]),sold,"UTC","ECOMMERCE",str(order.get("id_currency") or "EUR"),"COMPLETED",tuple(lines),source_updated_at=sold))
+            status="CANCELLED" if state in self.cancelled else "REFUNDED" if state in self.refunded else "PARTIALLY_REFUNDED" if state in self.partially_refunded else "COMPLETED"
+            result.append(CanonicalSale(self.source,str(order["id"]),sold,"UTC","ECOMMERCE",str(order.get("id_currency") or "EUR"),status,tuple(lines),source_updated_at=sold))
         return ProviderBatch(tuple(result),max((s.source_updated_at for s in result),default=cursor))
 
 

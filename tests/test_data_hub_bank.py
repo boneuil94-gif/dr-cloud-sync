@@ -24,3 +24,13 @@ def test_runtime_due_dependency_freshness_and_lock(tmp_path):
  assert hub.run('projection',lambda c:{})['status']=='BLOCKED'
  assert hub.run('sync',lambda c:{'rows_imported':1,'cursor':'c'})['status']=='SUCCEEDED';assert hub.sources()[0]['freshness']=='FRESH'
  current[0]+=timedelta(seconds=11);assert hub.sources()[0]['freshness']=='STALE'
+
+def test_inventory_statuses_disabled_and_next_run_are_explicit(tmp_path):
+ hub=DataHub(tmp_path/'states.db')
+ hub.register_source('disabled','SOCIAL_ANALYTICS','none',enabled=False)
+ hub.register_source('unsupported','PAYMENTS','none',status='UNSUPPORTED')
+ hub.register_job(JobDefinition('social_job','disabled','SOCIAL',60))
+ rows={row['source_id']:row for row in hub.sources()}
+ assert rows['disabled']['freshness']=='DISABLED'
+ assert rows['disabled']['next_run_at'] is not None
+ assert rows['unsupported']['status']=='UNSUPPORTED'

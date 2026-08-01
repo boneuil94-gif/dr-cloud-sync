@@ -87,3 +87,18 @@ Le modèle User/Role/Permission, la matrice RBAC, l'autorisation centralisée fa
 ## Purchase Cost Ledger & Profitability V1 — 2026-08-01
 
 Progression calculée depuis les jalons (aucun pourcentage dans le JSON): **globale 63,48 % → 68,79 %**, **Achats 80 % → 100 %**, **Finance 50 % → 80 %**, **Dashboard 27,27 % → 45,45 %**, **Marketing 46,15 % → 46,15 %**. Achats gagne le rapprochement exact et l'analyse prix/TVA. Finance gagne coûts d'achat, TVA disponible, valeur du stock et rentabilité produit. Dashboard consomme les projections marge/stock. La rentabilité catégorie, les achats/remboursements Finance, la projection réceptions Dashboard et Purchase/margin intelligence Marketing restent volontairement non livrés.
+
+## External Platforms Activation V1 — avant / après audité
+
+Cette livraison ne crédite aucun port comme une connexion live. Les statuts binaires du manifeste restent donc inchangés et les pourcentages calculés par `RoadmapService` ne progressent pas artificiellement.
+
+| Domaine | Avant | Après V1 |
+|---|---|---|
+| Global | connecteurs réels hétérogènes | inventaire commun, états/freshness/cadences observables; progression calculée inchangée |
+| Ventes | ShopCaisse inbox PARTIAL; PrestaShop payé | politique annulation/remboursement explicite, limites paiements documentées; jalons inchangés |
+| Finance | Bank/Purchase Cost ledgers et rapprochement | chaîne Qonto confirmée read-only; rapprochement complet reste futur |
+| Marketing | fondation analytics, aucun provider live | quatre sources visibles NOT_CONFIGURED; Social Analytics live reste TODO |
+| Automatisations | worker Data Hub | inventaire externe et scheduling central complétés; fournisseurs/social non activés |
+| Production | worker OVH et healthcheck | variables/cadences documentées; aucun déploiement effectué par cette PR |
+
+Le prochain progrès mesurable exige un endpoint tickets ShopCaisse officiellement vérifié, des lignes de paiement/remboursement PrestaShop réelles, ou un provider fournisseur/social homologué avec health check runtime.

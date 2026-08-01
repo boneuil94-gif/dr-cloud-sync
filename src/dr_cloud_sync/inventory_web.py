@@ -105,15 +105,25 @@ class InventoryApp:
         shopcaisse_inbox=os.environ.get("SHOPCAISSE_SALES_INBOX","")
         if shopcaisse_inbox and Path(shopcaisse_inbox).is_dir(): sales_providers["SHOPCAISSE"]=ShopCaisseSalesProvider(Path(shopcaisse_inbox))
         paid_states=[x.strip() for x in os.environ.get("PRESTASHOP_PAID_STATE_IDS","").split(",") if x.strip()]
+        state_ids=lambda name: [x.strip() for x in os.environ.get(name,"").split(",") if x.strip()]
         prestashop_ref=os.environ.get("PRESTASHOP_SECRET_REF") or ("prestashop.production" if os.environ.get("PRESTASHOP_API_KEY") else "")
         if os.environ.get("PRESTASHOP_API_URL") and prestashop_ref and paid_states:
             sales_providers["PRESTASHOP"]=PrestaShopSalesProvider(PrestaShopClient.from_secret_ref(
-                os.environ["PRESTASHOP_API_URL"],prestashop_ref,secrets_provider),paid_states)
+                os.environ["PRESTASHOP_API_URL"],prestashop_ref,secrets_provider),paid_states,
+                cancelled_state_ids=state_ids("PRESTASHOP_CANCELLED_STATE_IDS"),
+                refunded_state_ids=state_ids("PRESTASHOP_REFUNDED_STATE_IDS"),
+                partially_refunded_state_ids=state_ids("PRESTASHOP_PARTIALLY_REFUNDED_STATE_IDS"))
         self.sales_sync=SalesSyncService(self.sales,sales_providers)
         configured_ps="PRESTASHOP" in sales_providers
         intervals={"sales":int(os.environ.get("DATA_HUB_SALES_INTERVAL_SECONDS","900")),"bank":int(os.environ.get("DATA_HUB_BANK_INTERVAL_SECONDS","10800")),"projection":int(os.environ.get("DATA_HUB_PROJECTION_INTERVAL_SECONDS","900"))}
         for args in (("shopcaisse_sales","SHOPCAISSE_SALES","ShopCaisse","SHOPCAISSE" in sales_providers),("prestashop_sales","PRESTASHOP_SALES","PrestaShop",configured_ps),("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",bool(os.environ.get("PRESTASHOP_API_URL") and prestashop_ref)),("bank","BANK","Qonto",qonto_connected),("purchases","PURCHASES","LOCAL",True),("stock","STOCK","LOCAL",True)):
             self.data_hub.register_source(*args[:3],configured=args[3],capabilities=("READ",),stale_after_seconds=intervals["bank"]*2 if args[0]=="bank" else intervals["sales"]*2)
+        # Audited V1 inventory: these adapters are not fabricated.  They remain
+        # visible and non-green until a homologated provider and opaque secret_ref
+        # are supplied to the server runtime.
+        self.data_hub.register_source("supplier_documents","SUPPLIER_DOCUMENTS","NONE",status="NOT_CONFIGURED",capabilities=("READ_STRUCTURED","PREVIEW_UNSTRUCTURED"),stale_after_seconds=int(os.environ.get("SUPPLIER_SYNC_INTERVAL_SECONDS","3600")))
+        for channel in ("instagram","facebook","snapchat","tiktok"):
+            self.data_hub.register_source(f"social_{channel}","SOCIAL_ANALYTICS",channel.title(),status="NOT_CONFIGURED",capabilities=("READ_ANALYTICS",),stale_after_seconds=int(os.environ.get("SOCIAL_ANALYTICS_INTERVAL_SECONDS","21600")))
         for job in (JobDefinition("sync_shopcaisse_sales","shopcaisse_sales","SHOPCAISSE_SALES",int(os.environ.get("SHOPCAISSE_SYNC_INTERVAL_SECONDS","600"))),JobDefinition("sync_prestashop_sales","prestashop_sales","PRESTASHOP_SALES",intervals["sales"]),JobDefinition("sync_bank_transactions","bank","BANK",intervals["bank"]),JobDefinition("refresh_sales_metrics","prestashop_sales","SALES_METRICS",intervals["projection"],("sync_prestashop_sales",)),JobDefinition("reconcile_bank_sales","bank","RECONCILE",intervals["projection"],("sync_bank_transactions",)),JobDefinition("refresh_finance","bank","FINANCE",intervals["projection"],("reconcile_bank_sales",)),JobDefinition("refresh_dashboard","purchases","DASHBOARD",intervals["projection"]),JobDefinition("refresh_marketing_signals","prestashop_sales","MARKETING",intervals["projection"],("refresh_sales_metrics",))): self.data_hub.register_job(job)
         self.sales_import_preview=None
         self.social_analytics=SocialAnalyticsService(self.marketing_repository.db)

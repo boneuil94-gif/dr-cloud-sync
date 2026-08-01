@@ -25,3 +25,7 @@ La fraîcheur standard est `FRESH`, `STALE`, `ERROR`, `UNAVAILABLE`, `NOT_CONFIG
 5. N'activer `configured=True` qu'après validation réelle de la configuration.
 
 Le safe mode n'autorise aucune écriture externe. Les synchronisations n'altèrent jamais identité Catalogue, EAN, PRIMARY, stock physique, PrestaShop, ShopCaisse ou banque.
+
+## Inventaire External Platforms V1
+
+Les états normalisés sont `CONNECTED`, `PARTIAL`, `NOT_CONFIGURED`, `DISABLED`, `ERROR`, `UNSUPPORTED`; la fraîcheur est `FRESH`, `STALE`, `ERROR`, `NOT_CONFIGURED` ou `DISABLED` (une source non supportée demeure indisponible). La réponse expose désormais aussi le prochain run calculé depuis les jobs, en plus du curseur, des compteurs et erreurs assainies. Les sources fournisseurs et chacun des quatre réseaux sociaux sont visibles sans être artificiellement vertes. La matrice d'autorité complète est dans `EXTERNAL_PLATFORMS.md`.

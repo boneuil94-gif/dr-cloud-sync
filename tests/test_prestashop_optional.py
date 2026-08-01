@@ -71,3 +71,16 @@ def test_network_failure_only_degrades_optional_integration(monkeypatch,tmp_path
     assert status=="503 Service Unavailable"
     assert json.loads(body)["integration"]["state"]=="UNAVAILABLE"
     assert json.loads(request(app,"/health")[2])["status"]=="ok"
+
+def test_explicit_cancelled_and_refunded_states_are_append_only():
+    from dr_cloud_sync.sales_ingestion import PrestaShopSalesProvider
+    class Client:
+        def iter_resource(self, resource):
+            if resource == "order_details":
+                return iter([{"id":"l1","id_order":"1","product_quantity":"1","total_price_tax_incl":"12"},
+                             {"id":"l2","id_order":"2","product_quantity":"1","total_price_tax_incl":"12"}])
+            return iter([{"id":"1","current_state":"6","date_upd":"2026-08-01T10:00:00+00:00"},
+                         {"id":"2","current_state":"7","date_upd":"2026-08-01T11:00:00+00:00"}])
+    batch=PrestaShopSalesProvider(Client(),["2"],cancelled_state_ids=["6"],refunded_state_ids=["7"]).fetch()
+    assert [sale.status for sale in batch.sales] == ["CANCELLED","REFUNDED"]
+    assert [sale.lines[0].kind for sale in batch.sales] == ["CANCELLATION","REFUND"]
