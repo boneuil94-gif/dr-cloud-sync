@@ -36,7 +36,6 @@ from .sales_ingestion import PrestaShopSalesProvider, SalesSyncService, ShopCais
 from .shopcaisse import ShopCaisseClient, ShopCaisseError
 from .social import MarketingSchedulingService, SocialConnectionService, SocialPublishingService
 from .data_hub import DataHub, JobDefinition
-from .connector_diagnostics import ConnectorDiagnostic, from_exception
 from .bank import BankLedger, DisabledQontoProvider
 from .qonto import EnvironmentSecretProvider, QontoBankProvider, QontoError
 from .reconciliation import ReconciliationService
@@ -111,13 +110,8 @@ class InventoryApp:
                 shopcaisse_client=ShopCaisseClient(shopcaisse_key,
                     api_url=os.environ.get("SHOPCAISSE_API_URL","https://api.shop-caisse.com/v1"),
                     timeout=float(os.environ.get("SHOPCAISSE_TIMEOUT_SECONDS","8")))
-                shopcaisse_connected=shopcaisse_client.health()["status"]=="CONNECTED"
-                if shopcaisse_connected:
-                    sales_providers["SHOPCAISSE"]=ShopCaisseAPISalesProvider(shopcaisse_client,self.sales.db,
-                        stock_board_type=os.environ.get("SHOPCAISSE_STOCK_BOARD_TYPE","DEFAULT"))
-            except ShopCaisseError: pass
-        shopcaisse_inbox=os.environ.get("SHOPCAISSE_SALES_INBOX","")
-        if not shopcaisse_connected and shopcaisse_inbox and Path(shopcaisse_inbox).is_dir(): sales_providers["SHOPCAISSE"]=ShopCaisseSalesProvider(Path(shopcaisse_inbox))
+            except ShopCaisseError:
+                shopcaisse_client=None
         try: paid_states=parse_prestashop_state_ids(os.environ.get("PRESTASHOP_PAID_STATE_IDS"),required=True)
         except ValueError: paid_states=()
         self.prestashop_paid_states_configured=bool(paid_states)
@@ -133,13 +127,28 @@ class InventoryApp:
                 cancelled_state_ids=state_ids("PRESTASHOP_CANCELLED_STATE_IDS"),
                 refunded_state_ids=state_ids("PRESTASHOP_REFUNDED_STATE_IDS"),
                 partially_refunded_state_ids=state_ids("PRESTASHOP_PARTIALLY_REFUNDED_STATE_IDS"))
-        self.sales_sync=SalesSyncService(self.sales,sales_providers)
         configured_ps="PRESTASHOP" in sales_providers
         intervals={"sales":int(os.environ.get("DATA_HUB_SALES_INTERVAL_SECONDS","900")),"bank":int(os.environ.get("DATA_HUB_BANK_INTERVAL_SECONDS","10800")),"projection":int(os.environ.get("DATA_HUB_PROJECTION_INTERVAL_SECONDS","900"))}
-        for args in (("shopcaisse_sales","SHOPCAISSE_SALES","ShopCaisse","SHOPCAISSE" in sales_providers),("prestashop_sales","PRESTASHOP_SALES","PrestaShop",configured_ps),("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",prestashop_connected),("bank","BANK","Qonto",qonto_connected),("purchases","PURCHASES","LOCAL",True),("stock","STOCK","LOCAL",True)):
+        self.data_hub.register_source("shopcaisse_sales","SHOPCAISSE_SALES","ShopCaisse",
+            status="UNAVAILABLE" if shopcaisse_key else "NOT_CONFIGURED",
+            capabilities=("READ_SALES","READ_PAYMENTS","READ_STOCK"),stale_after_seconds=intervals["sales"]*2)
+        if shopcaisse_client:
+            _, health_diagnostic=self.data_hub.connector_health_check("shopcaisse_sales","ShopCaisse",
+                shopcaisse_client.health,operation="authentication",stage="startup_health",endpoint_path="/authentication")
+            shopcaisse_connected=health_diagnostic.success
+            if shopcaisse_connected:
+                sales_providers["SHOPCAISSE"]=ShopCaisseAPISalesProvider(shopcaisse_client,self.sales.db,
+                    stock_board_type=os.environ.get("SHOPCAISSE_STOCK_BOARD_TYPE","DEFAULT"))
+        shopcaisse_inbox=os.environ.get("SHOPCAISSE_SALES_INBOX","")
+        # Existing offline policy: a configured CSV inbox is runnable only when no
+        # API credential asks us to enforce the authenticated startup health gate.
+        if not shopcaisse_key and shopcaisse_inbox and Path(shopcaisse_inbox).is_dir():
+            sales_providers["SHOPCAISSE"]=ShopCaisseSalesProvider(Path(shopcaisse_inbox))
+            self.data_hub.register_source("shopcaisse_sales","SHOPCAISSE_SALES","ShopCaisse",
+                configured=True,capabilities=("READ_SALES",),stale_after_seconds=intervals["sales"]*2)
+        self.sales_sync=SalesSyncService(self.sales,sales_providers)
+        for args in (("prestashop_sales","PRESTASHOP_SALES","PrestaShop",configured_ps),("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",prestashop_connected),("bank","BANK","Qonto",qonto_connected),("purchases","PURCHASES","LOCAL",True),("stock","STOCK","LOCAL",True)):
             self.data_hub.register_source(*args[:3],configured=args[3],capabilities=("READ",),stale_after_seconds=intervals["bank"]*2 if args[0]=="bank" else intervals["sales"]*2)
-        if shopcaisse_key and not shopcaisse_connected:
-            self.data_hub.register_source("shopcaisse_sales","SHOPCAISSE_SALES","ShopCaisse",status="UNAVAILABLE",capabilities=("READ_SALES","READ_PAYMENTS","READ_STOCK"),stale_after_seconds=intervals["sales"]*2)
         if prestashop_client:
             self.data_hub.register_source("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",status="UNAVAILABLE",capabilities=("READ",),stale_after_seconds=intervals["sales"]*2)
             if configured_ps:self.data_hub.register_source("prestashop_sales","PRESTASHOP_SALES","PrestaShop",status="UNAVAILABLE",capabilities=("READ",),stale_after_seconds=intervals["sales"]*2)
@@ -248,13 +257,11 @@ class InventoryApp:
                 source_id=unquote(path.removeprefix("/api/data-hub/sources/").removesuffix("/test")); sources={s["source_id"]:s for s in self.data_hub.sources()}
                 source=sources.get(source_id); client=self.shopcaisse_client if source_id=="shopcaisse_sales" else self.prestashop_client if source_id in {"prestashop_sales","prestashop_catalog"} else None
                 if not source or not client: return self._json(start,{"error":"Connecteur non configuré"},"409 Conflict")
-                started=time.monotonic(); operation="authentication" if source_id=="shopcaisse_sales" else "order_states"; path_value="/authentication" if source_id=="shopcaisse_sales" else "/order_states"
-                try:
-                    client.health() if source_id=="shopcaisse_sales" else next(client.iter_resource("order_states"),None)
-                    diagnostic=ConnectorDiagnostic(source_id,source["provider"],operation,operation,"UNKNOWN","Test de lecture réussi",datetime.now(timezone.utc).isoformat(),endpoint_path=path_value,duration_ms=int((time.monotonic()-started)*1000),request_id=request_id,success=True); status="OK"
-                except Exception as exc:
-                    diagnostic=from_exception(source_id=source_id,provider=source["provider"],operation=operation,stage=operation,exc=exc,duration_ms=int((time.monotonic()-started)*1000),request_id=request_id); status="ERROR"
-                diagnostic_id=self.data_hub.diagnostics.add(diagnostic)
+                operation="authentication" if source_id=="shopcaisse_sales" else "order_states"; path_value="/authentication" if source_id=="shopcaisse_sales" else "/order_states"
+                check=client.health if source_id=="shopcaisse_sales" else lambda: next(client.iter_resource("order_states"),None)
+                diagnostic_id, diagnostic=self.data_hub.connector_health_check(source_id,source["provider"],check,
+                    operation=operation,stage="manual_health",endpoint_path=path_value,request_id=request_id)
+                status="OK" if diagnostic.success else "ERROR"
                 self.security and self.security.audit(session["uid"],"CONNECTOR_DIAGNOSTIC_TEST","DATA_SOURCE",source_id,request_id,"api",{"diagnostic_id":diagnostic_id,"result":status})
                 return self._json(start,{"status":status,"diagnostic_id":diagnostic_id,"diagnostic":self.data_hub.diagnostics.recent(source_id,1,failures_only=False)[0]})
             if path.startswith("/api/data-hub/jobs/") and path.endswith("/run") and method == "POST":
