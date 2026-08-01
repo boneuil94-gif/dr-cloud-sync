@@ -355,7 +355,7 @@
           "id": "06-sales-m08",
           "name": "Import ShopCaisse réel",
           "status": "IN_PROGRESS",
-          "evidence": "sales_ingestion.py (ShopCaisseSalesProvider): ingestion automatique des exports CSV réels; API réseau de tickets non vérifiée",
+          "evidence": "API catalogue ShopCaisse réutilisée mais aucun endpoint tickets vérifié; inbox CSV automatique 10 min reste le fallback réel et rend la capacité PARTIAL",
           "steps": [
             {
               "name": "Import automatique export CSV ShopCaisse réel",
@@ -382,7 +382,7 @@
           "id": "06-sales-m11",
           "name": "Remboursements et retours opérationnels",
           "status": "IN_PROGRESS",
-          "evidence": "modèle append-only SaleKind et événements compensatoires; couverture dépend des faits fiables exposés par chaque source",
+          "evidence": "Événements append-only ShopCaisse et politique explicite PrestaShop pour annulation/remboursement complet; paiements et lignes de remboursement partiel non vérifiés restent absents",
           "steps": [
             {
               "name": "Événements compensatoires append-only",
@@ -579,7 +579,8 @@
         {
           "id": "09-marketing-m08",
           "name": "Social Analytics live",
-          "status": "TODO"
+          "status": "TODO",
+          "evidence": "Quatre sources Data Hub inventoriées NOT_CONFIGURED; aucun provider analytics homologué ni métrique live"
         },
         {
           "id": "09-marketing-m09",
@@ -629,7 +630,8 @@
               "name": "Permissions par action implémentées",
               "done": false
             }
-          ]
+          ],
+          "evidence": "Worker/Data Hub existants; matrice External Platforms V1, cadences runtime et états honnêtes ajoutés; fournisseurs/social restent sans provider réel"
         },
         {
           "id": "10-automation-ai-m02",
@@ -953,7 +955,7 @@
           "id": "13-production-m19",
           "name": "Worker Data Hub automatique en production",
           "status": "DONE",
-          "evidence": "deploy/ovh/docker-compose.yml automation-worker; AUTOMATION_RUNTIME.md"
+          "evidence": "Service automation-worker OVH actif, volume partagé, restart et healthcheck; il traite uniquement les providers réellement configurés et conserve les autres NOT_CONFIGURED"
         }
       ]
     }

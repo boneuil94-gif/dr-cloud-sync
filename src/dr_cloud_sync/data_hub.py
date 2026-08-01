@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Callable, Mapping, Any
 
 class SourceStatus(StrEnum):
-    CONNECTED="CONNECTED"; NOT_CONFIGURED="NOT_CONFIGURED"; DISABLED="DISABLED"; ERROR="ERROR"; UNAVAILABLE="UNAVAILABLE"
+    CONNECTED="CONNECTED"; PARTIAL="PARTIAL"; NOT_CONFIGURED="NOT_CONFIGURED"; DISABLED="DISABLED"; ERROR="ERROR"; UNSUPPORTED="UNSUPPORTED"; UNAVAILABLE="UNAVAILABLE"
 class DataFreshness(StrEnum):
-    FRESH="FRESH"; STALE="STALE"; ERROR="ERROR"; UNAVAILABLE="UNAVAILABLE"; NOT_CONFIGURED="NOT_CONFIGURED"
+    FRESH="FRESH"; STALE="STALE"; ERROR="ERROR"; UNAVAILABLE="UNAVAILABLE"; NOT_CONFIGURED="NOT_CONFIGURED"; DISABLED="DISABLED"
 class SyncStatus(StrEnum):
     PENDING="PENDING"; RUNNING="RUNNING"; SUCCEEDED="SUCCEEDED"; FAILED="FAILED"; BLOCKED="BLOCKED"; RETRY="RETRY"
 
@@ -45,8 +45,15 @@ class DataHub:
         with self.connect() as db: db.executescript(SCHEMA)
     def connect(self):
         db=sqlite3.connect(self.path,timeout=10);db.row_factory=sqlite3.Row;return db
-    def register_source(self,source_id,source_type,provider,*,configured=False,enabled=True,capabilities=(),stale_after_seconds=3600):
-        status=SourceStatus.DISABLED if not enabled else SourceStatus.CONNECTED if configured else SourceStatus.NOT_CONFIGURED
+    def register_source(self,source_id,source_type,provider,*,configured=False,enabled=True,capabilities=(),stale_after_seconds=3600,status=None):
+        """Register observable source state without equating a port with a connection.
+
+        ``configured=True`` is reserved for adapters whose runtime prerequisites (and,
+        where applicable, authenticated health check) succeeded.  Audited partial and
+        unsupported capabilities can be stated explicitly without producing a false
+        green status.
+        """
+        status=SourceStatus(status) if status else SourceStatus.DISABLED if not enabled else SourceStatus.CONNECTED if configured else SourceStatus.NOT_CONFIGURED
         with self.connect() as db: db.execute("""INSERT INTO data_sources VALUES(?,?,?,?,?,NULL,NULL,NULL,NULL,?,?,0)
           ON CONFLICT(source_id) DO UPDATE SET source_type=excluded.source_type,provider=excluded.provider,enabled=excluded.enabled,capabilities_json=excluded.capabilities_json,stale_after_seconds=excluded.stale_after_seconds,status=CASE WHEN data_sources.status='ERROR' AND excluded.status='CONNECTED' THEN data_sources.status ELSE excluded.status END""",
           (source_id,source_type,provider,status.value,int(enabled),json.dumps(list(capabilities)),stale_after_seconds))
@@ -62,8 +69,12 @@ class DataHub:
             item=dict(row); item["enabled"]=bool(item["enabled"]);item["capabilities"]=json.loads(item.pop("capabilities_json"))
             if item["status"]==SourceStatus.NOT_CONFIGURED: fresh=DataFreshness.NOT_CONFIGURED
             elif item["status"] in (SourceStatus.ERROR,): fresh=DataFreshness.ERROR
-            elif item["status"] in (SourceStatus.DISABLED,SourceStatus.UNAVAILABLE) or not item["last_success_at"]: fresh=DataFreshness.UNAVAILABLE
+            elif item["status"]==SourceStatus.DISABLED: fresh=DataFreshness.DISABLED
+            elif item["status"] in (SourceStatus.UNSUPPORTED,SourceStatus.UNAVAILABLE) or not item["last_success_at"]: fresh=DataFreshness.UNAVAILABLE
             else: fresh=DataFreshness.FRESH if now-datetime.fromisoformat(item["last_success_at"])<=timedelta(seconds=item["stale_after_seconds"]) else DataFreshness.STALE
+            with self.connect() as db:
+                schedule=db.execute("SELECT MIN(next_run_at) FROM sync_jobs WHERE source_id=?",(item["source_id"],)).fetchone()[0]
+            item["next_run_at"]=schedule
             item["freshness"]=fresh.value;result.append(item)
         return result
     def jobs(self):
