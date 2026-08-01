@@ -10,18 +10,7 @@ from typing import Protocol
 from .domain import (ActivityLog, AssignmentStatus, BarcodeAssignment, MovementStatus,
                      MovementType, Product, ProductStatus, RemoteStatus, StockMovement,
                      utc_now)
-
-
-STOCK_MOVEMENT_COLUMNS = {
-    "prestashop_key": "TEXT",
-    "drcloud_product_key": "TEXT",
-    "source_type": "TEXT",
-    "idempotency_key": "TEXT",
-    "status": "TEXT NOT NULL DEFAULT 'PENDING'",
-    "applied_at": "TEXT",
-    "actor": "TEXT",
-    "result_message": "TEXT",
-}
+from .schema import ensure_schema
 
 
 def ensure_stock_movements_schema(db: sqlite3.Connection) -> None:
@@ -30,16 +19,13 @@ def ensure_stock_movements_schema(db: sqlite3.Connection) -> None:
     Legacy rows retain their ``prestashop_key`` and receive deterministic
     DrCloud and idempotency identities derived from their existing primary key.
     """
-    db.execute("""CREATE TABLE IF NOT EXISTS stock_movements(
+    schema="""CREATE TABLE IF NOT EXISTS stock_movements(
       id TEXT PRIMARY KEY, prestashop_key TEXT, drcloud_product_key TEXT,
       quantity_delta INTEGER NOT NULL, movement_type TEXT NOT NULL,
       source_type TEXT, source_id TEXT, idempotency_key TEXT,
       status TEXT NOT NULL DEFAULT 'PENDING', created_at TEXT NOT NULL,
-      validated_at TEXT, applied_at TEXT, actor TEXT, result_message TEXT)""")
-    existing = {row[1] for row in db.execute("PRAGMA table_info(stock_movements)")}
-    for name, declaration in STOCK_MOVEMENT_COLUMNS.items():
-        if name not in existing:
-            db.execute(f"ALTER TABLE stock_movements ADD COLUMN {name} {declaration}")
+      validated_at TEXT, applied_at TEXT, actor TEXT, result_message TEXT)"""
+    ensure_schema(db, schema, owner="Stock Ledger")
     db.execute("""UPDATE stock_movements
                   SET drcloud_product_key='drc:' || prestashop_key
                   WHERE drcloud_product_key IS NULL AND prestashop_key IS NOT NULL""")
@@ -311,7 +297,7 @@ class SQLiteOSRepository(MemoryCatalogRepository, MemoryAuditRepository):
         try:
             with self.db:
                 self.db.execute("UPDATE drcloud_products SET ean=?,ean_source='DRCLOUD',updated_at=? WHERE drcloud_product_key=?",(ean,utc_now(),key))
-                self.db.execute("INSERT OR REPLACE INTO catalogue_eans VALUES(?,?)", (key, ean))
+                self.db.execute("INSERT OR REPLACE INTO catalogue_eans (drcloud_product_key,ean) VALUES(?,?)", (key, ean))
         except sqlite3.IntegrityError as exc: raise ValueError("EAN déjà associé à un autre produit") from exc
         super().set_ean(key, ean)
         self.products[key].ean_source = "DRCLOUD"
@@ -332,7 +318,7 @@ class SQLiteOSRepository(MemoryCatalogRepository, MemoryAuditRepository):
         """Upsert the latest external fact without treating it as canonical."""
         payload=asdict(observation)
         with self.db:
-            self.db.execute("""INSERT INTO product_observations VALUES(?,?,?,?,?)
+            self.db.execute("""INSERT INTO product_observations (product_key,source,external_id,observed_json,observed_at) VALUES(?,?,?,?,?)
               ON CONFLICT(product_key,source,external_id) DO UPDATE SET
               observed_json=excluded.observed_json,observed_at=excluded.observed_at""",
               (observation.product_key,observation.source,observation.external_id,
@@ -366,7 +352,7 @@ class SQLiteOSRepository(MemoryCatalogRepository, MemoryAuditRepository):
             if changes: self.db.execute(f"UPDATE drcloud_products SET {','.join(assignments)} WHERE drcloud_product_key=?",params)
             self.db.execute("DELETE FROM product_diagnostics WHERE product_key=?",(key,))
             for reason in conflicts:
-                self.db.execute("INSERT INTO product_diagnostics VALUES(?,?,?,?)",(key,reason,"CONFLICT",utc_now()))
+                self.db.execute("INSERT INTO product_diagnostics (product_key,reason,status,updated_at) VALUES(?,?,?,?)",(key,reason,"CONFLICT",utc_now()))
         if changes:
             row=self.db.execute("SELECT * FROM drcloud_products WHERE drcloud_product_key=?",(key,)).fetchone()
             self.products[key]=self._product(row)
@@ -388,8 +374,8 @@ class SQLiteOSRepository(MemoryCatalogRepository, MemoryAuditRepository):
     def save_assignment(self, assignment: BarcodeAssignment) -> None:
         super().save_assignment(assignment)
         data=asdict(assignment); data.update(status=str(assignment.status), prestashop_status=str(assignment.prestashop_status), shopcaisse_status=str(assignment.shopcaisse_status))
-        with self.db: self.db.execute("INSERT OR REPLACE INTO barcode_assignments VALUES(?,?)", (assignment.id, json.dumps(data)))
+        with self.db: self.db.execute("INSERT OR REPLACE INTO barcode_assignments (id,data) VALUES(?,?)", (assignment.id, json.dumps(data)))
 
     def add_activity(self, activity: ActivityLog) -> None:
         super().add_activity(activity)
-        with self.db: self.db.execute("INSERT OR REPLACE INTO activity_logs VALUES(?,?,?)", (activity.id, activity.timestamp, json.dumps(asdict(activity))))
+        with self.db: self.db.execute("INSERT OR REPLACE INTO activity_logs (id,timestamp,data) VALUES(?,?,?)", (activity.id, activity.timestamp, json.dumps(asdict(activity))))
