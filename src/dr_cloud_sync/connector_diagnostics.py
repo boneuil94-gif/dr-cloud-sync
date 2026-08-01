@@ -87,8 +87,34 @@ class DiagnosticRepository:
         if source_id: where.append("source_id=?");args.append(source_id)
         if failures_only: where.append("success=0")
         sql="SELECT * FROM connector_diagnostics"+(" WHERE "+" AND ".join(where) if where else "")+" ORDER BY diagnostic_id DESC LIMIT ?";args.append(limit)
-        with closing(self.connect()) as db: rows=db.execute(sql,args).fetchall()
-        return [{**dict(r),"success":bool(r["success"])} for r in rows]
+        with closing(self.connect()) as db:
+            rows=db.execute(sql,args).fetchall()
+            tables={row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            sources={}
+            if "data_sources" in tables:
+                sources={row["source_id"]:dict(row) for row in db.execute("SELECT source_id,last_success_at FROM data_sources")}
+            latest_runs={}
+            if "data_hub_sync_runs" in tables:
+                latest_runs={row["job_id"]:dict(row) for row in db.execute(
+                    "SELECT r.* FROM data_hub_sync_runs r JOIN (SELECT job_id,MAX(run_id) run_id FROM data_hub_sync_runs GROUP BY job_id) latest USING(job_id,run_id)"
+                )}
+            newer_successes={row["source_id"]:row["occurred_at"] for row in db.execute(
+                "SELECT source_id,MAX(occurred_at) occurred_at FROM connector_diagnostics WHERE success=1 GROUP BY source_id"
+            )}
+        result=[]
+        for row in rows:
+            item={**dict(row),"success":bool(row["success"])}
+            latest_run=latest_runs.get(row["job_id"]) if row["job_id"] else None
+            successful_at=(sources.get(row["source_id"]) or {}).get("last_success_at")
+            historical=bool(not item["success"] and (
+                (latest_run and (latest_run["run_id"]!=row["run_id"] or latest_run["status"]=="SUCCEEDED"))
+                or (successful_at and successful_at>row["occurred_at"])
+                or newer_successes.get(row["source_id"],"")>row["occurred_at"]
+            ))
+            item["historical"]=historical
+            item["current"]=not historical and not item["success"]
+            result.append(item)
+        return result
 
 
 def from_exception(*,source_id,provider,operation,stage,exc,job_id=None,run_id=None,

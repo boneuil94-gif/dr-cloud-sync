@@ -69,3 +69,20 @@ def test_repository_keeps_structured_limited_history(tmp_path):
     row=repo.recent("shopcaisse_sales",1)[0]
     assert identifier and row["run_id"]==7 and row["endpoint_path"]=="/authentication?token=%5BREDACTED%5D"
     assert "x" not in row["response_excerpt"]
+
+
+def test_repository_marks_failure_historical_after_later_successful_run(tmp_path):
+    repo=DiagnosticRepository(tmp_path/"shared.sqlite")
+    with repo.connect() as db:
+        db.executescript("""
+        CREATE TABLE data_sources(source_id TEXT PRIMARY KEY,last_success_at TEXT);
+        CREATE TABLE data_hub_sync_runs(run_id INTEGER PRIMARY KEY,job_id TEXT,started_at TEXT,completed_at TEXT,status TEXT,attempt INTEGER,result_json TEXT,error TEXT);
+        INSERT INTO data_sources VALUES('prestashop_sales','2026-08-01T11:00:00+00:00');
+        INSERT INTO data_hub_sync_runs VALUES(7,'sync_prestashop_sales','2026-08-01T10:00:00+00:00','2026-08-01T10:01:00+00:00','FAILED',1,NULL,'old');
+        INSERT INTO data_hub_sync_runs VALUES(8,'sync_prestashop_sales','2026-08-01T11:00:00+00:00','2026-08-01T11:01:00+00:00','SUCCEEDED',2,'{}',NULL);
+        """)
+    item=from_exception(source_id="prestashop_sales",provider="PrestaShop",operation="sales",stage="execution",exc=ValueError("sold_at must include a UTC offset"),job_id="sync_prestashop_sales",run_id=7)
+    object.__setattr__(item,"occurred_at","2026-08-01T10:01:00+00:00")
+    repo.add(item)
+    row=repo.recent("prestashop_sales",1)[0]
+    assert row["historical"] is True and row["current"] is False

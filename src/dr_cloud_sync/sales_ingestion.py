@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS sales_product_mappings(
  updated_at TEXT NOT NULL,actor TEXT NOT NULL,UNIQUE(source,external_product_id,external_variant_id));
 CREATE TABLE IF NOT EXISTS sales_sync_states(
  source TEXT PRIMARY KEY,last_success_at TEXT,last_attempt_at TEXT,status TEXT NOT NULL,cursor TEXT,last_error TEXT,
- imported_count INTEGER NOT NULL DEFAULT 0,unmatched_count INTEGER NOT NULL DEFAULT 0);
+ imported_count INTEGER NOT NULL DEFAULT 0,unmatched_count INTEGER NOT NULL DEFAULT 0,last_report_json TEXT);
 """
 
 
@@ -197,7 +197,12 @@ class PrestaShopSalesProvider:
         for order in self.client.iter_resource("orders"):
             state=str(order.get("current_state"))
             if state not in self.paid|self.cancelled|self.refunded|self.partially_refunded: continue
-            sold=self._datetime(order.get("date_upd") or order.get("date_add"))
+            try:
+                sold=self._datetime(order.get("date_upd") or order.get("date_add"))
+            except ValueError as exc:
+                error=ValueError(f"PrestaShop sale {order.get('id') or '<unknown>'}: {exc}")
+                error.sale_id=str(order.get("id") or "unknown")
+                raise error from exc
             if since and _utc(sold)<since.astimezone(timezone.utc): continue
             lines=[]
             for row in details.get(str(order.get("id")),[]):
@@ -220,7 +225,10 @@ class PrestaShopSalesProvider:
 class SalesSyncService:
     def __init__(self,ledger: SalesLedger,providers: Mapping[str,SalesProvider]|None=None,*,stale_after_hours=48):
         self.ledger=ledger;self.db=ledger.db;self.providers=dict(providers or {});self.stale_after_hours=stale_after_hours
-        with self.db:self.db.executescript(OPERATIONAL_SCHEMA)
+        with self.db:
+            self.db.executescript(OPERATIONAL_SCHEMA)
+            columns={row[1] for row in self.db.execute("PRAGMA table_info(sales_sync_states)")}
+            if "last_report_json" not in columns:self.db.execute("ALTER TABLE sales_sync_states ADD COLUMN last_report_json TEXT")
 
     def _mapping(self,source,line):
         row=self.db.execute("SELECT product_key FROM sales_product_mappings WHERE source=? AND external_product_id=? AND external_variant_id=? AND status='ACTIVE'",
@@ -264,13 +272,15 @@ class SalesSyncService:
                     for payment in sale.payments:
                         inserted=self.db.execute("INSERT OR IGNORE INTO sale_payments VALUES(?,?,?,?,?,?,?)",(f"payment:{source}:{sale.external_sale_id}:{payment.external_payment_id}",sale_id,payment.external_payment_id,payment.payment_type,str(payment.amount),payment.name,payment.description)).rowcount
                         report["payments"]+=inserted
-                now=_now();self.db.execute("INSERT INTO sales_sync_states VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(source) DO UPDATE SET last_success_at=excluded.last_success_at,last_attempt_at=excluded.last_attempt_at,status=excluded.status,cursor=excluded.cursor,last_error=NULL,imported_count=excluded.imported_count,unmatched_count=excluded.unmatched_count",(source,now,attempt,"SUCCESS",batch.cursor,None,report["imported"],report["unmatched"]+report["ambiguous"]))
+                now=_now();self.db.execute("INSERT INTO sales_sync_states(source,last_success_at,last_attempt_at,status,cursor,last_error,imported_count,unmatched_count,last_report_json) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(source) DO UPDATE SET last_success_at=excluded.last_success_at,last_attempt_at=excluded.last_attempt_at,status=excluded.status,cursor=excluded.cursor,last_error=NULL,imported_count=excluded.imported_count,unmatched_count=excluded.unmatched_count,last_report_json=excluded.last_report_json",(source,now,attempt,"SUCCESS",batch.cursor,None,report["imported"],report["unmatched"]+report["ambiguous"],json.dumps(report,ensure_ascii=False)))
                 self.ledger._audit("SALES_SYNC_COMPLETED",actor,report)
             return report
         except Exception as exc:
             message=str(exc)[:300]
+            report["invalid"]+=1
+            report["errors"].append({"sale":getattr(exc,"sale_id",None),"line":getattr(exc,"line_id",None),"error":message})
             with self.db:
-                self.db.execute("UPDATE sales_sync_states SET status='ERROR',last_error=? WHERE source=?",(message,source));self.ledger._audit("SALES_SYNC_FAILED",actor,{"source":source,"error":message})
+                self.db.execute("UPDATE sales_sync_states SET status='ERROR',last_error=?,last_report_json=? WHERE source=?",(message,json.dumps(report,ensure_ascii=False),source));self.ledger._audit("SALES_SYNC_FAILED",actor,{"source":source,"error":message})
             raise
 
     def preview(self,provider: SalesProvider):
@@ -306,6 +316,9 @@ class SalesSyncService:
             elif not value.get("last_success_at"):value["freshness"]="UNAVAILABLE"
             else:value["freshness"]="FRESH" if now-_utc(value["last_success_at"])<=timedelta(hours=self.stale_after_hours) else "STALE"
         for value in states.values():
+            report=json.loads(value.pop("last_report_json",None) or "{}")
+            value["failed_count"]=int(report.get("invalid",0))
+            value["failed_sales"]=report.get("errors",[])
             value["sales_count"]=self.db.execute("SELECT count(*) FROM sales WHERE source=?",(value["source"],)).fetchone()[0]
             value["payments_count"]=self.db.execute("SELECT count(*) FROM sale_payments p JOIN sales s USING(sale_id) WHERE s.source=?",(value["source"],)).fetchone()[0]
         return list(states.values())
