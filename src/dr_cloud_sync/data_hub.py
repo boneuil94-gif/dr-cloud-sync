@@ -10,6 +10,7 @@ from enum import StrEnum
 import hashlib, json, sqlite3
 from pathlib import Path
 from typing import Callable, Mapping, Any
+from .connector_diagnostics import DiagnosticRepository, from_exception
 
 class SourceStatus(StrEnum):
     CONNECTED="CONNECTED"; PARTIAL="PARTIAL"; NOT_CONFIGURED="NOT_CONFIGURED"; DISABLED="DISABLED"; ERROR="ERROR"; UNSUPPORTED="UNSUPPORTED"; UNAVAILABLE="UNAVAILABLE"
@@ -44,6 +45,7 @@ class DataHub:
     def __init__(self,path: Path,*,clock: Callable[[],datetime]=utcnow):
         self.path=Path(path); self.clock=clock
         with self.connect() as db: db.executescript(SCHEMA)
+        self.diagnostics=DiagnosticRepository(self.path)
     def connect(self):
         db=sqlite3.connect(self.path,timeout=10);db.row_factory=sqlite3.Row;return db
     def register_source(self,source_id,source_type,provider,*,configured=False,enabled=True,capabilities=(),stale_after_seconds=3600,status=None):
@@ -114,6 +116,7 @@ class DataHub:
                 db.execute("UPDATE data_hub_sync_runs SET completed_at=?,status='FAILED',error=? WHERE run_id=?",(iso(end),error,run_id))
                 db.execute("UPDATE sync_jobs SET status=?,next_run_at=?,duration_ms=?,error=?,lock_token=NULL WHERE job_id=?",(SyncStatus.RETRY if retry else SyncStatus.FAILED,iso(end+timedelta(seconds=delay)),int((end-started).total_seconds()*1000),error,job_id))
                 db.execute("UPDATE data_sources SET last_attempt_at=?,last_error=?,status='ERROR' WHERE source_id=?",(iso(end),error,job["source_id"]))
+            self.diagnostics.add(from_exception(source_id=job["source_id"],provider=source["provider"],operation=job["job_type"],stage=getattr(exc,"diagnostic",{}).get("stage","execution"),exc=exc,job_id=job_id,run_id=run_id,attempt=attempt,duration_ms=int((end-started).total_seconds()*1000),cursor=source["cursor"],next_retry_at=iso(end+timedelta(seconds=delay)) if retry else None))
             raise
     def _blocked(self,job_id,error):
         with self.connect() as db: db.execute("UPDATE sync_jobs SET status='BLOCKED',error=? WHERE job_id=?",(error,job_id))
@@ -138,4 +141,8 @@ class DataHub:
         registered=set((operations or {}).keys())
         return {"database_fingerprint":self.database_fingerprint(),"worker_heartbeats":heartbeats,"jobs":[{"job_id":j["job_id"],"handler_registered":j["job_type"] in registered} for j in self.jobs()]}
     def health(self):
-        sources=self.sources(); return {"status":"ERROR" if any(s["freshness"]=="ERROR" for s in sources) else "DEGRADED" if any(s["freshness"]!="FRESH" for s in sources) else "OK","sources":sources,"jobs":self.jobs()}
+        sources=self.sources()
+        for source in sources:
+            source["last_diagnostic"]=(self.diagnostics.recent(source["source_id"],1) or [None])[0]
+            source["failure_history"]=self.diagnostics.recent(source["source_id"],5)
+        return {"status":"ERROR" if any(s["freshness"]=="ERROR" for s in sources) else "DEGRADED" if any(s["freshness"]!="FRESH" for s in sources) else "OK","sources":sources,"jobs":self.jobs()}

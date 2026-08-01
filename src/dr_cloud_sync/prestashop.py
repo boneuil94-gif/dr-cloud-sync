@@ -13,6 +13,8 @@ from urllib.request import Request, urlopen
 
 class PrestaShopError(RuntimeError):
     """A sanitized Webservice error (credentials are never included)."""
+    def __init__(self,message: str,*,retryable=False,diagnostic=None):
+        super().__init__(message);self.retryable=retryable;self.diagnostic=diagnostic or {}
 
 
 OpenUrl = Callable[..., Any]
@@ -111,12 +113,14 @@ class PrestaShopClient:
                     return decoded
             except HTTPError as exc:
                 if exc.code not in {429, 500, 502, 503, 504} or attempt == self.retries - 1:
-                    raise PrestaShopError(f"PrestaShop HTTP {exc.code} sur {resource}") from exc
+                    try: excerpt=exc.read(4096).decode("utf-8",errors="replace")
+                    except Exception: excerpt=None
+                    raise PrestaShopError(f"PrestaShop HTTP {exc.code} sur {resource}",retryable=exc.code in {429,500,502,503,504},diagnostic={"category":"AUTH" if exc.code in (401,403) else "HTTP","http_status":exc.code,"endpoint_path":f"/{resource}","response_excerpt":excerpt,"operation":resource,"stage":resource,"attempt":attempt+1}) from exc
             except (URLError, TimeoutError) as exc:
                 if attempt == self.retries - 1:
-                    raise PrestaShopError(f"PrestaShop indisponible sur {resource}") from exc
+                    raise PrestaShopError(f"PrestaShop indisponible sur {resource}",retryable=True,diagnostic={"category":"TIMEOUT" if isinstance(exc,TimeoutError) else "NETWORK","endpoint_path":f"/{resource}","operation":resource,"stage":resource,"attempt":attempt+1}) from exc
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise PrestaShopError(f"JSON invalide pour {resource}") from exc
+                raise PrestaShopError(f"JSON invalide pour {resource}",diagnostic={"category":"PARSING","endpoint_path":f"/{resource}","operation":resource,"stage":"parsing","attempt":attempt+1}) from exc
             time.sleep(0.25 * (2**attempt))
         raise AssertionError("unreachable")
 

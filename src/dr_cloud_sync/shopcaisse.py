@@ -21,9 +21,10 @@ API_URL = "https://api.shop-caisse.com/v1"
 class ShopCaisseError(RuntimeError):
     """A sanitized API error which never contains credentials."""
 
-    def __init__(self, message: str, *, retryable: bool = False) -> None:
+    def __init__(self, message: str, *, retryable: bool = False, diagnostic: dict[str, Any] | None = None) -> None:
         super().__init__(message)
         self.retryable = retryable
+        self.diagnostic = diagnostic or {}
 
 
 class ShopCaisseClient:
@@ -148,7 +149,7 @@ class ShopCaisseClient:
             params = {**(query or {}), "page": page, "pageSize": page_size or self.page_size}
             url = f"{self.api_url}{path}?{urlencode(params)}"
             if url in seen:
-                raise ShopCaisseError("Pagination ShopCaisse invalide")
+                raise ShopCaisseError("Pagination ShopCaisse invalide", diagnostic={"category":"VALIDATION","stage":"pagination/cursor","operation":"pagination","endpoint_path":path})
             seen.add(url)
             payload = self._get(url)
             batch = _rows(payload)
@@ -158,6 +159,8 @@ class ShopCaisseClient:
             page += 1
 
     def _get(self, url: str) -> Any:
+        path=urlparse(url).path
+        operation=("authentication" if path.endswith("/authentication") else "payments" if "/payments" in path else "sales" if "/sales" in path else "stock" if "/stocks" in path else "companies/stores" if "/companies" in path or "/stores" in path else "read")
         request = Request(url, method="GET", headers={
             "Authorization": self._authorization, "Accept": "application/json"
         })
@@ -167,14 +170,16 @@ class ShopCaisseClient:
                     return json.loads(response.read().decode("utf-8"))
             except HTTPError as exc:
                 if exc.code not in {429, 500, 502, 503, 504} or attempt == self.retries - 1:
+                    try: excerpt=exc.read(4096).decode("utf-8",errors="replace")
+                    except Exception: excerpt=None
                     raise ShopCaisseError(f"ShopCaisse HTTP {exc.code} sur {urlparse(url).path}",
-                                           retryable=exc.code in {429, 500, 502, 503, 504}) from exc
+                                           retryable=exc.code in {429, 500, 502, 503, 504}, diagnostic={"category":"AUTH" if exc.code in (401,403) else "HTTP","http_status":exc.code,"endpoint_path":url,"response_excerpt":excerpt,"attempt":attempt+1,"operation":operation,"stage":operation}) from exc
             except (URLError, TimeoutError) as exc:
                 if attempt == self.retries - 1:
                     raise ShopCaisseError(f"ShopCaisse indisponible sur {urlparse(url).path}",
-                                           retryable=True) from exc
+                                           retryable=True,diagnostic={"category":"TIMEOUT" if isinstance(exc,TimeoutError) else "NETWORK","endpoint_path":url,"attempt":attempt+1,"operation":operation,"stage":operation}) from exc
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise ShopCaisseError("Réponse JSON ShopCaisse invalide") from exc
+                raise ShopCaisseError("Réponse JSON ShopCaisse invalide",diagnostic={"category":"PARSING","stage":"parsing","endpoint_path":url,"attempt":attempt+1}) from exc
             time.sleep(0.25 * 2**attempt)
         raise AssertionError("unreachable")
 

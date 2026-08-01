@@ -36,6 +36,7 @@ from .sales_ingestion import PrestaShopSalesProvider, SalesSyncService, ShopCais
 from .shopcaisse import ShopCaisseClient, ShopCaisseError
 from .social import MarketingSchedulingService, SocialConnectionService, SocialPublishingService
 from .data_hub import DataHub, JobDefinition
+from .connector_diagnostics import ConnectorDiagnostic, from_exception
 from .bank import BankLedger, DisabledQontoProvider
 from .qonto import EnvironmentSecretProvider, QontoBankProvider, QontoError
 from .reconciliation import ReconciliationService
@@ -103,7 +104,7 @@ class InventoryApp:
         self.bank_provider=candidate if candidate.configured else DisabledQontoProvider()
         self.reconciliation=ReconciliationService(service.repo.path)
         self.finance=FinanceProjection(self.bank,self.sales,self.purchase_orders,self.purchase_costs)
-        sales_providers={}; shopcaisse_connected=False
+        sales_providers={}; shopcaisse_connected=False; shopcaisse_client=None
         shopcaisse_key=(secrets_provider.resolve("shopcaisse.production") or "").strip()
         if shopcaisse_key:
             try:
@@ -150,6 +151,7 @@ class InventoryApp:
             self.data_hub.register_source(f"social_{channel}","SOCIAL_ANALYTICS",channel.title(),status="NOT_CONFIGURED",capabilities=("READ_ANALYTICS",),stale_after_seconds=int(os.environ.get("SOCIAL_ANALYTICS_INTERVAL_SECONDS","21600")))
         for job in (JobDefinition("sync_shopcaisse_sales","shopcaisse_sales","SHOPCAISSE_SALES",int(os.environ.get("SHOPCAISSE_SYNC_INTERVAL_SECONDS","600"))),JobDefinition("sync_prestashop_sales","prestashop_sales","PRESTASHOP_SALES",intervals["sales"]),JobDefinition("sync_prestashop_catalog","prestashop_catalog","PRESTASHOP_CATALOG",intervals["sales"]),JobDefinition("sync_bank_transactions","bank","BANK",intervals["bank"]),JobDefinition("refresh_sales_metrics","prestashop_sales","SALES_METRICS",intervals["projection"],("sync_prestashop_sales",)),JobDefinition("reconcile_bank_sales","bank","RECONCILE",intervals["projection"],("sync_bank_transactions",)),JobDefinition("refresh_finance","bank","FINANCE",intervals["projection"],("reconcile_bank_sales",)),JobDefinition("refresh_dashboard","purchases","DASHBOARD",intervals["projection"]),JobDefinition("refresh_marketing_signals","prestashop_sales","MARKETING",intervals["projection"],("refresh_sales_metrics",))): self.data_hub.register_job(job)
         self.prestashop_client=prestashop_client
+        self.shopcaisse_client=shopcaisse_client
         self.sales_import_preview=None
         self.social_analytics=SocialAnalyticsService(self.marketing_repository.db)
         self.marketing=MarketingAutopilot(self.marketing_repository,self.os_repository,self.media.repository,sales=self.sales)
@@ -239,7 +241,22 @@ class InventoryApp:
             if path == "/marketing": return self._html(start,"marketing.html",session,request_id)
             if path == "/sales": return self._html(start,"sales.html",session,request_id)
             if path == "/finance": return self._html(start,"finance.html",session,request_id)
+            if path == "/api/data-hub/diagnostics" and method == "GET":
+                query=parse_qs(env.get("QUERY_STRING", "")); return self._json(start,{"diagnostics":self.data_hub.diagnostics.recent(query.get("source_id",[None])[0],query.get("limit",[10])[0])})
             if path == "/api/data-hub" and method == "GET": return self._json(start,{**self.data_hub.health(),"sales_diagnostics":self.sales_sync.diagnostics(),"runtime":{**self.data_hub.runtime(self.automation_operations()),"configuration":{"prestashop_paid_state_ids":"CONFIGURED" if self.prestashop_paid_states_configured else "MISSING"}}})
+            if path.startswith("/api/data-hub/sources/") and path.endswith("/test") and method == "POST":
+                source_id=unquote(path.removeprefix("/api/data-hub/sources/").removesuffix("/test")); sources={s["source_id"]:s for s in self.data_hub.sources()}
+                source=sources.get(source_id); client=self.shopcaisse_client if source_id=="shopcaisse_sales" else self.prestashop_client if source_id in {"prestashop_sales","prestashop_catalog"} else None
+                if not source or not client: return self._json(start,{"error":"Connecteur non configuré"},"409 Conflict")
+                started=time.monotonic(); operation="authentication" if source_id=="shopcaisse_sales" else "order_states"; path_value="/authentication" if source_id=="shopcaisse_sales" else "/order_states"
+                try:
+                    client.health() if source_id=="shopcaisse_sales" else next(client.iter_resource("order_states"),None)
+                    diagnostic=ConnectorDiagnostic(source_id,source["provider"],operation,operation,"UNKNOWN","Test de lecture réussi",datetime.now(timezone.utc).isoformat(),endpoint_path=path_value,duration_ms=int((time.monotonic()-started)*1000),request_id=request_id,success=True); status="OK"
+                except Exception as exc:
+                    diagnostic=from_exception(source_id=source_id,provider=source["provider"],operation=operation,stage=operation,exc=exc,duration_ms=int((time.monotonic()-started)*1000),request_id=request_id); status="ERROR"
+                diagnostic_id=self.data_hub.diagnostics.add(diagnostic)
+                self.security and self.security.audit(session["uid"],"CONNECTOR_DIAGNOSTIC_TEST","DATA_SOURCE",source_id,request_id,"api",{"diagnostic_id":diagnostic_id,"result":status})
+                return self._json(start,{"status":status,"diagnostic_id":diagnostic_id,"diagnostic":self.data_hub.diagnostics.recent(source_id,1,failures_only=False)[0]})
             if path.startswith("/api/data-hub/jobs/") and path.endswith("/run") and method == "POST":
                 job_id=unquote(path.removeprefix("/api/data-hub/jobs/").removesuffix("/run"))
                 operations=self.automation_operations()
@@ -612,7 +629,7 @@ class InventoryApp:
         if path.startswith("/api/security/change-password"): return "security.read"
         if path.startswith("/api/security/users") or path.startswith("/api/security/sessions/"): return "security.manage_users" if method!="GET" else "security.read"
         if path.startswith("/api/security/"): return "security.read"
-        domains=(("/api/purchasing","purchasing.cost.read" if method=="GET" else "purchasing.cost.validate"),("/api/finance","finance.read" if method=="GET" else "finance.write"),("/api/data-hub/jobs/","bank.sync"),("/api/data-hub","admin.read"),("/api/sales","sales.read" if method=="GET" else "sales.sync"),("/api/marketing","marketing.read" if method=="GET" else "marketing.approve"),("/api/purchase-orders","purchasing.read" if method=="GET" else "purchasing.write"),("/api/goods-receipts","purchasing.read" if method=="GET" else "purchasing.write"),("/api/suppliers","purchasing.read" if method=="GET" else "purchasing.write"),("/api/admin","admin.read" if method=="GET" else "admin.write"),("/api/roadmap","admin.read"),("/api/stock","stock.read"),("/api/inventory","stock.read" if method=="GET" else "stock.validate"),("/api/count","stock.write"),("/api/complete","stock.validate"),("/api/barcodes","catalogue.write"),("/api/products","catalogue.read" if method=="GET" else "catalogue.write"),("/api/catalogue","catalogue.read"),("/api/search","catalogue.read"),("/api/scan","catalogue.read"),("/api/history","stock.read"),("/api/report","stock.read"),("/api/export.csv","stock.read"),("/api/state","stock.read"),("/api/dashboard","catalogue.read"))
+        domains=(("/api/purchasing","purchasing.cost.read" if method=="GET" else "purchasing.cost.validate"),("/api/finance","finance.read" if method=="GET" else "finance.write"),("/api/data-hub/sources/","admin.write"),("/api/data-hub/jobs/","bank.sync"),("/api/data-hub","admin.read"),("/api/sales","sales.read" if method=="GET" else "sales.sync"),("/api/marketing","marketing.read" if method=="GET" else "marketing.approve"),("/api/purchase-orders","purchasing.read" if method=="GET" else "purchasing.write"),("/api/goods-receipts","purchasing.read" if method=="GET" else "purchasing.write"),("/api/suppliers","purchasing.read" if method=="GET" else "purchasing.write"),("/api/admin","admin.read" if method=="GET" else "admin.write"),("/api/roadmap","admin.read"),("/api/stock","stock.read"),("/api/inventory","stock.read" if method=="GET" else "stock.validate"),("/api/count","stock.write"),("/api/complete","stock.validate"),("/api/barcodes","catalogue.write"),("/api/products","catalogue.read" if method=="GET" else "catalogue.write"),("/api/catalogue","catalogue.read"),("/api/search","catalogue.read"),("/api/scan","catalogue.read"),("/api/history","stock.read"),("/api/report","stock.read"),("/api/export.csv","stock.read"),("/api/state","stock.read"),("/api/dashboard","catalogue.read"))
         for prefix,permission in domains:
             if path.startswith(prefix): return permission
         return "__default_deny__" if path.startswith("/api/") else "__not_found__"
