@@ -27,6 +27,24 @@ def test_administration_page_and_api_require_authentication(configured):
     assert status == "200 OK"
     assert set(json.loads(body)) == {"status", "checked_at", "application", "database", "deployment", "backup", "system", "media", "prestashop"}
     assert request(app, "/api/admin/catalogue-rehydration/status")[0] == "303 See Other"
+    assert request(app, "/api/admin/shopcaisse-sales/failures")[0] == "303 See Other"
+
+
+def test_administration_exposes_shopcaisse_failures_read_only(configured):
+    app, _ = configured
+    report={"invalid":1,"failure_details":[{"sale":"SC-3","sold_at":"2026-08-01T09:30:00Z",
+        "amount":"18.90","currency":"EUR","store":"Lyon","stage":"INGESTION_LINE",
+        "category":"VALIDATION","message":"Donnée invalide","retryable":False,"permanent":True}]}
+    with app.sales.db:
+        app.sales.db.execute("INSERT INTO sales_sync_states(source,status,last_report_json) VALUES('SHOPCAISSE','SUCCESS',?) ON CONFLICT(source) DO UPDATE SET last_report_json=excluded.last_report_json",(json.dumps(report),))
+    _, cookie=login(app)
+    status, _, body=request(app,"/api/admin/shopcaisse-sales/failures",cookie=cookie)
+    payload=json.loads(body)
+    assert status=="200 OK" and payload["count"]==1
+    assert payload["failures"][0]["shopcaisse_id"]=="SC-3"
+    assert payload["failures"][0]["stage"]=="INGESTION_LINE"
+    html=(ROOT/"src/dr_cloud_sync/static/administration.html").read_text()
+    assert "Voir les ventes en échec" in html and 'id="failedSalesDialog"' in html
 
 
 def _wait_job(app, cookie):

@@ -9,6 +9,7 @@ from typing import Any, Mapping, Protocol, Sequence
 from uuid import uuid4
 from .sales import SaleEvent, SaleKind, SaleSource, SalesLedger, _decimal, _now, _utc
 from .shopcaisse import ShopCaisseClient
+from .connector_diagnostics import sanitize
 
 
 @dataclass(frozen=True)
@@ -244,7 +245,7 @@ class SalesSyncService:
         source=SaleSource(source.upper()).value; provider=self.providers.get(source)
         if not provider or not provider.configured: raise RuntimeError(f"{source} sales provider unavailable")
         state=self.db.execute("SELECT * FROM sales_sync_states WHERE source=?",(source,)).fetchone();cursor=None if force or not state else state["cursor"]
-        attempt=_now(); report={"source":source,"imported":0,"sales":0,"payments":0,"duplicates":0,"unmatched":0,"ambiguous":0,"invalid":0,"refunds":0,"errors":[]}
+        attempt=_now(); report={"source":source,"imported":0,"sales":0,"payments":0,"duplicates":0,"unmatched":0,"ambiguous":0,"invalid":0,"refunds":0,"errors":[],"failure_details":[]}
         with self.db:
             self.db.execute("INSERT INTO sales_sync_states(source,last_attempt_at,status) VALUES(?,?,'RUNNING') ON CONFLICT(source) DO UPDATE SET last_attempt_at=excluded.last_attempt_at,status='RUNNING',last_error=NULL",(source,attempt))
             self.ledger._audit("SALES_SYNC_STARTED",actor,{"source":source})
@@ -268,7 +269,12 @@ class SalesSyncService:
                             else: report["duplicates"]+=1
                             if line.kind in {"REFUND","RETURN","CANCELLATION"}:report["refunds"]+=1
                             self.db.execute("INSERT OR IGNORE INTO sale_lines VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(f"sale-line:{uuid4()}",sale_id,line.external_line_id,line.source_product_id,line.source_variant_id,line.source_reference,line.source_ean,product,str(line.quantity),*[str(x) if x is not None else None for x in (line.unit_price_ttc,line.unit_price_ht,line.line_total_ttc,line.line_total_ht,line.tax_rate)],status,reason,line.kind))
-                        except (ValueError,TypeError) as exc: report["invalid"]+=1;report["errors"].append({"sale":sale.external_sale_id,"line":line.external_line_id,"error":str(exc)})
+                        except (ValueError,TypeError) as exc:
+                            report["invalid"]+=1
+                            failure=self._failure(sale, exc, line_id=line.external_line_id,
+                                stage="INGESTION_LINE", category="VALIDATION", retryable=False)
+                            report["errors"].append({"sale":failure["sale"],"line":failure["line"],"error":failure["message"]})
+                            report["failure_details"].append(failure)
                     for payment in sale.payments:
                         inserted=self.db.execute("INSERT OR IGNORE INTO sale_payments VALUES(?,?,?,?,?,?,?)",(f"payment:{source}:{sale.external_sale_id}:{payment.external_payment_id}",sale_id,payment.external_payment_id,payment.payment_type,str(payment.amount),payment.name,payment.description)).rowcount
                         report["payments"]+=inserted
@@ -276,12 +282,42 @@ class SalesSyncService:
                 self.ledger._audit("SALES_SYNC_COMPLETED",actor,report)
             return report
         except Exception as exc:
-            message=str(exc)[:300]
+            message=sanitize(str(exc),limit=300) or "Erreur d’import de vente"
             report["invalid"]+=1
-            report["errors"].append({"sale":getattr(exc,"sale_id",None),"line":getattr(exc,"line_id",None),"error":message})
+            failure={"sale":getattr(exc,"sale_id",None),"line":getattr(exc,"line_id",None),
+                "error":message,"message":message,"stage":getattr(exc,"stage","PROVIDER_FETCH"),
+                "category":getattr(exc,"category",None) or "PROVIDER",
+                "retryable":bool(getattr(exc,"retryable",False)),"permanent":not bool(getattr(exc,"retryable",False)),
+                "sold_at":None,"amount":None,"currency":None,"store":None}
+            report["errors"].append({"sale":failure["sale"],"line":failure["line"],"error":message})
+            report["failure_details"].append(failure)
             with self.db:
                 self.db.execute("UPDATE sales_sync_states SET status='ERROR',last_error=?,last_report_json=? WHERE source=?",(message,json.dumps(report,ensure_ascii=False),source));self.ledger._audit("SALES_SYNC_FAILED",actor,{"source":source,"error":message})
             raise
+
+    @staticmethod
+    def _failure(sale, exc, *, line_id=None, stage="INGESTION", category="VALIDATION", retryable=False):
+        """Build the operator diagnostic without retaining raw provider payloads."""
+        amount=sum((line.line_total_ttc for line in sale.lines if line.line_total_ttc is not None),Decimal(0))
+        message=sanitize(str(exc),limit=300) or "Erreur d’import de vente"
+        return {"sale":sale.external_sale_id,"line":line_id,"sold_at":sale.sold_at,
+            "amount":str(amount) if any(line.line_total_ttc is not None for line in sale.lines) else None,
+            "currency":sale.currency,"store":sale.location,"stage":stage,"category":category,
+            "message":message,"error":message,"retryable":bool(retryable),"permanent":not bool(retryable)}
+
+    def failed_sales(self,source="SHOPCAISSE"):
+        """Return the last persisted failure report; this is diagnostic and read-only."""
+        row=self.db.execute("SELECT last_report_json FROM sales_sync_states WHERE source=?",(source,)).fetchone()
+        report=json.loads(row[0] or "{}") if row else {}
+        failures=[]
+        for item in report.get("failure_details") or report.get("errors",[]):
+            message=sanitize(item.get("message") or item.get("error"),limit=300) or "Cause inconnue"
+            retryable=bool(item.get("retryable",False))
+            failures.append({"shopcaisse_id":item.get("sale"),"date":item.get("sold_at"),
+                "amount":item.get("amount"),"currency":item.get("currency"),"store":item.get("store"),
+                "stage":item.get("stage") or "INCONNUE","category":item.get("category") or "INCONNUE",
+                "message":message,"retryable":retryable,"permanent":not retryable})
+        return {"source":source,"count":len(failures),"failures":failures}
 
     def preview(self,provider: SalesProvider):
         batch=provider.fetch(); report={"source":provider.source,"sales":len(batch.sales),"lines":0,"matched":0,"unmatched":0,"ambiguous":0,"invalid":0,"quantity":0.0,"revenue_ttc":0.0,"date_from":None,"date_to":None,"duplicates":0}
