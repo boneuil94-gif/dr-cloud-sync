@@ -9,6 +9,8 @@ from dr_cloud_sync.inventory import InventoryRepository, InventoryService
 from dr_cloud_sync.inventory_web import InventoryApp
 from dr_cloud_sync.os_admin import backup, init_catalog
 from dr_cloud_sync.os_config import OSSettings, parse_prestashop_state_ids
+from dr_cloud_sync.qonto import EnvironmentSecretProvider
+from dr_cloud_sync.shopcaisse import ShopCaisseClient
 from frontend_assets import assert_no_frontend_secrets
 
 
@@ -191,6 +193,7 @@ def test_deployment_state_is_canonical_and_independent_from_working_directory(tm
     env_file.write_text(
         "DRCLOUD_SAFE_MODE=true\nBARCODE_SYNC_MODE=dry-run\n"
         "DRCLOUD_SECRET_KEY=test\nDRCLOUD_ADMIN_USERNAME=test\nDRCLOUD_ADMIN_PASSWORD=test\n"
+        "SHOPCAISSE_API_KEY=test-shopcaisse-key\n"
     )
     accidental = tmp_path / "elsewhere" / ".deployment-state"
     cwd = accidental.parent
@@ -248,6 +251,7 @@ def test_update_preserves_state_environment_through_checks_and_rollback(
     env_file.write_text(
         "DRCLOUD_SAFE_MODE=true\nBARCODE_SYNC_MODE=dry-run\nDRCLOUD_SECRET_KEY=test\n"
         "DRCLOUD_ADMIN_USERNAME=test\nDRCLOUD_ADMIN_PASSWORD=test\n"
+        "SHOPCAISSE_API_KEY=test-shopcaisse-key\n"
     )
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
     subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=repo, check=True)
@@ -358,6 +362,49 @@ def test_production_workflow_provisions_existing_prestashop_secret_before_deploy
     assert "PRESTASHOP_API_KEY: ${{ secrets.PRESTASHOP_API_KEY }}" in workflow
     assert "printf '%s\\n%s\\n%s\\n' 'https://dr-cloudshop.com/api' \"$PRESTASHOP_API_KEY\" \"$PRESTASHOP_PAID_STATE_IDS\"" in workflow
     assert configure < deploy
+
+
+def test_shopcaisse_secret_is_propagated_to_both_production_runtimes(tmp_path):
+    root = Path(__file__).parents[1]
+    workflow = (root / ".github/workflows/drcloud-os-production.yml").read_text()
+    compose = (root / "deploy/ovh/docker-compose.yml").read_text()
+    installer = root / "deploy/ovh/configure-shopcaisse-env.sh"
+    secret = "production-shopcaisse-secret"
+    env_file = tmp_path / "drcloud.env"
+    env_file.write_text("DRCLOUD_ENV=production\nSHOPCAISSE_API_KEY=CHANGE_ME\n")
+
+    result = subprocess.run(
+        [installer], input=f"{secret}\n", text=True, capture_output=True, check=False,
+        env={**os.environ, "DRCLOUD_ENV_FILE": str(env_file)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert secret not in result.stdout + result.stderr
+    assert env_file.read_text().count("SHOPCAISSE_API_KEY=") == 1
+    assert f"SHOPCAISSE_API_KEY={secret}" in env_file.read_text()
+    assert env_file.stat().st_mode & 0o777 == 0o600
+    assert "SHOPCAISSE_API_KEY: ${{ secrets.SHOPCAISSE_API_KEY }}" in workflow
+    assert "configure-shopcaisse-env.sh" in workflow
+    assert compose.count("env_file:") == 2
+    assert compose.count("./drcloud.env") == 2
+
+    provider = EnvironmentSecretProvider(
+        {"SHOPCAISSE_API_KEY": secret}, {"shopcaisse.production": "SHOPCAISSE_API_KEY"}
+    )
+    assert provider.resolve("shopcaisse.production") == secret
+    captured = {}
+
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): return None
+        def read(self): return b'{}'
+
+    def opener(request, timeout):
+        captured["authorization"] = request.get_header("Authorization")
+        return Response()
+
+    ShopCaisseClient(provider.resolve("shopcaisse.production"), opener=opener).health()
+    assert captured["authorization"] == f"Bearer {secret}"
 
 
 def test_prestashop_runtime_configuration_is_atomic_and_secret_free_in_output(tmp_path):

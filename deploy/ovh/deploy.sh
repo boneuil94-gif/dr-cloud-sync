@@ -10,7 +10,7 @@ chmod 600 "$env_file"
 value() { sed -n "s/^$1=//p" "$env_file" | tail -1; }
 [[ "$(value DRCLOUD_SAFE_MODE)" == true ]] || { echo "ERREUR: DRCLOUD_SAFE_MODE doit être true." >&2; exit 1; }
 [[ "$(value BARCODE_SYNC_MODE)" == dry-run ]] || { echo "ERREUR: BARCODE_SYNC_MODE doit être dry-run." >&2; exit 1; }
-for key in DRCLOUD_SECRET_KEY DRCLOUD_ADMIN_USERNAME DRCLOUD_ADMIN_PASSWORD; do
+for key in DRCLOUD_SECRET_KEY DRCLOUD_ADMIN_USERNAME DRCLOUD_ADMIN_PASSWORD SHOPCAISSE_API_KEY; do
   val="$(value "$key")"; [[ -n "$val" && "$val" != CHANGE_ME ]] || { echo "ERREUR: $key doit être renseigné." >&2; exit 1; }
 done
 export DRCLOUD_BUILD_COMMIT="${DRCLOUD_BUILD_COMMIT:-$(git -C "$repo" rev-parse HEAD)}"

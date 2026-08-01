@@ -92,6 +92,7 @@ class InventoryApp:
         secrets_provider=EnvironmentSecretProvider(os.environ,{
             "qonto.production": os.environ.get("QONTO_CREDENTIAL_REF","QONTO_CREDENTIAL"),
             "prestashop.production": "PRESTASHOP_API_KEY",
+            "shopcaisse.production": "SHOPCAISSE_API_KEY",
         })
         secret_ref=os.environ.get("QONTO_SECRET_REF") or ("qonto.production" if os.environ.get(os.environ.get("QONTO_CREDENTIAL_REF","QONTO_CREDENTIAL")) else "")
         candidate=QontoBankProvider(secret_ref,secrets_provider,timeout=float(os.environ.get("QONTO_TIMEOUT_SECONDS","8")))
@@ -103,7 +104,7 @@ class InventoryApp:
         self.reconciliation=ReconciliationService(service.repo.path)
         self.finance=FinanceProjection(self.bank,self.sales,self.purchase_orders,self.purchase_costs)
         sales_providers={}; shopcaisse_connected=False
-        shopcaisse_key=os.environ.get("SHOPCAISSE_API_KEY","").strip()
+        shopcaisse_key=(secrets_provider.resolve("shopcaisse.production") or "").strip()
         if shopcaisse_key:
             try:
                 shopcaisse_client=ShopCaisseClient(shopcaisse_key,
