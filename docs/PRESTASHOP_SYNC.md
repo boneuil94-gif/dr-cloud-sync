@@ -8,3 +8,5 @@ Le worker tourne selon `DATA_HUB_SALES_INTERVAL_SECONDS` (600 s dans l'exemple O
 
 ## Activation Data Hub production
 Le catalogue exécute désormais un health GET `products` avant CONNECTED et possède `sync_prestashop_catalog` avec un handler GET-only paginé sur products/combinations. Les ventes exigent en plus `PRESTASHOP_PAID_STATE_IDS`, injecté comme variable GitHub de production; une clé seule ne rend plus la source CONNECTED. Les états doivent être comparés à `order_states` de la boutique lors de la validation runtime.
+
+En production, `PRESTASHOP_PAID_STATE_IDS` est un **GitHub Environment Secret** et non une variable de dépôt. Le workflow refuse le déploiement s'il manque; l'installateur accepte les espaces, normalise les zéros et supprime les doublons, puis écrit la policy dans `drcloud.env` en mode `0600`. Aucun ID n'est codé en dur. Le contrôle OVH compare, sans afficher la valeur ni son empreinte, ce que voient le web et `automation-worker`. Administration affiche uniquement `CONFIGURED` ou `MISSING`.

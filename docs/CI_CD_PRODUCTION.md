@@ -17,7 +17,7 @@ Créer l'environment `production` (avec approbation obligatoire si souhaitée) e
 - `OVH_SSH_KNOWN_HOSTS` : ligne de clé hôte vérifiée hors bande (`ssh-keyscan` seul ne constitue pas une vérification).
 - `PRESTASHOP_API_KEY` : secret PrestaShop existant (ne pas créer ni remplacer la clé pour ce déploiement).
 
-Le fichier réellement consommé par Compose est `/opt/drcloud-os/deploy/ovh/drcloud.env`, via `env_file`. Avant le déploiement, la workflow appelle `configure-prestashop-env.sh`, qui remplace atomiquement uniquement `PRESTASHOP_API_URL` et `PRESTASHOP_API_KEY`, force l'URL `https://dr-cloudshop.com/api` et conserve le mode `0600`. Cette configuration rend le connecteur visible comme `CONFIGURED`; elle ne teste pas le réseau PrestaShop et ne lance aucun import média.
+Le fichier réellement consommé par Compose est `/opt/drcloud-os/deploy/ovh/drcloud.env`, via `env_file`. Avant le déploiement, la workflow appelle `configure-prestashop-env.sh`, qui remplace atomiquement `PRESTASHOP_API_URL`, `PRESTASHOP_API_KEY` et la policy secrète `PRESTASHOP_PAID_STATE_IDS`, force l'URL `https://dr-cloudshop.com/api` et conserve le mode `0600`. Les deux valeurs sensibles viennent des GitHub Environment Secrets et ne sont jamais affichées. Une policy absente ou invalide arrête le déploiement. Cette configuration ne teste pas le réseau PrestaShop et ne lance aucun import média.
 
 ## Installation unique sur le VPS
 

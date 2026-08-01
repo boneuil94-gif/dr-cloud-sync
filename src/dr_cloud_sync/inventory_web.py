@@ -8,7 +8,7 @@ from urllib.parse import parse_qs, unquote
 from .connectors import DisabledConnector
 from .domain import Product, ProductStatus, PurchaseOrderStatus, SupplierStatus
 from .inventory import InventoryError, InventoryRepository, InventoryService
-from .os_config import OSSettings
+from .os_config import OSSettings, parse_prestashop_state_ids
 from .repositories import SQLiteOSRepository
 from .roadmap import DEFAULT_ROADMAP, RoadmapService
 from .services import AssignBarcodeService, BarcodeError, StockProjectionService
@@ -104,7 +104,9 @@ class InventoryApp:
         sales_providers={}
         shopcaisse_inbox=os.environ.get("SHOPCAISSE_SALES_INBOX","")
         if shopcaisse_inbox and Path(shopcaisse_inbox).is_dir(): sales_providers["SHOPCAISSE"]=ShopCaisseSalesProvider(Path(shopcaisse_inbox))
-        paid_states=[x.strip() for x in os.environ.get("PRESTASHOP_PAID_STATE_IDS","").split(",") if x.strip()]
+        try: paid_states=parse_prestashop_state_ids(os.environ.get("PRESTASHOP_PAID_STATE_IDS"),required=True)
+        except ValueError: paid_states=()
+        self.prestashop_paid_states_configured=bool(paid_states)
         state_ids=lambda name: [x.strip() for x in os.environ.get(name,"").split(",") if x.strip()]
         prestashop_ref=os.environ.get("PRESTASHOP_SECRET_REF") or ("prestashop.production" if os.environ.get("PRESTASHOP_API_KEY") else "")
         prestashop_client=None; prestashop_connected=False
@@ -220,7 +222,7 @@ class InventoryApp:
             if path == "/marketing": return self._html(start,"marketing.html",session,request_id)
             if path == "/sales": return self._html(start,"sales.html",session,request_id)
             if path == "/finance": return self._html(start,"finance.html",session,request_id)
-            if path == "/api/data-hub" and method == "GET": return self._json(start,{**self.data_hub.health(),"runtime":self.data_hub.runtime(self.automation_operations())})
+            if path == "/api/data-hub" and method == "GET": return self._json(start,{**self.data_hub.health(),"runtime":{**self.data_hub.runtime(self.automation_operations()),"configuration":{"prestashop_paid_state_ids":"CONFIGURED" if self.prestashop_paid_states_configured else "MISSING"}}})
             if path.startswith("/api/data-hub/jobs/") and path.endswith("/run") and method == "POST":
                 job_id=unquote(path.removeprefix("/api/data-hub/jobs/").removesuffix("/run"))
                 operations=self.automation_operations()
