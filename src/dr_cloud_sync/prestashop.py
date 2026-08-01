@@ -51,6 +51,15 @@ class PrestaShopClient:
         self.opener = opener
         self.retries = retries
 
+    @classmethod
+    def from_secret_ref(cls, api_url: str, secret_ref: str, secrets: Any, **kwargs: Any) -> "PrestaShopClient":
+        """Resolve a credential once, server-side; callers retain only its opaque ref."""
+        resolver=getattr(secrets,"resolve",None) or getattr(secrets,"get",None)
+        api_key=resolver(secret_ref) if resolver and secret_ref else None
+        if not api_key:
+            raise PrestaShopError("PrestaShop credential is not configured")
+        return cls(api_url,api_key,**kwargs)
+
     def iter_resource(self, resource: str) -> Iterator[dict[str, Any]]:
         if resource not in self.RESOURCES:
             raise ValueError(f"Ressource non autorisée: {resource}")

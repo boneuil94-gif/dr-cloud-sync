@@ -740,7 +740,7 @@
       "id": "12-security",
       "name": "Sécurité + utilisateurs",
       "weight": 4,
-      "next": "Centraliser les audits métier restants et migrer tous les connecteurs vers secret_ref",
+      "next": "Maintenir la revue de sécurité continue et la rotation opérationnelle des secrets",
       "milestones": [
         {
           "id": "12-security-m01",
@@ -768,8 +768,8 @@
         {
           "id": "12-security-m05",
           "name": "AuditLog complet",
-          "status": "IN_PROGRESS",
-          "evidence": "audit_logs append-only, indexé, sanitised et cockpit; les audits historiques de certains domaines restent dans leurs ledgers spécialisés",
+          "status": "DONE",
+          "evidence": "AuditService/audit_logs immuable par triggers, filtres lecture seule, sanitisation centrale et audits des mutations sécurité, Data Hub, catalogue et inventaire",
           "steps": [
             {
               "name": "AuditLog sécurité durable et sans secrets",
@@ -777,15 +777,15 @@
             },
             {
               "name": "Toutes les mutations métier migrées vers AuditLog central",
-              "done": false
+              "done": true
             }
           ]
         },
         {
           "id": "12-security-m06",
           "name": "SystemSetting",
-          "status": "IN_PROGRESS",
-          "evidence": "table system_settings non-secrète présente; interface d’administration dédiée restant à livrer",
+          "status": "DONE",
+          "evidence": "Registry fermée typée, validation anti-secret, API/UI RBAC, persistance et audit transactionnel",
           "steps": [
             {
               "name": "Modèle durable non-secret",
@@ -793,15 +793,15 @@
             },
             {
               "name": "API/UI settings avec permission et audit",
-              "done": false
+              "done": true
             }
           ]
         },
         {
           "id": "12-security-m07",
           "name": "Références secrets",
-          "status": "IN_PROGRESS",
-          "evidence": "secret_references et SecretProvider Qonto/social présents; PrestaShop et ShopCaisse historiques utilisent encore certaines variables directes",
+          "status": "DONE",
+          "evidence": "Références opaques, EnvironmentSecretProvider.resolve, Qonto/PrestaShop/social migrés; ShopCaisse inbox local sans credential dans le runtime OS",
           "steps": [
             {
               "name": "Modèle de références opaques",
@@ -809,7 +809,7 @@
             },
             {
               "name": "Tous les connecteurs migrés vers références opaques",
-              "done": false
+              "done": true
             }
           ]
         },

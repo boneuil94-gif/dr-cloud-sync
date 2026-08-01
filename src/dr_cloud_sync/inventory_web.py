@@ -86,8 +86,12 @@ class InventoryApp:
         self.sales=SalesLedger(service.repo.path,self.os_repository)
         self.data_hub=DataHub(service.repo.path)
         self.bank=BankLedger(service.repo.path)
-        secret_ref=os.environ.get("QONTO_CREDENTIAL_REF","")
-        candidate=QontoBankProvider(secret_ref,EnvironmentSecretProvider(os.environ),timeout=float(os.environ.get("QONTO_TIMEOUT_SECONDS","8")))
+        secrets_provider=EnvironmentSecretProvider(os.environ,{
+            "qonto.production": os.environ.get("QONTO_CREDENTIAL_REF","QONTO_CREDENTIAL"),
+            "prestashop.production": "PRESTASHOP_API_KEY",
+        })
+        secret_ref=os.environ.get("QONTO_SECRET_REF") or ("qonto.production" if os.environ.get(os.environ.get("QONTO_CREDENTIAL_REF","QONTO_CREDENTIAL")) else "")
+        candidate=QontoBankProvider(secret_ref,secrets_provider,timeout=float(os.environ.get("QONTO_TIMEOUT_SECONDS","8")))
         qonto_connected=False
         if candidate.configured:
             try: qonto_connected=candidate.health()["status"]=="CONNECTED"
@@ -99,13 +103,14 @@ class InventoryApp:
         shopcaisse_inbox=os.environ.get("SHOPCAISSE_SALES_INBOX","")
         if shopcaisse_inbox and Path(shopcaisse_inbox).is_dir(): sales_providers["SHOPCAISSE"]=ShopCaisseSalesProvider(Path(shopcaisse_inbox))
         paid_states=[x.strip() for x in os.environ.get("PRESTASHOP_PAID_STATE_IDS","").split(",") if x.strip()]
-        if os.environ.get("PRESTASHOP_API_URL") and os.environ.get("PRESTASHOP_API_KEY") and paid_states:
-            sales_providers["PRESTASHOP"]=PrestaShopSalesProvider(
-                PrestaShopClient(os.environ["PRESTASHOP_API_URL"],os.environ["PRESTASHOP_API_KEY"]),paid_states)
+        prestashop_ref=os.environ.get("PRESTASHOP_SECRET_REF") or ("prestashop.production" if os.environ.get("PRESTASHOP_API_KEY") else "")
+        if os.environ.get("PRESTASHOP_API_URL") and prestashop_ref and paid_states:
+            sales_providers["PRESTASHOP"]=PrestaShopSalesProvider(PrestaShopClient.from_secret_ref(
+                os.environ["PRESTASHOP_API_URL"],prestashop_ref,secrets_provider),paid_states)
         self.sales_sync=SalesSyncService(self.sales,sales_providers)
         configured_ps="PRESTASHOP" in sales_providers
         intervals={"sales":int(os.environ.get("DATA_HUB_SALES_INTERVAL_SECONDS","900")),"bank":int(os.environ.get("DATA_HUB_BANK_INTERVAL_SECONDS","10800")),"projection":int(os.environ.get("DATA_HUB_PROJECTION_INTERVAL_SECONDS","900"))}
-        for args in (("shopcaisse_sales","SHOPCAISSE_SALES","ShopCaisse","SHOPCAISSE" in sales_providers),("prestashop_sales","PRESTASHOP_SALES","PrestaShop",configured_ps),("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",bool(os.environ.get("PRESTASHOP_API_URL") and os.environ.get("PRESTASHOP_API_KEY"))),("bank","BANK","Qonto",qonto_connected),("purchases","PURCHASES","LOCAL",True),("stock","STOCK","LOCAL",True)):
+        for args in (("shopcaisse_sales","SHOPCAISSE_SALES","ShopCaisse","SHOPCAISSE" in sales_providers),("prestashop_sales","PRESTASHOP_SALES","PrestaShop",configured_ps),("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",bool(os.environ.get("PRESTASHOP_API_URL") and prestashop_ref)),("bank","BANK","Qonto",qonto_connected),("purchases","PURCHASES","LOCAL",True),("stock","STOCK","LOCAL",True)):
             self.data_hub.register_source(*args[:3],configured=args[3],capabilities=("READ",),stale_after_seconds=intervals["bank"]*2 if args[0]=="bank" else intervals["sales"]*2)
         for job in (JobDefinition("sync_shopcaisse_sales","shopcaisse_sales","SHOPCAISSE_SALES",int(os.environ.get("SHOPCAISSE_SYNC_INTERVAL_SECONDS","600"))),JobDefinition("sync_prestashop_sales","prestashop_sales","PRESTASHOP_SALES",intervals["sales"]),JobDefinition("sync_bank_transactions","bank","BANK",intervals["bank"]),JobDefinition("refresh_sales_metrics","prestashop_sales","SALES_METRICS",intervals["projection"],("sync_prestashop_sales",)),JobDefinition("reconcile_bank_sales","bank","RECONCILE",intervals["projection"],("sync_bank_transactions",)),JobDefinition("refresh_finance","bank","FINANCE",intervals["projection"],("reconcile_bank_sales",)),JobDefinition("refresh_dashboard","purchases","DASHBOARD",intervals["projection"]),JobDefinition("refresh_marketing_signals","prestashop_sales","MARKETING",intervals["projection"],("refresh_sales_metrics",))): self.data_hub.register_job(job)
         self.sales_import_preview=None
@@ -197,7 +202,9 @@ class InventoryApp:
                 operations={"BANK":lambda cursor:self.bank.sync("Qonto",self.bank_provider,cursor),"RECONCILE":lambda cursor:{"rows_imported":self.reconciliation.reconcile_sales_bank()["created"]},"FINANCE":lambda cursor:{"rows_imported":0,"projection":self.finance.snapshot()},"DASHBOARD":lambda cursor:{"rows_imported":0},"SALES_METRICS":lambda cursor:{"rows_imported":0,"metrics":self.sales.analytics()},"MARKETING":lambda cursor:{"rows_imported":0}}
                 job=self.data_hub.job(job_id)
                 if not job or job["job_type"] not in operations: return self._json(start,{"error":"Job non exécutable ou connecteur absent"},"409 Conflict")
-                return self._json(start,self.data_hub.run(job_id,operations[job["job_type"]],manual=True))
+                result=self.data_hub.run(job_id,operations[job["job_type"]],manual=True)
+                self.security and self.security.audit(session["uid"],"DATA_HUB_MANUAL_SYNC","DATA_HUB_JOB",job_id,request_id,"api",{"job_type":job["job_type"]})
+                return self._json(start,result)
             if path == "/api/finance" and method == "GET": return self._json(start,{"projection":self.finance.snapshot(),"transactions":self.bank.transactions(),"reconciliations":self.reconciliation.list()})
             if path == "/api/sales/cockpit" and method == "GET":
                 return self._json(start,{"analytics":self.sales.analytics(),"sources":self.sales_sync.diagnostics(),"sales":self.sales_sync.sales(),"unmatched":self.sales_sync.unmatched()})
@@ -386,6 +393,16 @@ class InventoryApp:
                 return self._change_password(env,start,session,request_id)
             if path == "/api/security/overview" and method == "GET":
                 return self._json(start,{"users":self.security.users(),"roles":[{"name":r,"permissions":sorted(self.security.permissions_for_role(r))} for r in ("ADMIN","MANAGER","STAFF","READ_ONLY")],"sessions":self.security.active_sessions(),"events":self.security.audits(30),"password_policy":{"minimum_length":14,"hash":"PBKDF2-HMAC-SHA256","iterations":600000},"protections":{"csrf":True,"session_versioning":True,"default_deny":True,"security_headers":True},"secret_references":[dict(r) for r in self.security.db.execute("SELECT secret_ref,provider,purpose,status,created_at,updated_at,last_rotated_at FROM secret_references ORDER BY provider,purpose")]})
+            if path == "/api/security/audits" and method == "GET":
+                q=parse_qs(env.get("QUERY_STRING","")); boolean=q.get("success",[None])[0]
+                return self._json(start,{"events":self.security.audits(q.get("limit",[50])[0],actor=q.get("actor",[None])[0],entity_type=q.get("domain",[None])[0],action=q.get("action",[None])[0],success=None if boolean is None else boolean.lower() in {"1","true","yes"},since=q.get("since",[None])[0],until=q.get("until",[None])[0])})
+            if path == "/api/security/settings" and method == "GET": return self._json(start,{"settings":self.security.settings()})
+            if path.startswith("/api/security/settings/") and method in {"PUT","POST"}:
+                key=unquote(path.removeprefix("/api/security/settings/")); body=self._body(env)
+                return self._json(start,{"setting":self.security.set_setting(key,body.get("value"),session["uid"],request_id=request_id)})
+            if path == "/api/security/secret-references" and method == "POST":
+                body=self._body(env); ref=self.security.register_secret_reference(str(body.get("secret_ref") or ""),str(body.get("provider") or ""),str(body.get("purpose") or ""),session["uid"],status=str(body.get("status") or "ACTIVE"),request_id=request_id)
+                return self._json(start,{"secret_reference":ref},"201 Created")
             if path == "/api/security/users" and method == "POST":
                 body=self._body(env); user=self.security.create_user(str(body.get("username") or ""),str(body.get("display_name") or ""),str(body.get("password") or ""),body.get("roles") or [],session["uid"]); self.security.audit(session["uid"],"USER_CREATED","USER",user["user_id"],request_id,env.get("REMOTE_ADDR"),{"roles":body.get("roles")}); return self._json(start,{"user":{**user,"roles":self.security.roles_for(user["user_id"])}},"201 Created")
             if path.startswith("/api/security/users/"):
@@ -432,22 +449,26 @@ class InventoryApp:
             if path.startswith("/api/catalogue/products/") and path.endswith("/status") and method == "POST":
                 key=unquote(path.removeprefix("/api/catalogue/products/").removesuffix("/status"))
                 product=self.os_repository.set_status(key,ProductStatus(self._body(env)["status"]))
+                self.security and self.security.audit(session["uid"],"PRODUCT_STATUS_CHANGED","PRODUCT",key,request_id,"api",{"status":product.status.value})
                 return self._json(start,asdict(product))
             if path == "/api/items":
                 q=parse_qs(env.get("QUERY_STRING", "")); rows=self.service.search(q.get("q",[""])[0],q.get("view",["ALL"])[0],q.get("without_ean",["0"])[0]=="1"); return self._json(start,[self._with_media(x,x.get("drcloud_product_key") or f"drc:{x.get('prestashop_key')}") for x in rows])
             if path == "/api/scan":
                 result=self.service.scan(parse_qs(env.get("QUERY_STRING", "")).get("ean",[""])[0]); result["items"]=[self._with_media(x,x.get("drcloud_product_key") or f"drc:{x.get('prestashop_key')}") for x in result.get("items",[])]; return self._json(start,result)
             if path == "/api/count" and method == "POST":
-                data=self._body(env); return self._json(start,self.service.count(data["prestashop_key"],data.get("physical_quantity"),data.get("source","MANUAL"),data.get("action","COUNT")))
+                data=self._body(env); result=self.service.count(data["prestashop_key"],data.get("physical_quantity"),data.get("source","MANUAL"),data.get("action","COUNT")); self.security and self.security.audit(session["uid"],"INVENTORY_COUNT_RECORDED","INVENTORY",str(data["prestashop_key"]),request_id,"api",{"source":data.get("source","MANUAL")}); return self._json(start,result)
             if path == "/api/barcodes/propose" and method == "POST":
                 data=self._body(env); return self._json(start,asdict(self.barcodes.propose(data["drcloud_product_key"],data["ean"])))
-            if path == "/api/barcodes/confirm" and method == "POST": return self._json(start,asdict(self.barcodes.confirm(self._body(env)["id"])))
+            if path == "/api/barcodes/confirm" and method == "POST":
+                identifier=str(self._body(env)["id"]); result=self.barcodes.confirm(identifier); self.security and self.security.audit(session["uid"],"BARCODE_ASSIGNMENT_CONFIRMED","BARCODE_ASSIGNMENT",identifier,request_id,"api"); return self._json(start,asdict(result))
             if path == "/api/history": return self._json(start,self.service.repo.history(self.service.session()["id"]))
             if path == "/api/complete" and method == "POST": return self._json(start,self.service.complete())
             if path == "/api/inventory/session" and method == "POST": return self._json(start,self.service.new_session())
             if path == "/api/inventory/proposal": return self._json(start,self.service.proposal())
-            if path == "/api/inventory/proposal/validate" and method == "POST": return self._json(start,self.service.validate(session.get("u") or "authenticated"))
-            if path == "/api/inventory/proposal/apply" and method == "POST": return self._json(start,self.service.apply(session.get("u") or "authenticated"))
+            if path == "/api/inventory/proposal/validate" and method == "POST":
+                result=self.service.validate(session.get("u") or "authenticated"); self.security and self.security.audit(session["uid"],"INVENTORY_VALIDATED","INVENTORY",None,request_id,"api"); return self._json(start,result)
+            if path == "/api/inventory/proposal/apply" and method == "POST":
+                result=self.service.apply(session.get("u") or "authenticated"); self.security and self.security.audit(session["uid"],"INVENTORY_APPLIED","INVENTORY",None,request_id,"api"); return self._json(start,result)
             if path == "/api/inventory/proposal/validate-and-apply" and method == "POST":
                 self.service.validate(session.get("u") or "authenticated")
                 return self._json(start,self.service.apply(session.get("u") or "authenticated"))
@@ -517,6 +538,9 @@ class InventoryApp:
         if path in pages: return pages[path]
         if path.startswith("/achats/"): return "purchasing.read"
         if path.startswith("/media/"): return "catalogue.read"
+        if path.startswith("/api/security/settings"): return "settings.read" if method=="GET" else "settings.write"
+        if path.startswith("/api/security/audits"): return "security.read"
+        if path.startswith("/api/security/secret-references"): return "security.manage_secrets"
         if path.startswith("/api/security/change-password"): return "security.read"
         if path.startswith("/api/security/users") or path.startswith("/api/security/sessions/"): return "security.manage_users" if method!="GET" else "security.read"
         if path.startswith("/api/security/"): return "security.read"

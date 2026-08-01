@@ -4,6 +4,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from dr_cloud_sync.security import AuthorizationService, SecurityStore, sanitise
+from dr_cloud_sync.prestashop import PrestaShopClient, PrestaShopError
+from dr_cloud_sync.qonto import EnvironmentSecretProvider
 from test_os_production import configured, login, request  # noqa: F401
 
 
@@ -38,6 +40,27 @@ def test_recursive_redaction_and_append_only_audit(tmp_path):
     store.audit("local-admin","SECRET_REF_CHANGED","SECRET","qonto",metadata=raw)
     encoded=json.dumps(store.audits())
     assert "abc" not in encoded and "[REDACTED]" in encoded
+    with pytest.raises(Exception): store.db.execute("UPDATE audit_logs SET action='ERASED'")
+    with pytest.raises(Exception): store.db.execute("DELETE FROM audit_logs")
+
+
+def test_system_setting_registry_validation_persistence_and_audit(tmp_path):
+    path=tmp_path/"security.db"; store=SecurityStore(path,"root","correct-horse-battery-staple")
+    changed=store.set_setting("stock.low_threshold",8,"local-admin",request_id="req-1")
+    assert changed["value"]==8 and changed["value_type"]=="int"
+    with pytest.raises(KeyError): store.set_setting("unknown",1,"local-admin")
+    with pytest.raises(ValueError): store.set_setting("stock.low_threshold","8","local-admin")
+    with pytest.raises(ValueError): store._setting_value(type("D",(),{"key":"banner","value_type":"string","choices":()})(),"Bearer private")
+    reopened=SecurityStore(path,"root","ignored-bootstrap-password")
+    assert next(x for x in reopened.settings() if x["key"]=="stock.low_threshold")["value"]==8
+    assert reopened.audits(action="SYSTEM_SETTING_CHANGED")[0]["request_id"]=="req-1"
+
+
+def test_opaque_secret_resolution_and_prestashop_connector():
+    provider=EnvironmentSecretProvider({"PS_RUNTIME":"fake-value"},{"prestashop.production":"PS_RUNTIME"})
+    client=PrestaShopClient.from_secret_ref("https://example.test/api","prestashop.production",provider)
+    assert "fake-value" not in repr(client.__dict__)
+    with pytest.raises(PrestaShopError): PrestaShopClient.from_secret_ref("https://example.test/api","missing.production",provider)
 
 
 def test_security_headers_and_unknown_authenticated_route_is_denied(configured):
