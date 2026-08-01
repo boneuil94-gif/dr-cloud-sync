@@ -96,6 +96,15 @@ def test_deployment_metadata_mount_is_minimal_and_read_only():
     assert "/.git" not in compose and "docker.sock" not in compose
     assert "USER drcloud" in dockerfile
 
+def test_production_connector_policy_and_shared_worker_database_check():
+    root=Path(__file__).parents[1]
+    workflow=(root/'.github/workflows/drcloud-os-production.yml').read_text()
+    installer=(root/'deploy/ovh/configure-prestashop-env.sh').read_text()
+    assert 'PRESTASHOP_PAID_STATE_IDS: ${{ vars.PRESTASHOP_PAID_STATE_IDS }}' in workflow
+    assert 'PRESTASHOP_PAID_STATE_IDS=%s' in installer
+    compose=(root/'deploy/ovh/docker-compose.yml').read_text()
+    assert compose.count('- drcloud-data:/data')==2
+
 
 def test_success_marker_is_published_only_after_checks_and_rollback_validation():
     script = (Path(__file__).parents[1] / "deploy/ovh/update.sh").read_text()
@@ -347,7 +356,7 @@ def test_production_workflow_provisions_existing_prestashop_secret_before_deploy
     configure = workflow.index("configure-prestashop-env.sh")
     deploy = workflow.index("update.sh '$DEPLOY_SHA'")
     assert "PRESTASHOP_API_KEY: ${{ secrets.PRESTASHOP_API_KEY }}" in workflow
-    assert "printf '%s\\n%s\\n' 'https://dr-cloudshop.com/api' \"$PRESTASHOP_API_KEY\"" in workflow
+    assert "printf '%s\\n%s\\n%s\\n' 'https://dr-cloudshop.com/api' \"$PRESTASHOP_API_KEY\" \"$PRESTASHOP_PAID_STATE_IDS\"" in workflow
     assert configure < deploy
 
 
@@ -364,7 +373,7 @@ def test_prestashop_runtime_configuration_is_atomic_and_secret_free_in_output(tm
     )
     secret = "existing-secret-never-log"
     result = subprocess.run(
-        [script], input=f"https://dr-cloudshop.com/api\n{secret}\n",
+        [script], input=f"https://dr-cloudshop.com/api\n{secret}\n2,3\n",
         text=True, capture_output=True, check=False,
     )
     assert result.returncode == 0, result.stderr

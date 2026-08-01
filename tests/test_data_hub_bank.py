@@ -34,3 +34,13 @@ def test_inventory_statuses_disabled_and_next_run_are_explicit(tmp_path):
  assert rows['disabled']['freshness']=='DISABLED'
  assert rows['disabled']['next_run_at'] is not None
  assert rows['unsupported']['status']=='UNSUPPORTED'
+
+def test_due_job_without_runtime_handler_is_blocked(tmp_path):
+ hub=DataHub(tmp_path/'handlers.db');hub.register_source('s','SALES','real',configured=True);hub.register_job(JobDefinition('orphan','s','MISSING',60))
+ result=hub.run_due({})[0]
+ assert result['status']=='BLOCKED' and result['error']=='runtime handler missing: MISSING'
+
+def test_worker_heartbeat_proves_shared_database_without_exposing_path(tmp_path):
+ hub=DataHub(tmp_path/'runtime.db');hub.heartbeat();runtime=hub.runtime({})
+ assert runtime['worker_heartbeats'][0]['database_fingerprint']==runtime['database_fingerprint']
+ assert str(tmp_path) not in str(runtime)

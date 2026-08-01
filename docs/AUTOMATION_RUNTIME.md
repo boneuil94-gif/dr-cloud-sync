@@ -9,3 +9,6 @@ Le rollback conserve le volume et les migrations SQLite additives. L'ancien cont
 ## External Platforms Activation V1
 
 Le worker ne programme que les adapters réellement configurés. Les cadences viennent de l'environnement (`SHOPCAISSE_SYNC_INTERVAL_SECONDS`, `DATA_HUB_SALES_INTERVAL_SECONDS`, `DATA_HUB_BANK_INTERVAL_SECONDS`, `SUPPLIER_SYNC_INTERVAL_SECONDS`, `SOCIAL_ANALYTICS_INTERVAL_SECONDS`) et non du domaine. Le claim transactionnel SQLite empêche deux exécutions simultanées; l'unicité des ledgers protège les reprises. 429/`Retry-After`, timeouts et backoff restent la responsabilité des clients réels. Un provider absent bloque uniquement son job et ne déclenche aucune écriture externe.
+
+## Preuve web/worker et handlers
+À chaque cycle, le worker persiste un heartbeat accompagné d’un fingerprint SHA-256 tronqué du chemin SQLite. `/api/data-hub` expose ce diagnostic non sensible et indique, pour chaque job, si son handler runtime existe. Un job dû sans handler passe BLOCKED. `deploy/ovh/check.sh` exige aussi le service worker actif et compare dans les deux conteneurs le chemin canonique de la base montée.

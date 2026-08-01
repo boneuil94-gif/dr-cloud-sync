@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
-import json, sqlite3
+import hashlib, json, sqlite3
 from pathlib import Path
 from typing import Callable, Mapping, Any
 
@@ -33,6 +33,7 @@ SCHEMA="""
 CREATE TABLE IF NOT EXISTS data_sources(source_id TEXT PRIMARY KEY,source_type TEXT NOT NULL,provider TEXT NOT NULL,status TEXT NOT NULL,enabled INTEGER NOT NULL,last_attempt_at TEXT,last_success_at TEXT,last_error TEXT,cursor TEXT,capabilities_json TEXT NOT NULL,stale_after_seconds INTEGER NOT NULL,rows_imported INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS sync_jobs(job_id TEXT PRIMARY KEY,source_id TEXT NOT NULL,job_type TEXT NOT NULL,interval_seconds INTEGER NOT NULL,dependencies_json TEXT NOT NULL,max_attempts INTEGER NOT NULL,next_run_at TEXT,last_run_at TEXT,status TEXT NOT NULL DEFAULT 'PENDING',attempts INTEGER NOT NULL DEFAULT 0,duration_ms INTEGER,error TEXT,lock_token TEXT,locked_at TEXT);
 CREATE TABLE IF NOT EXISTS data_hub_sync_runs(run_id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL,started_at TEXT NOT NULL,completed_at TEXT,status TEXT NOT NULL,attempt INTEGER NOT NULL,result_json TEXT,error TEXT);
+CREATE TABLE IF NOT EXISTS automation_worker_heartbeat(worker_id TEXT PRIMARY KEY,seen_at TEXT NOT NULL,database_fingerprint TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS ix_sync_jobs_due ON sync_jobs(status,next_run_at);
 """
 
@@ -55,7 +56,7 @@ class DataHub:
         """
         status=SourceStatus(status) if status else SourceStatus.DISABLED if not enabled else SourceStatus.CONNECTED if configured else SourceStatus.NOT_CONFIGURED
         with self.connect() as db: db.execute("""INSERT INTO data_sources VALUES(?,?,?,?,?,NULL,NULL,NULL,NULL,?,?,0)
-          ON CONFLICT(source_id) DO UPDATE SET source_type=excluded.source_type,provider=excluded.provider,enabled=excluded.enabled,capabilities_json=excluded.capabilities_json,stale_after_seconds=excluded.stale_after_seconds,status=CASE WHEN data_sources.status='ERROR' AND excluded.status='CONNECTED' THEN data_sources.status ELSE excluded.status END""",
+          ON CONFLICT(source_id) DO UPDATE SET source_type=excluded.source_type,provider=excluded.provider,enabled=excluded.enabled,capabilities_json=excluded.capabilities_json,stale_after_seconds=excluded.stale_after_seconds,status=CASE WHEN data_sources.status='ERROR' AND excluded.status='CONNECTED' THEN data_sources.status WHEN data_sources.last_success_at IS NOT NULL AND excluded.status='UNAVAILABLE' THEN data_sources.status ELSE excluded.status END""",
           (source_id,source_type,provider,status.value,int(enabled),json.dumps(list(capabilities)),stale_after_seconds))
     def register_job(self,job: JobDefinition):
         if job.interval_seconds<1: raise ValueError("interval_seconds must be positive")
@@ -86,7 +87,7 @@ class DataHub:
             job=db.execute("SELECT * FROM sync_jobs WHERE job_id=?",(job_id,)).fetchone()
             if not job: raise KeyError(job_id)
             source=db.execute("SELECT * FROM data_sources WHERE source_id=?",(job["source_id"],)).fetchone()
-            if not source or not source["enabled"] or source["status"]!=SourceStatus.CONNECTED: return self._blocked(job_id,"source unavailable")
+            if not source or not source["enabled"] or source["status"] not in (SourceStatus.CONNECTED,SourceStatus.UNAVAILABLE): return self._blocked(job_id,"source unavailable")
             if not manual and job["next_run_at"] and datetime.fromisoformat(job["next_run_at"])>now: return dict(job)
             dependencies=json.loads(job["dependencies_json"])
             for dependency in dependencies:
@@ -118,6 +119,20 @@ class DataHub:
         with self.connect() as db: row=db.execute("SELECT * FROM sync_jobs WHERE job_id=?",(job_id,)).fetchone()
         return dict(row) if row else None
     def run_due(self,operations):
-        now=iso(self.clock()); return [self.run(j["job_id"],operations[j["job_type"]]) for j in self.jobs() if j["next_run_at"]<=now and j["job_type"] in operations]
+        now=iso(self.clock()); results=[]
+        for job in self.jobs():
+            if not job["next_run_at"] or job["next_run_at"]>now: continue
+            operation=operations.get(job["job_type"])
+            if operation is None: results.append(self._blocked(job["job_id"],f"runtime handler missing: {job['job_type']}"))
+            else: results.append(self.run(job["job_id"],operation))
+        return results
+    def database_fingerprint(self):
+        return hashlib.sha256(str(self.path.resolve()).encode()).hexdigest()[:12]
+    def heartbeat(self,worker_id="automation-worker"):
+        with self.connect() as db: db.execute("INSERT INTO automation_worker_heartbeat VALUES(?,?,?) ON CONFLICT(worker_id) DO UPDATE SET seen_at=excluded.seen_at,database_fingerprint=excluded.database_fingerprint",(worker_id,iso(self.clock()),self.database_fingerprint()))
+    def runtime(self,operations=None):
+        with self.connect() as db: heartbeats=[dict(row) for row in db.execute("SELECT * FROM automation_worker_heartbeat ORDER BY worker_id")]
+        registered=set((operations or {}).keys())
+        return {"database_fingerprint":self.database_fingerprint(),"worker_heartbeats":heartbeats,"jobs":[{"job_id":j["job_id"],"handler_registered":j["job_type"] in registered} for j in self.jobs()]}
     def health(self):
         sources=self.sources(); return {"status":"ERROR" if any(s["freshness"]=="ERROR" for s in sources) else "DEGRADED" if any(s["freshness"]!="FRESH" for s in sources) else "OK","sources":sources,"jobs":self.jobs()}
