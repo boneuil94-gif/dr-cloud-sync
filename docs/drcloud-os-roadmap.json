@@ -411,17 +411,19 @@
       "id": "07-finance",
       "name": "Finance + pilotage",
       "weight": 8,
-      "next": "Frontière analytique",
+      "next": "Coûts de réception, valeur du stock et rentabilité catégorie",
       "milestones": [
         {
           "id": "07-finance-m01",
           "name": "Frontière analytique",
-          "status": "TODO"
+          "status": "DONE",
+          "evidence": "src/dr_cloud_sync/finance.py et tests/test_finance_v1.py"
         },
         {
           "id": "07-finance-m02",
           "name": "Projection chiffre d’affaires",
-          "status": "TODO"
+          "status": "DONE",
+          "evidence": "src/dr_cloud_sync/finance.py et tests/test_finance_v1.py"
         },
         {
           "id": "07-finance-m03",
@@ -431,12 +433,14 @@
         {
           "id": "07-finance-m04",
           "name": "Marge brute",
-          "status": "TODO"
+          "status": "DONE",
+          "evidence": "src/dr_cloud_sync/finance.py et tests/test_finance_v1.py"
         },
         {
           "id": "07-finance-m05",
           "name": "TVA disponible",
-          "status": "TODO"
+          "status": "DONE",
+          "evidence": "src/dr_cloud_sync/finance.py et tests/test_finance_v1.py"
         },
         {
           "id": "07-finance-m06",
@@ -461,7 +465,8 @@
         {
           "id": "07-finance-m10",
           "name": "Contrôles de cohérence",
-          "status": "TODO"
+          "status": "DONE",
+          "evidence": "src/dr_cloud_sync/finance.py et tests/test_finance_v1.py"
         }
       ]
     },

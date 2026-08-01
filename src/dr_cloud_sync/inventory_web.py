@@ -98,7 +98,7 @@ class InventoryApp:
             except QontoError: pass
         self.bank_provider=candidate if candidate.configured else DisabledQontoProvider()
         self.reconciliation=ReconciliationService(service.repo.path)
-        self.finance=FinanceProjection(self.bank,self.sales)
+        self.finance=FinanceProjection(self.bank,self.sales,self.purchase_orders)
         sales_providers={}
         shopcaisse_inbox=os.environ.get("SHOPCAISSE_SALES_INBOX","")
         if shopcaisse_inbox and Path(shopcaisse_inbox).is_dir(): sales_providers["SHOPCAISSE"]=ShopCaisseSalesProvider(Path(shopcaisse_inbox))
@@ -206,6 +206,16 @@ class InventoryApp:
                 self.security and self.security.audit(session["uid"],"DATA_HUB_MANUAL_SYNC","DATA_HUB_JOB",job_id,request_id,"api",{"job_type":job["job_type"]})
                 return self._json(start,result)
             if path == "/api/finance" and method == "GET": return self._json(start,{"projection":self.finance.snapshot(),"transactions":self.bank.transactions(),"reconciliations":self.reconciliation.list()})
+            if path == "/api/finance/summary" and method == "GET": return self._json(start,self.finance.summary())
+            if path == "/api/finance/cashflow" and method == "GET": return self._json(start,self.finance.cashflow())
+            if path == "/api/finance/tax" and method == "GET": return self._json(start,self.finance.tax())
+            if path == "/api/finance/profitability" and method == "GET": return self._json(start,self.finance.profitability())
+            if path == "/api/finance/reconciliations" and method == "GET": return self._json(start,{"counts":self.finance._reconciliation_counts(),"items":self.reconciliation.list()})
+            if path.startswith("/api/finance/bank-transactions/") and path.endswith("/classification") and method == "PATCH":
+                transaction_id=unquote(path.removeprefix("/api/finance/bank-transactions/").removesuffix("/classification"));body=self._body(env)
+                row=self.bank.classify(transaction_id,str(body.get("category") or "UNKNOWN"),confirmed=True)
+                self.security and self.security.audit(session["uid"],"BANK_CLASSIFICATION_CONFIRMED","BANK_TRANSACTION",transaction_id,request_id,"finance",{"category":row["category"]})
+                return self._json(start,{"transaction":row})
             if path == "/api/sales/cockpit" and method == "GET":
                 return self._json(start,{"analytics":self.sales.analytics(),"sources":self.sales_sync.diagnostics(),"sales":self.sales_sync.sales(),"unmatched":self.sales_sync.unmatched()})
             if path == "/api/sales/shopcaisse/preview" and method == "POST":
@@ -544,7 +554,7 @@ class InventoryApp:
         if path.startswith("/api/security/change-password"): return "security.read"
         if path.startswith("/api/security/users") or path.startswith("/api/security/sessions/"): return "security.manage_users" if method!="GET" else "security.read"
         if path.startswith("/api/security/"): return "security.read"
-        domains=(("/api/finance","finance.read"),("/api/data-hub/jobs/","bank.sync"),("/api/data-hub","admin.read"),("/api/sales","sales.read" if method=="GET" else "sales.sync"),("/api/marketing","marketing.read" if method=="GET" else "marketing.approve"),("/api/purchase-orders","purchasing.read" if method=="GET" else "purchasing.write"),("/api/goods-receipts","purchasing.read" if method=="GET" else "purchasing.write"),("/api/suppliers","purchasing.read" if method=="GET" else "purchasing.write"),("/api/admin","admin.read" if method=="GET" else "admin.write"),("/api/roadmap","admin.read"),("/api/stock","stock.read"),("/api/inventory","stock.read" if method=="GET" else "stock.validate"),("/api/count","stock.write"),("/api/complete","stock.validate"),("/api/barcodes","catalogue.write"),("/api/products","catalogue.read" if method=="GET" else "catalogue.write"),("/api/catalogue","catalogue.read"),("/api/search","catalogue.read"),("/api/scan","catalogue.read"),("/api/history","stock.read"),("/api/report","stock.read"),("/api/export.csv","stock.read"),("/api/state","stock.read"),("/api/dashboard","catalogue.read"))
+        domains=(("/api/finance","finance.read" if method=="GET" else "finance.write"),("/api/data-hub/jobs/","bank.sync"),("/api/data-hub","admin.read"),("/api/sales","sales.read" if method=="GET" else "sales.sync"),("/api/marketing","marketing.read" if method=="GET" else "marketing.approve"),("/api/purchase-orders","purchasing.read" if method=="GET" else "purchasing.write"),("/api/goods-receipts","purchasing.read" if method=="GET" else "purchasing.write"),("/api/suppliers","purchasing.read" if method=="GET" else "purchasing.write"),("/api/admin","admin.read" if method=="GET" else "admin.write"),("/api/roadmap","admin.read"),("/api/stock","stock.read"),("/api/inventory","stock.read" if method=="GET" else "stock.validate"),("/api/count","stock.write"),("/api/complete","stock.validate"),("/api/barcodes","catalogue.write"),("/api/products","catalogue.read" if method=="GET" else "catalogue.write"),("/api/catalogue","catalogue.read"),("/api/search","catalogue.read"),("/api/scan","catalogue.read"),("/api/history","stock.read"),("/api/report","stock.read"),("/api/export.csv","stock.read"),("/api/state","stock.read"),("/api/dashboard","catalogue.read"))
         for prefix,permission in domains:
             if path.startswith(prefix): return permission
         return "__default_deny__" if path.startswith("/api/") else "__not_found__"

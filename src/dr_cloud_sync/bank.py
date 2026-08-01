@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Protocol, Sequence
 
 class BankCategory(StrEnum):
-    SALES_SETTLEMENT="SALES_SETTLEMENT"; SUPPLIER_PAYMENT="SUPPLIER_PAYMENT"; BANK_FEE="BANK_FEE"; TAX="TAX"; PAYROLL="PAYROLL"; RENT="RENT"; TRANSFER="TRANSFER"; FINANCING="FINANCING"; REFUND="REFUND"; UNKNOWN="UNKNOWN"
+    SALES_SETTLEMENT="SALES_SETTLEMENT"; SUPPLIER_PAYMENT="SUPPLIER_PAYMENT"; BANK_FEE="BANK_FEE"; TAX="TAX"; PAYROLL="PAYROLL"; RENT="RENT"; TRANSFER="TRANSFER"; FINANCING="FINANCING"; REFUND="REFUND"; OTHER="OTHER"; UNKNOWN="UNKNOWN"
 @dataclass(frozen=True)
 class BankAccount: account_id:str; name:str; currency:str
 @dataclass(frozen=True)
@@ -72,6 +72,12 @@ class BankLedger:
     def accounts(self): return [dict(r) for r in self.db.execute("SELECT * FROM bank_accounts ORDER BY account_id")]
     def transactions(self): return [dict(r) for r in self.db.execute("SELECT * FROM bank_transactions ORDER BY booked_at DESC")]
     def balances(self): return [dict(r) for r in self.db.execute("SELECT * FROM bank_balances ORDER BY account_id")]
+    def classify(self,transaction_id,category,*,confirmed=False):
+        category=BankCategory(category).value;state="CONFIRMED" if confirmed else "PROPOSED"
+        with self.db:
+            result=self.db.execute("UPDATE bank_transactions SET category=?,category_state=? WHERE transaction_id=?",(category,state,transaction_id))
+        if not result.rowcount: raise KeyError("bank transaction not found")
+        return dict(self.db.execute("SELECT * FROM bank_transactions WHERE transaction_id=?",(transaction_id,)).fetchone())
     def sync(self,provider_name,provider,cursor=None):
         if not provider.configured: raise ValueError("bank provider is not configured")
         total=duplicates=0
