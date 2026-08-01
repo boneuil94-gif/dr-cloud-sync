@@ -1,9 +1,11 @@
-import io,json
+import io,json,re
+from pathlib import Path
 from decimal import Decimal
 from urllib.error import HTTPError,URLError
 import pytest
 
-from dr_cloud_sync.sumup import SumUpProvider,SumUpError,SumUpTransactionLedger,PaymentSettlementLedger
+from dr_cloud_sync.sumup import (PAYOUT_COLUMNS, PaymentSettlementLedger, SumUpError,
+                                 SumUpProvider, SumUpTransactionLedger, _payout_values)
 
 class Response(io.BytesIO):
  def __enter__(self):return self
@@ -40,6 +42,38 @@ def test_payout_deduction_link_and_idempotence(tmp_path):
  payout={"id":"pay1","date":"2026-01-02","amount":"9.7","currency":"EUR","fee":".3","status":"PAID","deductions":[{"transaction_code":"CODE","type":"REFUND"}]}
  page=type("P",(),{"rows":(payout,),"next_cursor":None})();assert s.import_page(page)["rows_imported"]==1
  assert s.reconcile()==1 and s.import_page(page)["rows_imported"]==0
+
+def test_payout_insert_values_match_sqlite_schema(tmp_path):
+ ledger=PaymentSettlementLedger(tmp_path/"db.sqlite")
+ sqlite_columns=tuple(row[1] for row in ledger.db.execute("PRAGMA table_info(sumup_payouts)"))
+ values=_payout_values({"id":"pay1","date":"2026-01-02","amount":"9.7"},"pay1","now")
+ assert sqlite_columns==PAYOUT_COLUMNS
+ assert len(sqlite_columns)==len(values)
+ ledger.db.close()
+
+def test_legacy_payout_schema_is_migrated_idempotently_without_data_loss(tmp_path):
+ path=tmp_path/"legacy.sqlite"
+ db=__import__("sqlite3").connect(path)
+ db.execute("""CREATE TABLE sumup_payouts(
+  payout_id TEXT PRIMARY KEY,type TEXT,payout_date TEXT NOT NULL,amount TEXT NOT NULL,
+  currency TEXT NOT NULL,fee TEXT NOT NULL,status TEXT,reference TEXT,transaction_code TEXT,
+  deductions_json TEXT NOT NULL,raw_json TEXT NOT NULL,imported_at TEXT NOT NULL)""")
+ db.execute("INSERT INTO sumup_payouts (payout_id,payout_date,amount,currency,fee,deductions_json,raw_json,imported_at) VALUES (?,?,?,?,?,?,?,?)",
+            ("legacy","2026-01-01","10","EUR","0","[]","{}","then"))
+ db.commit();db.close()
+ first=PaymentSettlementLedger(path);first.db.close()
+ second=PaymentSettlementLedger(path)
+ columns={row[1] for row in second.db.execute("PRAGMA table_info(sumup_payouts)")}
+ assert {"start_date","end_date","paid_date"} <= columns
+ assert second.db.execute("SELECT amount FROM sumup_payouts WHERE payout_id='legacy'").fetchone()[0]=="10"
+ second.db.close()
+
+def test_connector_inserts_always_name_their_columns():
+ root=Path(__file__).parents[1]/"src"/"dr_cloud_sync"
+ connector_files=("sumup.py","sales_ingestion.py","store.py","prestashop.py","shopcaisse.py","qonto.py","bank.py")
+ bare_insert=re.compile(r"INSERT\s+(?:OR\s+\w+\s+)?INTO\s+\w+\s+VALUES\s*\(",re.IGNORECASE)
+ violations=[name for name in connector_files if bare_insert.search((root/name).read_text())]
+ assert violations==[]
 
 @pytest.mark.parametrize("code",[401,403,429,500])
 def test_http_errors_are_sanitized(code):

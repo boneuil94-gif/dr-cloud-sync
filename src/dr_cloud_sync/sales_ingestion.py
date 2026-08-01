@@ -163,7 +163,7 @@ class ShopCaisseAPISalesProvider:
             stocks=self.client.pull_store_stocks(store_id,self.stock_board_type)
             with self.db:
                 for stock in stocks:
-                    self.db.execute("INSERT INTO shopcaisse_stock_observations VALUES(?,?,?,?,?,?) ON CONFLICT(store_id,item_id) DO UPDATE SET stock=excluded.stock,reserved_customers=excluded.reserved_customers,reserved_suppliers=excluded.reserved_suppliers,observed_at=excluded.observed_at",
+                    self.db.execute("INSERT INTO shopcaisse_stock_observations (store_id,item_id,stock,reserved_customers,reserved_suppliers,observed_at) VALUES(?,?,?,?,?,?) ON CONFLICT(store_id,item_id) DO UPDATE SET stock=excluded.stock,reserved_customers=excluded.reserved_customers,reserved_suppliers=excluded.reserved_suppliers,observed_at=excluded.observed_at",
                         (store_id,str(stock["item"]),str(stock["stock"]),str(stock.get("reservedForCustomers",0)),str(stock.get("reservedForSuppliers",0)),observed))
         return ProviderBatch(tuple(sales),newest)
 
@@ -255,7 +255,7 @@ class SalesSyncService:
                 for sale in batch.sales:
                     report["sales"]+=1
                     sale_id=f"sale:{source}:{sale.external_sale_id}"
-                    self.db.execute("INSERT OR IGNORE INTO sales VALUES(?,?,?,?,?,?,?,?,?,?,?)",(sale_id,source,sale.external_sale_id,sale.sold_at,sale.timezone,sale.channel,sale.location,sale.currency,sale.status,sale.source_updated_at,_now()))
+                    self.db.execute("INSERT OR IGNORE INTO sales (sale_id,source,external_sale_id,sold_at,timezone,channel,location,currency,status,source_updated_at,imported_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",(sale_id,source,sale.external_sale_id,sale.sold_at,sale.timezone,sale.channel,sale.location,sale.currency,sale.status,sale.source_updated_at,_now()))
                     for line in sale.lines:
                         try:
                             if not line.external_line_id or line.quantity<=0: raise ValueError("invalid line identity or quantity")
@@ -268,7 +268,7 @@ class SalesSyncService:
                             if inserted: report["imported"]+=1
                             else: report["duplicates"]+=1
                             if line.kind in {"REFUND","RETURN","CANCELLATION"}:report["refunds"]+=1
-                            self.db.execute("INSERT OR IGNORE INTO sale_lines VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(f"sale-line:{uuid4()}",sale_id,line.external_line_id,line.source_product_id,line.source_variant_id,line.source_reference,line.source_ean,product,str(line.quantity),*[str(x) if x is not None else None for x in (line.unit_price_ttc,line.unit_price_ht,line.line_total_ttc,line.line_total_ht,line.tax_rate)],status,reason,line.kind))
+                            self.db.execute("INSERT OR IGNORE INTO sale_lines (sale_line_id,sale_id,external_line_id,source_product_id,source_variant_id,source_reference,source_ean,product_key,quantity,unit_price_ttc,unit_price_ht,line_total_ttc,line_total_ht,tax_rate,mapping_status,mapping_reason,event_kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(f"sale-line:{uuid4()}",sale_id,line.external_line_id,line.source_product_id,line.source_variant_id,line.source_reference,line.source_ean,product,str(line.quantity),*[str(x) if x is not None else None for x in (line.unit_price_ttc,line.unit_price_ht,line.line_total_ttc,line.line_total_ht,line.tax_rate)],status,reason,line.kind))
                         except (ValueError,TypeError) as exc:
                             report["invalid"]+=1
                             failure=self._failure(sale, exc, line_id=line.external_line_id,
@@ -276,7 +276,7 @@ class SalesSyncService:
                             report["errors"].append({"sale":failure["sale"],"line":failure["line"],"error":failure["message"]})
                             report["failure_details"].append(failure)
                     for payment in sale.payments:
-                        inserted=self.db.execute("INSERT OR IGNORE INTO sale_payments VALUES(?,?,?,?,?,?,?)",(f"payment:{source}:{sale.external_sale_id}:{payment.external_payment_id}",sale_id,payment.external_payment_id,payment.payment_type,str(payment.amount),payment.name,payment.description)).rowcount
+                        inserted=self.db.execute("INSERT OR IGNORE INTO sale_payments (payment_id,sale_id,external_payment_id,payment_type,amount,name,description) VALUES(?,?,?,?,?,?,?)",(f"payment:{source}:{sale.external_sale_id}:{payment.external_payment_id}",sale_id,payment.external_payment_id,payment.payment_type,str(payment.amount),payment.name,payment.description)).rowcount
                         report["payments"]+=inserted
                 now=_now();self.db.execute("INSERT INTO sales_sync_states(source,last_success_at,last_attempt_at,status,cursor,last_error,imported_count,unmatched_count,last_report_json) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(source) DO UPDATE SET last_success_at=excluded.last_success_at,last_attempt_at=excluded.last_attempt_at,status=excluded.status,cursor=excluded.cursor,last_error=NULL,imported_count=excluded.imported_count,unmatched_count=excluded.unmatched_count,last_report_json=excluded.last_report_json",(source,now,attempt,"SUCCESS",batch.cursor,None,report["imported"],report["unmatched"]+report["ambiguous"],json.dumps(report,ensure_ascii=False)))
                 self.ledger._audit("SALES_SYNC_COMPLETED",actor,report)
@@ -341,7 +341,7 @@ class SalesSyncService:
         now=_now(); existing=self.db.execute("SELECT * FROM sales_product_mappings WHERE source=? AND external_product_id=? AND external_variant_id=?",(source,external_product_id,external_variant_id or "")).fetchone()
         event="SALES_MAPPING_CHANGED" if existing else "SALES_MAPPING_CREATED"
         with self.db:
-            self.db.execute("INSERT INTO sales_product_mappings VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source,external_product_id,external_variant_id) DO UPDATE SET product_key=excluded.product_key,status='ACTIVE',updated_at=excluded.updated_at,actor=excluded.actor",(existing["mapping_id"] if existing else f"mapping:{uuid4()}",source,external_product_id,external_variant_id or "",None,None,product_key,"ACTIVE",existing["created_at"] if existing else now,now,actor))
+            self.db.execute("INSERT INTO sales_product_mappings (mapping_id,source,external_product_id,external_variant_id,source_ean,source_reference,product_key,status,created_at,updated_at,actor) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source,external_product_id,external_variant_id) DO UPDATE SET product_key=excluded.product_key,status='ACTIVE',updated_at=excluded.updated_at,actor=excluded.actor",(existing["mapping_id"] if existing else f"mapping:{uuid4()}",source,external_product_id,external_variant_id or "",None,None,product_key,"ACTIVE",existing["created_at"] if existing else now,now,actor))
             self.ledger._audit(event,actor,{"source":source,"external_product_id":external_product_id,"external_variant_id":external_variant_id or "","product_key":product_key})
 
     def diagnostics(self):

@@ -213,12 +213,36 @@ CREATE TABLE IF NOT EXISTS sumup_readers(reader_id TEXT PRIMARY KEY,name TEXT,mo
 CREATE TABLE IF NOT EXISTS payment_settlements(settlement_id TEXT PRIMARY KEY,sumup_transaction_id TEXT NOT NULL,payout_id TEXT NOT NULL,amount TEXT,currency TEXT,status TEXT NOT NULL DEFAULT 'MATCHED',created_at TEXT NOT NULL,UNIQUE(sumup_transaction_id,payout_id));
 """
 
+PAYOUT_COLUMNS = (
+    "payout_id", "type", "payout_date", "amount", "currency", "fee", "status",
+    "reference", "start_date", "end_date", "paid_date", "raw_json", "imported_at",
+)
+
+
+def _migrate_sumup_schema(db):
+    """Bring pre-existing SumUp databases forward without rebuilding their tables."""
+    columns = {row[1] for row in db.execute("PRAGMA table_info(sumup_payouts)")}
+    for name in ("start_date", "end_date", "paid_date"):
+        if name not in columns:
+            db.execute(f"ALTER TABLE sumup_payouts ADD COLUMN {name} TEXT")
+
+
+def _payout_values(row, payout_id, stamp):
+    return (
+        payout_id, row.get("type"),
+        str(row.get("payout_date") or row.get("date") or row.get("timestamp") or stamp),
+        _decimal(row.get("amount")), row.get("currency") or "EUR", _decimal(row.get("fee")),
+        row.get("status"), row.get("reference") or row.get("bank_reference"),
+        row.get("start_date"), row.get("end_date"), row.get("paid_date"),
+        json.dumps(_safe_raw(row)), stamp,
+    )
+
 
 class SumUpTransactionLedger:
     def __init__(self, path: Path | sqlite3.Connection):
         self.db = path if isinstance(path, sqlite3.Connection) else sqlite3.connect(path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
-        self.db.executescript(SCHEMA); self.db.commit()
+        self.db.executescript(SCHEMA); _migrate_sumup_schema(self.db); self.db.commit()
 
     def import_merchant(self, row):
         profile = row.get("merchant_profile", row)
@@ -226,7 +250,7 @@ class SumUpTransactionLedger:
         if not code: raise SumUpError("Profil marchand sans merchant_code", diagnostic={"category": "PARSING"})
         stamp = datetime.now(timezone.utc).isoformat()
         with self.db:
-            self.db.execute("INSERT OR REPLACE INTO sumup_merchants VALUES(?,?,?,?,?,?,?,?,?,?)", (code, profile.get("legal_name") or profile.get("company_name"), profile.get("doing_business_as") or profile.get("trading_name"), profile.get("country"), profile.get("currency"), profile.get("timezone"), profile.get("status"), json.dumps(_safe_raw(profile.get("payout_settings") or {})), json.dumps(_safe_raw(row)), stamp))
+            self.db.execute("INSERT OR REPLACE INTO sumup_merchants (merchant_code,legal_name,trading_name,country,currency,timezone,status,payout_settings_json,raw_json,imported_at) VALUES(?,?,?,?,?,?,?,?,?,?)", (code, profile.get("legal_name") or profile.get("company_name"), profile.get("doing_business_as") or profile.get("trading_name"), profile.get("country"), profile.get("currency"), profile.get("timezone"), profile.get("status"), json.dumps(_safe_raw(profile.get("payout_settings") or {})), json.dumps(_safe_raw(row)), stamp))
 
     def import_readers(self, page):
         inserted = 0; stamp = datetime.now(timezone.utc).isoformat()
@@ -235,7 +259,7 @@ class SumUpTransactionLedger:
                 rid = str(row.get("id") or row.get("reader_id") or "")
                 if not rid: continue
                 inserted += not bool(self.db.execute("SELECT 1 FROM sumup_readers WHERE reader_id=?", (rid,)).fetchone())
-                self.db.execute("INSERT OR REPLACE INTO sumup_readers VALUES(?,?,?,?,?,?,?,?,?,?)", (rid, row.get("name"), row.get("model"), row.get("status"), row.get("merchant_code"), row.get("store_id"), row.get("last_seen") or row.get("last_seen_at"), row.get("software_version"), json.dumps(_safe_raw(row)), stamp))
+                self.db.execute("INSERT OR REPLACE INTO sumup_readers (reader_id,name,model,status,merchant_code,store_id,last_seen,software_version,raw_json,imported_at) VALUES(?,?,?,?,?,?,?,?,?,?)", (rid, row.get("name"), row.get("model"), row.get("status"), row.get("merchant_code"), row.get("store_id"), row.get("last_seen") or row.get("last_seen_at"), row.get("software_version"), json.dumps(_safe_raw(row)), stamp))
         return {"rows_imported": inserted, "duplicates": len(page.rows) - inserted, "cursor": None}
 
     @staticmethod
@@ -255,19 +279,19 @@ class SumUpTransactionLedger:
                 refunded = row.get("refunded_amount", sum(Decimal(str(e.get("amount", 0))) for e in events if str(e.get("type", "")).upper() == "REFUND"))
                 chargeback = row.get("chargeback_amount", sum(Decimal(str(e.get("amount", 0))) for e in events if "CHARGEBACK" in str(e.get("type", "")).upper()))
                 values = (tid, row.get("transaction_code"), _decimal(row.get("amount")), row.get("currency") or "EUR", str(row.get("timestamp") or row.get("date") or stamp), row.get("status"), row.get("simple_status") or row.get("status"), row.get("payment_type"), row.get("entry_mode"), row.get("card_type") or card.get("type") or card.get("scheme"), row.get("terminal_id") or terminal.get("id"), row.get("product_summary"), _decimal(row.get("vat_amount")), _decimal(row.get("tip_amount")), _decimal(refunded), _decimal(chargeback), row.get("foreign_transaction_id"), row.get("client_transaction_id"), row.get("reference") or row.get("description"), row.get("receipt_url"), _decimal(fee_value), json.dumps(_safe_raw(events)), json.dumps(_safe_raw(row)), stamp)
-                self.db.execute("INSERT OR REPLACE INTO sumup_transactions VALUES(" + ",".join("?" * len(values)) + ")", values)
+                self.db.execute("INSERT OR REPLACE INTO sumup_transactions (sumup_transaction_id,transaction_code,amount,currency,timestamp,status,simple_status,payment_type,entry_mode,card_type,terminal_id,product_summary,vat_amount,tip_amount,refunded_amount,chargeback_amount,foreign_transaction_id,client_transaction_id,reference,receipt_url,fee,events_json,raw_json,imported_at) VALUES(" + ",".join("?" * len(values)) + ")", values)
                 fees = row.get("fees") or ([{"amount": fee_value, "type": "TRANSACTION", "currency": row.get("currency")}] if Decimal(_decimal(fee_value)) else [])
                 for i, fee in enumerate(fees):
                     fid = self._id("fee", tid, i, fee); amount = fee.get("amount", fee.get("value", 0))
-                    self.db.execute("INSERT OR REPLACE INTO sumup_fees VALUES(?,?,?,?,?,?)", (fid, tid, fee.get("type"), _decimal(amount), fee.get("currency") or row.get("currency"), json.dumps(_safe_raw(fee))))
+                    self.db.execute("INSERT OR REPLACE INTO sumup_fees (fee_id,sumup_transaction_id,fee_type,amount,currency,raw_json) VALUES(?,?,?,?,?,?)", (fid, tid, fee.get("type"), _decimal(amount), fee.get("currency") or row.get("currency"), json.dumps(_safe_raw(fee))))
                 for i, event in enumerate(events):
                     eid = self._id("event", tid, i, event); etype = str(event.get("type") or event.get("event_type") or "UNKNOWN").upper()
-                    self.db.execute("INSERT OR REPLACE INTO sumup_transaction_events VALUES(?,?,?,?,?,?,?,?,?)", (eid, tid, etype, event.get("status"), _decimal(event.get("amount")), event.get("currency") or row.get("currency"), event.get("timestamp") or event.get("date"), event.get("payout_id"), json.dumps(_safe_raw(event))))
+                    self.db.execute("INSERT OR REPLACE INTO sumup_transaction_events (event_id,sumup_transaction_id,event_type,status,amount,currency,event_at,payout_id,raw_json) VALUES(?,?,?,?,?,?,?,?,?)", (eid, tid, etype, event.get("status"), _decimal(event.get("amount")), event.get("currency") or row.get("currency"), event.get("timestamp") or event.get("date"), event.get("payout_id"), json.dumps(_safe_raw(event))))
                     target = "sumup_refunds" if etype == "REFUND" else "sumup_chargebacks" if "CHARGEBACK" in etype else None
                     if target == "sumup_refunds":
-                        self.db.execute("INSERT OR REPLACE INTO sumup_refunds VALUES(?,?,?,?,?,?,?,?,?)", (eid, tid, _decimal(event.get("amount")), event.get("currency") or row.get("currency"), event.get("timestamp") or event.get("date"), event.get("status"), int(Decimal(_decimal(event.get("amount"))) < Decimal(_decimal(row.get("amount")))), event.get("reason"), json.dumps(_safe_raw(event))))
+                        self.db.execute("INSERT OR REPLACE INTO sumup_refunds (refund_id,sumup_transaction_id,amount,currency,refund_at,status,is_partial,reason,raw_json) VALUES(?,?,?,?,?,?,?,?,?)", (eid, tid, _decimal(event.get("amount")), event.get("currency") or row.get("currency"), event.get("timestamp") or event.get("date"), event.get("status"), int(Decimal(_decimal(event.get("amount"))) < Decimal(_decimal(row.get("amount")))), event.get("reason"), json.dumps(_safe_raw(event))))
                     elif target:
-                        self.db.execute("INSERT OR REPLACE INTO sumup_chargebacks VALUES(?,?,?,?,?,?,?,?)", (eid, tid, _decimal(event.get("amount")), event.get("currency") or row.get("currency"), event.get("timestamp") or event.get("date"), event.get("status"), event.get("reason") or event.get("category"), json.dumps(_safe_raw(event))))
+                        self.db.execute("INSERT OR REPLACE INTO sumup_chargebacks (chargeback_id,sumup_transaction_id,amount,currency,chargeback_at,status,reason,raw_json) VALUES(?,?,?,?,?,?,?,?)", (eid, tid, _decimal(event.get("amount")), event.get("currency") or row.get("currency"), event.get("timestamp") or event.get("date"), event.get("status"), event.get("reason") or event.get("category"), json.dumps(_safe_raw(event))))
         return {"rows_imported": inserted, "duplicates": len(page.rows) - inserted, "cursor": page.next_cursor}
 
     def sync(self, provider, cursor=None, **bounds):
@@ -284,7 +308,7 @@ class SumUpTransactionLedger:
 class PaymentSettlementLedger:
     def __init__(self, path: Path | sqlite3.Connection):
         self.db = path if isinstance(path, sqlite3.Connection) else sqlite3.connect(path, check_same_thread=False)
-        self.db.row_factory = sqlite3.Row; self.db.executescript(SCHEMA); self.db.commit()
+        self.db.row_factory = sqlite3.Row; self.db.executescript(SCHEMA); _migrate_sumup_schema(self.db); self.db.commit()
 
     def import_page(self, page):
         inserted = 0; stamp = datetime.now(timezone.utc).isoformat()
@@ -293,16 +317,17 @@ class PaymentSettlementLedger:
                 pid = str(row.get("payout_id") or row.get("id") or row.get("reference") or hashlib.sha256(json.dumps(row, sort_keys=True).encode()).hexdigest())
                 inserted += not bool(self.db.execute("SELECT 1 FROM sumup_payouts WHERE payout_id=?", (pid,)).fetchone())
                 items = row.get("items") or row.get("deductions") or row.get("transactions") or []
-                values = (pid, row.get("type"), str(row.get("payout_date") or row.get("date") or row.get("timestamp") or stamp), _decimal(row.get("amount")), row.get("currency") or "EUR", _decimal(row.get("fee")), row.get("status"), row.get("reference") or row.get("bank_reference"), row.get("start_date"), row.get("end_date"), row.get("paid_date"), json.dumps(_safe_raw(row)), stamp)
-                self.db.execute("INSERT OR REPLACE INTO sumup_payouts VALUES(" + ",".join("?" * len(values)) + ")", values)
+                values = _payout_values(row, pid, stamp)
+                columns = ",".join(PAYOUT_COLUMNS)
+                self.db.execute("INSERT OR REPLACE INTO sumup_payouts (" + columns + ") VALUES(" + ",".join("?" * len(values)) + ")", values)
                 if row.get("transaction_code") and not items: items = [row]
                 for i, item in enumerate(items):
                     code = str(item.get("transaction_code") or item.get("transaction_id") or item.get("id") or "")
                     item_id = str(item.get("item_id") or f"{pid}:{code or i}:{item.get('type', 'ITEM')}")
                     tx = self.db.execute("SELECT sumup_transaction_id,amount,currency FROM sumup_transactions WHERE transaction_code=? OR sumup_transaction_id=?", (code, code)).fetchone() if code else None
-                    self.db.execute("INSERT OR REPLACE INTO sumup_payout_items VALUES(?,?,?,?,?,?,?,?,?)", (item_id, pid, tx["sumup_transaction_id"] if tx else None, code or None, item.get("type"), _decimal(item.get("amount")), item.get("currency") or row.get("currency"), item.get("timestamp") or item.get("date"), json.dumps(_safe_raw(item))))
+                    self.db.execute("INSERT OR REPLACE INTO sumup_payout_items (item_id,payout_id,sumup_transaction_id,transaction_code,item_type,amount,currency,occurred_at,raw_json) VALUES(?,?,?,?,?,?,?,?,?)", (item_id, pid, tx["sumup_transaction_id"] if tx else None, code or None, item.get("type"), _decimal(item.get("amount")), item.get("currency") or row.get("currency"), item.get("timestamp") or item.get("date"), json.dumps(_safe_raw(item))))
                     if tx:
-                        self.db.execute("INSERT OR IGNORE INTO payment_settlements VALUES(?,?,?,?,?,?,?)", (f"sumup:{tx['sumup_transaction_id']}:{pid}", tx["sumup_transaction_id"], pid, tx["amount"], tx["currency"], "MATCHED", stamp))
+                        self.db.execute("INSERT OR IGNORE INTO payment_settlements (settlement_id,sumup_transaction_id,payout_id,amount,currency,status,created_at) VALUES(?,?,?,?,?,?,?)", (f"sumup:{tx['sumup_transaction_id']}:{pid}", tx["sumup_transaction_id"], pid, tx["amount"], tx["currency"], "MATCHED", stamp))
         return {"rows_imported": inserted, "duplicates": len(page.rows) - inserted, "cursor": page.next_cursor}
 
     def sync(self, provider, cursor=None, **bounds):
@@ -322,5 +347,5 @@ class PaymentSettlementLedger:
                 tx = self.db.execute("SELECT sumup_transaction_id,amount,currency FROM sumup_transactions WHERE transaction_code=? OR sumup_transaction_id=?", (item["transaction_code"], item["transaction_code"])).fetchone()
                 if tx:
                     self.db.execute("UPDATE sumup_payout_items SET sumup_transaction_id=? WHERE payout_id=? AND transaction_code=?", (tx["sumup_transaction_id"], item["payout_id"], item["transaction_code"]))
-                    created += self.db.execute("INSERT OR IGNORE INTO payment_settlements VALUES(?,?,?,?,?,?,?)", (f"sumup:{tx['sumup_transaction_id']}:{item['payout_id']}", tx["sumup_transaction_id"], item["payout_id"], tx["amount"], tx["currency"], "MATCHED", stamp)).rowcount
+                    created += self.db.execute("INSERT OR IGNORE INTO payment_settlements (settlement_id,sumup_transaction_id,payout_id,amount,currency,status,created_at) VALUES(?,?,?,?,?,?,?)", (f"sumup:{tx['sumup_transaction_id']}:{item['payout_id']}", tx["sumup_transaction_id"], item["payout_id"], tx["amount"], tx["currency"], "MATCHED", stamp)).rowcount
         return self.db.execute("SELECT count(*) FROM payment_settlements").fetchone()[0]
