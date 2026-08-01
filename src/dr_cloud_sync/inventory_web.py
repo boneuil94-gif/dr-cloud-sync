@@ -32,7 +32,8 @@ from .marketing import MarketingAutopilot, MarketingRepository
 from .creative_ai import CreativeAIService, CreativeGenerationError
 from .creative_review import CreativeReviewError, CreativeReviewService
 from .sales import SalesLedger, SocialAnalyticsService
-from .sales_ingestion import PrestaShopSalesProvider, SalesSyncService, ShopCaisseCSVProvider, ShopCaisseSalesProvider
+from .sales_ingestion import PrestaShopSalesProvider, SalesSyncService, ShopCaisseAPISalesProvider, ShopCaisseCSVProvider, ShopCaisseSalesProvider
+from .shopcaisse import ShopCaisseClient, ShopCaisseError
 from .social import MarketingSchedulingService, SocialConnectionService, SocialPublishingService
 from .data_hub import DataHub, JobDefinition
 from .bank import BankLedger, DisabledQontoProvider
@@ -101,9 +102,20 @@ class InventoryApp:
         self.bank_provider=candidate if candidate.configured else DisabledQontoProvider()
         self.reconciliation=ReconciliationService(service.repo.path)
         self.finance=FinanceProjection(self.bank,self.sales,self.purchase_orders,self.purchase_costs)
-        sales_providers={}
+        sales_providers={}; shopcaisse_connected=False
+        shopcaisse_key=os.environ.get("SHOPCAISSE_API_KEY","").strip()
+        if shopcaisse_key:
+            try:
+                shopcaisse_client=ShopCaisseClient(shopcaisse_key,
+                    api_url=os.environ.get("SHOPCAISSE_API_URL","https://api.shop-caisse.com/v1"),
+                    timeout=float(os.environ.get("SHOPCAISSE_TIMEOUT_SECONDS","8")))
+                shopcaisse_connected=shopcaisse_client.health()["status"]=="CONNECTED"
+                if shopcaisse_connected:
+                    sales_providers["SHOPCAISSE"]=ShopCaisseAPISalesProvider(shopcaisse_client,self.sales.db,
+                        stock_board_type=os.environ.get("SHOPCAISSE_STOCK_BOARD_TYPE","DEFAULT"))
+            except ShopCaisseError: pass
         shopcaisse_inbox=os.environ.get("SHOPCAISSE_SALES_INBOX","")
-        if shopcaisse_inbox and Path(shopcaisse_inbox).is_dir(): sales_providers["SHOPCAISSE"]=ShopCaisseSalesProvider(Path(shopcaisse_inbox))
+        if not shopcaisse_connected and shopcaisse_inbox and Path(shopcaisse_inbox).is_dir(): sales_providers["SHOPCAISSE"]=ShopCaisseSalesProvider(Path(shopcaisse_inbox))
         try: paid_states=parse_prestashop_state_ids(os.environ.get("PRESTASHOP_PAID_STATE_IDS"),required=True)
         except ValueError: paid_states=()
         self.prestashop_paid_states_configured=bool(paid_states)
@@ -124,6 +136,8 @@ class InventoryApp:
         intervals={"sales":int(os.environ.get("DATA_HUB_SALES_INTERVAL_SECONDS","900")),"bank":int(os.environ.get("DATA_HUB_BANK_INTERVAL_SECONDS","10800")),"projection":int(os.environ.get("DATA_HUB_PROJECTION_INTERVAL_SECONDS","900"))}
         for args in (("shopcaisse_sales","SHOPCAISSE_SALES","ShopCaisse","SHOPCAISSE" in sales_providers),("prestashop_sales","PRESTASHOP_SALES","PrestaShop",configured_ps),("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",prestashop_connected),("bank","BANK","Qonto",qonto_connected),("purchases","PURCHASES","LOCAL",True),("stock","STOCK","LOCAL",True)):
             self.data_hub.register_source(*args[:3],configured=args[3],capabilities=("READ",),stale_after_seconds=intervals["bank"]*2 if args[0]=="bank" else intervals["sales"]*2)
+        if shopcaisse_key and not shopcaisse_connected:
+            self.data_hub.register_source("shopcaisse_sales","SHOPCAISSE_SALES","ShopCaisse",status="UNAVAILABLE",capabilities=("READ_SALES","READ_PAYMENTS","READ_STOCK"),stale_after_seconds=intervals["sales"]*2)
         if prestashop_client:
             self.data_hub.register_source("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",status="UNAVAILABLE",capabilities=("READ",),stale_after_seconds=intervals["sales"]*2)
             if configured_ps:self.data_hub.register_source("prestashop_sales","PRESTASHOP_SALES","PrestaShop",status="UNAVAILABLE",capabilities=("READ",),stale_after_seconds=intervals["sales"]*2)
@@ -160,7 +174,9 @@ class InventoryApp:
 
     def automation_operations(self):
         def sales(source):
-            report=self.sales_sync.sync(source,actor="automation"); return {**report,"rows_imported":report["imported"]}
+            report=self.sales_sync.sync(source,actor="automation")
+            state=self.sales.db.execute("SELECT cursor FROM sales_sync_states WHERE source=?",(source,)).fetchone()
+            return {**report,"rows_imported":report["imported"],"cursor":state[0] if state else None}
         def catalog(cursor):
             if not self.prestashop_client: raise PrestaShopError("PrestaShop credential is not configured")
             products=sum(1 for _ in self.prestashop_client.iter_resource("products")); combinations=sum(1 for _ in self.prestashop_client.iter_resource("combinations"))
@@ -222,7 +238,7 @@ class InventoryApp:
             if path == "/marketing": return self._html(start,"marketing.html",session,request_id)
             if path == "/sales": return self._html(start,"sales.html",session,request_id)
             if path == "/finance": return self._html(start,"finance.html",session,request_id)
-            if path == "/api/data-hub" and method == "GET": return self._json(start,{**self.data_hub.health(),"runtime":{**self.data_hub.runtime(self.automation_operations()),"configuration":{"prestashop_paid_state_ids":"CONFIGURED" if self.prestashop_paid_states_configured else "MISSING"}}})
+            if path == "/api/data-hub" and method == "GET": return self._json(start,{**self.data_hub.health(),"sales_diagnostics":self.sales_sync.diagnostics(),"runtime":{**self.data_hub.runtime(self.automation_operations()),"configuration":{"prestashop_paid_state_ids":"CONFIGURED" if self.prestashop_paid_states_configured else "MISSING"}}})
             if path.startswith("/api/data-hub/jobs/") and path.endswith("/run") and method == "POST":
                 job_id=unquote(path.removeprefix("/api/data-hub/jobs/").removesuffix("/run"))
                 operations=self.automation_operations()

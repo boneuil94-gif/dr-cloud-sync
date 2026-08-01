@@ -93,8 +93,11 @@ class DataHub:
             for dependency in dependencies:
                 state=db.execute("SELECT status FROM sync_jobs WHERE job_id=?",(dependency,)).fetchone()
                 if not state or state[0]!=SyncStatus.SUCCEEDED: return self._blocked(job_id,f"dependency not ready: {dependency}")
-            claimed=db.execute("UPDATE sync_jobs SET status='RUNNING',lock_token=?,locked_at=?,attempts=attempts+1,last_run_at=? WHERE job_id=? AND status!='RUNNING'",(token,iso(now),iso(now),job_id)).rowcount
+            lock_expiry=iso(now-timedelta(seconds=max(300,job["interval_seconds"]*2)))
+            claimed=db.execute("UPDATE sync_jobs SET status='RUNNING',lock_token=?,locked_at=?,attempts=attempts+1,last_run_at=? WHERE job_id=? AND (status!='RUNNING' OR locked_at<?)",(token,iso(now),iso(now),job_id,lock_expiry)).rowcount
             if not claimed: raise RuntimeError("job already running")
+            if job["status"]==SyncStatus.RUNNING:
+                db.execute("UPDATE data_hub_sync_runs SET completed_at=?,status='FAILED',error='interrupted worker lease expired' WHERE job_id=? AND status='RUNNING'",(iso(now),job_id))
             attempt=job["attempts"]+1; cur=db.execute("INSERT INTO data_hub_sync_runs(job_id,started_at,status,attempt) VALUES(?,?,'RUNNING',?)",(job_id,iso(now),attempt));run_id=cur.lastrowid
         started=self.clock()
         try:

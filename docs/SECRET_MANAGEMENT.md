@@ -18,7 +18,9 @@ Le domaine conserve des références stables (`qonto.production`, `prestashop.pr
 et `<provider>.production` pour le social). `EnvironmentSecretProvider.resolve()` est
 l'unique frontière runtime : il traduit la référence vers le nom de variable injecté,
 puis la valeur n'existe qu'en mémoire. Qonto et PrestaShop utilisent cette frontière.
-Le flux ShopCaisse actif dans DrCloud OS est un inbox CSV local et n'a donc aucune
+Le flux ShopCaisse réseau résout `SHOPCAISSE_API_KEY` exclusivement côté serveur et
+valide le jeton par un health check authentifié avant de déclarer la source connectée.
+L'inbox CSV local demeure un repli réel et n'a donc aucune
 référence artificielle. Les anciens outils d'import supervisés résolvent leurs clés à
 la frontière CLI et ne les persistent jamais.
 

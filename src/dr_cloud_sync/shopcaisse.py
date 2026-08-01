@@ -21,16 +21,47 @@ API_URL = "https://api.shop-caisse.com/v1"
 class ShopCaisseError(RuntimeError):
     """A sanitized API error which never contains credentials."""
 
+    def __init__(self, message: str, *, retryable: bool = False) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+
 
 class ShopCaisseClient:
     def __init__(self, api_key: str, *, timeout: float = 30, page_size: int = 25,
-                 opener: Callable[..., Any] = urlopen, retries: int = 3) -> None:
+                 opener: Callable[..., Any] = urlopen, retries: int = 3,
+                 api_url: str = API_URL) -> None:
         if not api_key:
             raise ShopCaisseError("SHOPCAISSE_API_KEY est absent")
         self._authorization = f"Bearer {api_key}"
         if not 1 <= page_size <= 25:
             raise ShopCaisseError("page_size ShopCaisse doit être compris entre 1 et 25")
+        parsed = urlparse(api_url)
+        if parsed.scheme != "https" or not parsed.netloc:
+            raise ShopCaisseError("SHOPCAISSE_API_URL doit être une URL HTTPS")
+        self.api_url = api_url.rstrip("/")
         self.timeout, self.page_size, self.opener, self.retries = timeout, page_size, opener, retries
+
+    def health(self) -> dict[str, Any]:
+        """Validate the token without returning any credential or remote payload."""
+        self._get(f"{self.api_url}/authentication")
+        return {"status": "CONNECTED"}
+
+    def pull_stores(self) -> list[dict[str, Any]]:
+        return self._get_paginated("/stores")
+
+    def pull_store_sales(self, store_id: str, *, from_ms: int | None = None,
+                         to_ms: int | None = None, page_size: int = 100) -> list[dict[str, Any]]:
+        query = {"status": "all"}
+        if from_ms is not None:
+            query["from"] = from_ms
+        if to_ms is not None:
+            query["to"] = to_ms
+        return self._get_paginated(f"/stores/{quote(store_id, safe='')}/sales", page_size=page_size,
+                                   query=query)
+
+    def pull_store_stocks(self, store_id: str, board_type: str) -> list[dict[str, Any]]:
+        return self._get_paginated(f"/stores/{quote(store_id, safe='')}/stocks", page_size=1000,
+                                   query={"type": board_type})
 
     def pull_products(self) -> list[dict[str, Any]]:
         """Return the real ShopCaisse items, kept for callers of the old method."""
@@ -108,12 +139,14 @@ class ShopCaisseClient:
             "stocks": stocks,
         }
 
-    def _get_paginated(self, path: str) -> list[dict[str, Any]]:
+    def _get_paginated(self, path: str, *, page_size: int | None = None,
+                       query: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         page = 0
         seen: set[str] = set()
         while True:
-            url = f"{API_URL}{path}?{urlencode({'page': page, 'pageSize': self.page_size})}"
+            params = {**(query or {}), "page": page, "pageSize": page_size or self.page_size}
+            url = f"{self.api_url}{path}?{urlencode(params)}"
             if url in seen:
                 raise ShopCaisseError("Pagination ShopCaisse invalide")
             seen.add(url)
@@ -134,14 +167,12 @@ class ShopCaisseClient:
                     return json.loads(response.read().decode("utf-8"))
             except HTTPError as exc:
                 if exc.code not in {429, 500, 502, 503, 504} or attempt == self.retries - 1:
-                    raise ShopCaisseError(
-                        f"ShopCaisse HTTP {exc.code} sur {urlparse(url).path}"
-                    ) from exc
+                    raise ShopCaisseError(f"ShopCaisse HTTP {exc.code} sur {urlparse(url).path}",
+                                           retryable=exc.code in {429, 500, 502, 503, 504}) from exc
             except (URLError, TimeoutError) as exc:
                 if attempt == self.retries - 1:
-                    raise ShopCaisseError(
-                        f"ShopCaisse indisponible sur {urlparse(url).path}"
-                    ) from exc
+                    raise ShopCaisseError(f"ShopCaisse indisponible sur {urlparse(url).path}",
+                                           retryable=True) from exc
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise ShopCaisseError("Réponse JSON ShopCaisse invalide") from exc
             time.sleep(0.25 * 2**attempt)
