@@ -51,11 +51,13 @@ jobs:
           OVH_SSH_PORT: ${{ secrets.OVH_SSH_PORT }}
           OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
           PRESTASHOP_API_KEY: ${{ secrets.PRESTASHOP_API_KEY }}
+          PRESTASHOP_PAID_STATE_IDS: ${{ secrets.PRESTASHOP_PAID_STATE_IDS }}
           QONTO_CREDENTIAL: ${{ secrets.QONTO_CREDENTIAL }}
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           test -n "$PRESTASHOP_API_KEY" || { echo "PRESTASHOP_API_KEY est absent" >&2; exit 1; }
-          printf '%s\n%s\n' 'https://dr-cloudshop.com/api' "$PRESTASHOP_API_KEY" |
+          test -n "$PRESTASHOP_PAID_STATE_IDS" || { echo "PRESTASHOP_PAID_STATE_IDS est absent" >&2; exit 1; }
+          printf '%s\n%s\n%s\n' 'https://dr-cloudshop.com/api' "$PRESTASHOP_API_KEY" "$PRESTASHOP_PAID_STATE_IDS" |
             ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" \
               "$OVH_SSH_USER@$OVH_SSH_HOST" \
               "DRCLOUD_ENV_FILE=/opt/drcloud-os/deploy/ovh/drcloud.env \

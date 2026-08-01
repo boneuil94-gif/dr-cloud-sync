@@ -8,7 +8,7 @@ from dr_cloud_sync.connectors import SafeModeViolation, assert_external_write_al
 from dr_cloud_sync.inventory import InventoryRepository, InventoryService
 from dr_cloud_sync.inventory_web import InventoryApp
 from dr_cloud_sync.os_admin import backup, init_catalog
-from dr_cloud_sync.os_config import OSSettings
+from dr_cloud_sync.os_config import OSSettings, parse_prestashop_state_ids
 from frontend_assets import assert_no_frontend_secrets
 
 
@@ -95,6 +95,15 @@ def test_deployment_metadata_mount_is_minimal_and_read_only():
     assert "/opt/drcloud-os" not in compose
     assert "/.git" not in compose and "docker.sock" not in compose
     assert "USER drcloud" in dockerfile
+
+def test_production_connector_policy_and_shared_worker_database_check():
+    root=Path(__file__).parents[1]
+    workflow=(root/'.github/workflows/drcloud-os-production.yml').read_text()
+    installer=(root/'deploy/ovh/configure-prestashop-env.sh').read_text()
+    assert 'PRESTASHOP_PAID_STATE_IDS: ${{ secrets.PRESTASHOP_PAID_STATE_IDS }}' in workflow
+    assert 'PRESTASHOP_PAID_STATE_IDS=%s' in installer
+    compose=(root/'deploy/ovh/docker-compose.yml').read_text()
+    assert compose.count('- drcloud-data:/data')==2
 
 
 def test_success_marker_is_published_only_after_checks_and_rollback_validation():
@@ -347,7 +356,7 @@ def test_production_workflow_provisions_existing_prestashop_secret_before_deploy
     configure = workflow.index("configure-prestashop-env.sh")
     deploy = workflow.index("update.sh '$DEPLOY_SHA'")
     assert "PRESTASHOP_API_KEY: ${{ secrets.PRESTASHOP_API_KEY }}" in workflow
-    assert "printf '%s\\n%s\\n' 'https://dr-cloudshop.com/api' \"$PRESTASHOP_API_KEY\"" in workflow
+    assert "printf '%s\\n%s\\n%s\\n' 'https://dr-cloudshop.com/api' \"$PRESTASHOP_API_KEY\" \"$PRESTASHOP_PAID_STATE_IDS\"" in workflow
     assert configure < deploy
 
 
@@ -364,7 +373,7 @@ def test_prestashop_runtime_configuration_is_atomic_and_secret_free_in_output(tm
     )
     secret = "existing-secret-never-log"
     result = subprocess.run(
-        [script], input=f"https://dr-cloudshop.com/api\n{secret}\n",
+        [script], input=f"https://dr-cloudshop.com/api\n{secret}\n2,3\n",
         text=True, capture_output=True, check=False,
     )
     assert result.returncode == 0, result.stderr
@@ -372,3 +381,44 @@ def test_prestashop_runtime_configuration_is_atomic_and_secret_free_in_output(tm
     assert "PRESTASHOP_API_URL=https://dr-cloudshop.com/api" in env_file.read_text()
     assert f"PRESTASHOP_API_KEY={secret}" in env_file.read_text()
     assert env_file.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize(("raw","expected"),[
+    ("2,5",("2","5")),
+    (" 2, 5 ",("2","5")),
+    ("2,5,2,05",("2","5")),
+])
+def test_prestashop_paid_state_policy_parsing(raw,expected):
+    assert parse_prestashop_state_ids(raw,required=True)==expected
+
+
+@pytest.mark.parametrize("raw",["", "   ", "2,nope", "2,,5", "0", "-1"])
+def test_prestashop_paid_state_policy_fails_closed(raw):
+    with pytest.raises(ValueError,match="PRESTASHOP_PAID_STATE_IDS"):
+        parse_prestashop_state_ids(raw,required=True)
+
+
+@pytest.mark.parametrize(("raw","returncode","written"),[
+    (" 2, 5,2 ",0,"PRESTASHOP_PAID_STATE_IDS=2,5"),
+    ("2,nope",1,None),
+    ("",1,None),
+])
+def test_ovh_installer_validates_and_normalizes_paid_states(tmp_path,raw,returncode,written):
+    root=Path(__file__).parents[1]; script=tmp_path/'configure-prestashop-env.sh'
+    shutil.copy2(root/'deploy/ovh/configure-prestashop-env.sh',script)
+    env_file=tmp_path/'drcloud.env'; env_file.write_text("PRESTASHOP_API_URL=\nPRESTASHOP_API_KEY=\nPRESTASHOP_PAID_STATE_IDS=\n")
+    result=subprocess.run([script],input=f"https://dr-cloudshop.com/api\nsecret\n{raw}\n",text=True,capture_output=True)
+    assert result.returncode==returncode
+    assert "secret" not in result.stdout+result.stderr
+    if written: assert written in env_file.read_text()
+
+
+def test_administration_paid_state_diagnostic_never_exposes_value(configured,monkeypatch):
+    app,_=configured; app.prestashop_paid_states_configured=True
+    _,cookie=login(app); status,_,body=request(app,"/api/data-hub",cookie=cookie)
+    payload=json.loads(body)
+    assert status=="200 OK"
+    assert payload["runtime"]["configuration"]["prestashop_paid_state_ids"]=="CONFIGURED"
+    assert "2,5" not in body.decode()
+    script=(Path(__file__).parents[1]/"src/dr_cloud_sync/static/administration.js").read_text()
+    assert "États payés PrestaShop" in script and "configurés" in script and "manquants" in script

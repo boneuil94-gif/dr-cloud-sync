@@ -6,6 +6,22 @@ import os
 from pathlib import Path
 
 
+def parse_prestashop_state_ids(value: str | None, *, required: bool = False) -> tuple[str, ...]:
+    """Parse a comma-separated state policy without ever logging its value."""
+    raw=(value or "").strip()
+    if not raw:
+        if required: raise ValueError("PRESTASHOP_PAID_STATE_IDS est absent")
+        return ()
+    result=[]
+    for item in raw.split(","):
+        state=item.strip()
+        if not state or not state.isascii() or not state.isdigit() or int(state)<1:
+            raise ValueError("PRESTASHOP_PAID_STATE_IDS est invalide")
+        normalized=str(int(state))
+        if normalized not in result: result.append(normalized)
+    return tuple(result)
+
+
 def env_bool(name: str, default: bool) -> bool:
     value = os.environ.get(name)
     if value is None:
@@ -47,4 +63,3 @@ class OSSettings:
     @property
     def database(self) -> Path:
         return self.data_dir / "drcloud.db"
-
