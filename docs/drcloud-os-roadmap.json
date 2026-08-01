@@ -1,6 +1,6 @@
 {
   "version": "2.0.0",
-  "updated_at": "2026-07-31",
+  "updated_at": "2026-08-01",
   "modules": [
     {
       "id": "01-core",
@@ -269,7 +269,7 @@
         {
           "id": "05-purchasing-m04",
           "name": "Rapprochement catalogue",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "05-purchasing-m05",
@@ -294,7 +294,7 @@
         {
           "id": "05-purchasing-m09",
           "name": "Analyse prix et TVA",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "05-purchasing-m10",
@@ -428,7 +428,7 @@
         {
           "id": "07-finance-m03",
           "name": "Coûts achat",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "07-finance-m04",
@@ -445,7 +445,7 @@
         {
           "id": "07-finance-m06",
           "name": "Valeur du stock",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "07-finance-m07",
@@ -455,7 +455,7 @@
         {
           "id": "07-finance-m08",
           "name": "Rentabilité produit",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "07-finance-m09",
@@ -702,12 +702,12 @@
         {
           "id": "11-dashboard-m04",
           "name": "Projection marge",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "11-dashboard-m05",
           "name": "Projection stocks",
-          "status": "TODO"
+          "status": "DONE"
         },
         {
           "id": "11-dashboard-m06",

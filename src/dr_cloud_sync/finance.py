@@ -16,8 +16,8 @@ def _money(value,available=True,currency="EUR",source="",method=""):
     return {"value":str(value) if available else None,"currency":currency,"available":available,"source":source,"method":method}
 
 class FinanceProjection:
- def __init__(self,bank,sales,purchases=None):
-  self.bank,self.sales,self.purchases=bank,sales,purchases; self.db=bank.db
+ def __init__(self,bank,sales,purchases=None,purchase_costs=None):
+  self.bank,self.sales,self.purchases,self.purchase_costs=bank,sales,purchases,purchase_costs; self.db=bank.db
   self.db.executescript("""
   CREATE TABLE IF NOT EXISTS finance_recurring_charges(charge_id TEXT PRIMARY KEY,label TEXT NOT NULL,category TEXT NOT NULL,amount TEXT NOT NULL,currency TEXT NOT NULL,frequency TEXT NOT NULL,next_due_at TEXT,status TEXT NOT NULL,vat_amount TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS finance_snapshots(fingerprint TEXT PRIMARY KEY,period_start TEXT NOT NULL,period_end TEXT NOT NULL,payload_json TEXT NOT NULL,created_at TEXT NOT NULL);
@@ -56,7 +56,8 @@ class FinanceProjection:
  def tax(self,days=30,now=None):
   s=self.summary(days,now);return {"period":s["period"],"tax":s["tax"],"freshness":s["freshness"]}
  def profitability(self,days=30,now=None):
-  s=self.summary(days,now);return {"period":s["period"],"profitability":s["profitability"],"freshness":s["freshness"]}
+  s=self.summary(days,now); evidence=self.purchase_costs.profitability(s["period"]["start"],s["period"]["end"]) if self.purchase_costs else None
+  return {"period":s["period"],"profitability":s["profitability"],"purchase_cost_evidence":evidence,"stock_value":self.purchase_costs.stock_value() if self.purchase_costs else None,"freshness":s["freshness"]}
  def _reconciliation_counts(self):
   rows=self.db.execute("SELECT status,count(*) n FROM reconciliation_matches GROUP BY status").fetchall() if self.db.execute("SELECT 1 FROM sqlite_master WHERE name='reconciliation_matches'").fetchone() else []
   values={x:0 for x in ("MATCHED","POSSIBLE","UNMATCHED","CONFLICT")};values.update({r["status"]:r["n"] for r in rows});return values

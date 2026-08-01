@@ -20,7 +20,7 @@ ROLES = ("ADMIN", "MANAGER", "STAFF", "READ_ONLY")
 PERMISSIONS = {
     "catalogue.read", "catalogue.write", "stock.read", "stock.write", "stock.validate",
     "sales.read", "sales.sync", "sales.map", "finance.read", "finance.write", "finance.settings", "bank.read", "bank.sync", "reconciliation.review",
-    "purchasing.read", "purchasing.write", "marketing.read", "marketing.generate",
+    "purchasing.read", "purchasing.write", "purchasing.invoice.read", "purchasing.invoice.write", "purchasing.cost.read", "purchasing.cost.validate", "finance.profitability.read", "finance.stock_value.read", "marketing.read", "marketing.generate",
     "marketing.approve", "marketing.schedule", "admin.read", "admin.write",
     "security.read", "security.manage_users", "security.manage_roles",
     "security.manage_secrets", "settings.read", "settings.write", "backup.manage",
