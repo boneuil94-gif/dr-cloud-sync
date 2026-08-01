@@ -176,6 +176,19 @@ class PrestaShopSalesProvider:
         self.partially_refunded={str(x) for x in partially_refunded_state_ids}
     @property
     def configured(self): return bool(self.client and self.paid)
+
+    @staticmethod
+    def _datetime(value: Any) -> str:
+        """Normalize a PrestaShop date, whose API omits its documented UTC zone."""
+        raw=str(value or "").strip()
+        try:
+            parsed=datetime.fromisoformat(raw.replace("Z","+00:00"))
+        except ValueError as exc:
+            raise ValueError(f"invalid PrestaShop date: {raw or '<empty>'}") from exc
+        if parsed.tzinfo is None:
+            parsed=parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc).isoformat()
+
     def fetch(self,*,cursor=None,since=None)->ProviderBatch:
         if not self.paid: raise RuntimeError("PRESTASHOP_PAID_STATE_IDS is required")
         details={}
@@ -184,7 +197,7 @@ class PrestaShopSalesProvider:
         for order in self.client.iter_resource("orders"):
             state=str(order.get("current_state"))
             if state not in self.paid|self.cancelled|self.refunded|self.partially_refunded: continue
-            sold=_utc(str(order.get("date_upd") or order.get("date_add"))).isoformat()
+            sold=self._datetime(order.get("date_upd") or order.get("date_add"))
             if since and _utc(sold)<since.astimezone(timezone.utc): continue
             lines=[]
             for row in details.get(str(order.get("id")),[]):

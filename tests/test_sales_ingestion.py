@@ -30,6 +30,41 @@ def test_prestashop_only_configured_paid_states_and_combination_mapping(tmp_path
     ledger=SalesLedger(tmp_path/"db",Catalogue());result=SalesSyncService(ledger,{"PRESTASHOP":provider}).sync("PRESTASHOP")
     assert result["imported"]==1 and ledger.list_events()[0]["product_key"]=="product:a"
 
+def test_prestashop_date_without_timezone_is_assumed_utc():
+    assert PrestaShopSalesProvider._datetime("2026-07-30 10:00:00")=="2026-07-30T10:00:00+00:00"
+
+def test_prestashop_iso_date_is_converted_to_utc():
+    assert PrestaShopSalesProvider._datetime("2026-07-30T12:00:00+02:00")=="2026-07-30T10:00:00+00:00"
+    assert PrestaShopSalesProvider._datetime("2026-07-30T10:00:00Z")=="2026-07-30T10:00:00+00:00"
+
+def test_prestashop_invalid_date_is_rejected():
+    try:
+        PrestaShopSalesProvider._datetime("not-a-date")
+    except ValueError as exc:
+        assert str(exc)=="invalid PrestaShop date: not-a-date"
+    else:
+        raise AssertionError("invalid PrestaShop date was accepted")
+
+def test_prestashop_utc_dates_are_persisted_in_sqlite(tmp_path):
+    class NaivePS(PS):
+        def iter_resource(self,name):
+            if name=="order_details": return super().iter_resource(name)
+            return iter([{"id":"7","current_state":"2","date_add":"2026-07-30 09:00:00",
+                          "date_upd":"2026-07-30 10:00:00","id_currency":"EUR"}])
+
+    ledger=SalesLedger(tmp_path/"db",Catalogue())
+    service=SalesSyncService(ledger,{"PRESTASHOP":PrestaShopSalesProvider(NaivePS(),[2])})
+    service.sync("PRESTASHOP")
+
+    sale=dict(ledger.db.execute("SELECT * FROM sales WHERE source='PRESTASHOP'").fetchone())
+    event=dict(ledger.db.execute("SELECT * FROM sale_events WHERE source='PRESTASHOP'").fetchone())
+    state=dict(ledger.db.execute("SELECT * FROM sales_sync_states WHERE source='PRESTASHOP'").fetchone())
+    assert sale["sold_at"]==event["sold_at"]=="2026-07-30T10:00:00+00:00"
+    assert sale["source_updated_at"]==event["source_updated_at"]=="2026-07-30T10:00:00+00:00"
+    for value in (sale["imported_at"],event["imported_at"],state["last_attempt_at"],state["last_success_at"]):
+        parsed=datetime.fromisoformat(value)
+        assert parsed.tzinfo is not None and parsed.utcoffset()==timezone.utc.utcoffset(parsed)
+
 def test_ambiguous_and_unmatched_are_preserved(tmp_path):
     catalogue=Catalogue();catalogue.items.append(SimpleNamespace(drcloud_product_key="product:b",name="B",ean="123",reference="OTHER",shopcaisse_item_id="10",combination_id="23"))
     ledger=SalesLedger(tmp_path/"db",catalogue)
