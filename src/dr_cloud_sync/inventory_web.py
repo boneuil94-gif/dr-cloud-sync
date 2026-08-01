@@ -38,6 +38,7 @@ from .social import MarketingSchedulingService, SocialConnectionService, SocialP
 from .data_hub import DataHub, JobDefinition
 from .bank import BankLedger, DisabledQontoProvider
 from .qonto import EnvironmentSecretProvider, QontoBankProvider, QontoError
+from .sumup import SumUpProvider, SumUpError, SumUpTransactionLedger, PaymentSettlementLedger
 from .reconciliation import ReconciliationService
 from .finance import FinanceProjection
 from .purchase_cost import PurchaseCostLedger
@@ -89,10 +90,12 @@ class InventoryApp:
         self.purchase_costs=PurchaseCostLedger(service.repo.path,self.os_repository)
         self.data_hub=DataHub(service.repo.path)
         self.bank=BankLedger(service.repo.path)
+        self.sumup_transactions=SumUpTransactionLedger(self.bank.db);self.sumup_settlements=PaymentSettlementLedger(self.bank.db)
         secrets_provider=EnvironmentSecretProvider(os.environ,{
             "qonto.production": os.environ.get("QONTO_CREDENTIAL_REF","QONTO_CREDENTIAL"),
             "prestashop.production": "PRESTASHOP_API_KEY",
             "shopcaisse.production": "SHOPCAISSE_API_KEY",
+            "sumup.production": "SUMUP_API_KEY",
         })
         secret_ref=os.environ.get("QONTO_SECRET_REF") or ("qonto.production" if os.environ.get(os.environ.get("QONTO_CREDENTIAL_REF","QONTO_CREDENTIAL")) else "")
         candidate=QontoBankProvider(secret_ref,secrets_provider,timeout=float(os.environ.get("QONTO_TIMEOUT_SECONDS","8")))
@@ -101,8 +104,14 @@ class InventoryApp:
             try: qonto_connected=candidate.health()["status"]=="CONNECTED"
             except QontoError: pass
         self.bank_provider=candidate if candidate.configured else DisabledQontoProvider()
+        sumup_ref=os.environ.get("SUMUP_SECRET_REF") or ("sumup.production" if os.environ.get("SUMUP_API_KEY") else "")
+        self.sumup_provider=SumUpProvider(os.environ.get("SUMUP_MERCHANT_CODE"),sumup_ref,secrets_provider,base_url=os.environ.get("SUMUP_API_URL","https://api.sumup.com"),timeout=float(os.environ.get("SUMUP_TIMEOUT_SECONDS","8")))
+        sumup_connected=False
+        if self.sumup_provider.configured:
+            try: sumup_connected=self.sumup_provider.health()["status"]=="CONNECTED"
+            except SumUpError: pass
         self.reconciliation=ReconciliationService(service.repo.path)
-        self.finance=FinanceProjection(self.bank,self.sales,self.purchase_orders,self.purchase_costs)
+        self.finance=FinanceProjection(self.bank,self.sales,self.purchase_orders,self.purchase_costs,self.sumup_transactions,self.sumup_settlements)
         sales_providers={}; shopcaisse_connected=False; shopcaisse_client=None
         shopcaisse_key=(secrets_provider.resolve("shopcaisse.production") or "").strip()
         if shopcaisse_key:
@@ -149,6 +158,9 @@ class InventoryApp:
         self.sales_sync=SalesSyncService(self.sales,sales_providers)
         for args in (("prestashop_sales","PRESTASHOP_SALES","PrestaShop",configured_ps),("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",prestashop_connected),("bank","BANK","Qonto",qonto_connected),("purchases","PURCHASES","LOCAL",True),("stock","STOCK","LOCAL",True)):
             self.data_hub.register_source(*args[:3],configured=args[3],capabilities=("READ",),stale_after_seconds=intervals["bank"]*2 if args[0]=="bank" else intervals["sales"]*2)
+        sumup_interval=int(os.environ.get("SUMUP_SYNC_INTERVAL_SECONDS","900"))
+        for source_id,source_type in (("sumup_transactions","SUMUP_TRANSACTIONS"),("sumup_payouts","SUMUP_PAYOUTS")):
+            self.data_hub.register_source(source_id,source_type,"SumUp",configured=sumup_connected,capabilities=("READ_ONLY",),stale_after_seconds=sumup_interval*2)
         if prestashop_client:
             self.data_hub.register_source("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",status="UNAVAILABLE",capabilities=("READ",),stale_after_seconds=intervals["sales"]*2)
             if configured_ps:self.data_hub.register_source("prestashop_sales","PRESTASHOP_SALES","PrestaShop",status="UNAVAILABLE",capabilities=("READ",),stale_after_seconds=intervals["sales"]*2)
@@ -159,6 +171,8 @@ class InventoryApp:
         for channel in ("instagram","facebook","snapchat","tiktok"):
             self.data_hub.register_source(f"social_{channel}","SOCIAL_ANALYTICS",channel.title(),status="NOT_CONFIGURED",capabilities=("READ_ANALYTICS",),stale_after_seconds=int(os.environ.get("SOCIAL_ANALYTICS_INTERVAL_SECONDS","21600")))
         for job in (JobDefinition("sync_shopcaisse_sales","shopcaisse_sales","SHOPCAISSE_SALES",int(os.environ.get("SHOPCAISSE_SYNC_INTERVAL_SECONDS","600"))),JobDefinition("sync_prestashop_sales","prestashop_sales","PRESTASHOP_SALES",intervals["sales"]),JobDefinition("sync_prestashop_catalog","prestashop_catalog","PRESTASHOP_CATALOG",intervals["sales"]),JobDefinition("sync_bank_transactions","bank","BANK",intervals["bank"]),JobDefinition("refresh_sales_metrics","prestashop_sales","SALES_METRICS",intervals["projection"],("sync_prestashop_sales",)),JobDefinition("reconcile_bank_sales","bank","RECONCILE",intervals["projection"],("sync_bank_transactions",)),JobDefinition("refresh_finance","bank","FINANCE",intervals["projection"],("reconcile_bank_sales",)),JobDefinition("refresh_dashboard","purchases","DASHBOARD",intervals["projection"]),JobDefinition("refresh_marketing_signals","prestashop_sales","MARKETING",intervals["projection"],("refresh_sales_metrics",))): self.data_hub.register_job(job)
+        self.data_hub.register_job(JobDefinition("sync_sumup_transactions","sumup_transactions","SUMUP_TRANSACTIONS",sumup_interval))
+        self.data_hub.register_job(JobDefinition("sync_sumup_payouts","sumup_payouts","SUMUP_PAYOUTS",sumup_interval,("sync_sumup_transactions",)))
         self.prestashop_client=prestashop_client
         self.shopcaisse_client=shopcaisse_client
         self.sales_import_preview=None
@@ -193,7 +207,7 @@ class InventoryApp:
             if not self.prestashop_client: raise PrestaShopError("PrestaShop credential is not configured")
             products=sum(1 for _ in self.prestashop_client.iter_resource("products")); combinations=sum(1 for _ in self.prestashop_client.iter_resource("combinations"))
             return {"rows_imported":products+combinations,"products_read":products,"combinations_read":combinations}
-        return {"SHOPCAISSE_SALES":lambda cursor:sales("SHOPCAISSE"),"PRESTASHOP_SALES":lambda cursor:sales("PRESTASHOP"),"PRESTASHOP_CATALOG":catalog,"BANK":lambda cursor:self.bank.sync("Qonto",self.bank_provider,cursor),"RECONCILE":lambda cursor:{"rows_imported":self.reconciliation.reconcile_sales_bank()["created"]},"FINANCE":lambda cursor:{"rows_imported":0,"projection":self.finance.snapshot()},"DASHBOARD":lambda cursor:{"rows_imported":0},"SALES_METRICS":lambda cursor:{"rows_imported":0,"metrics":self.sales.analytics()},"MARKETING":lambda cursor:{"rows_imported":0}}
+        return {"SHOPCAISSE_SALES":lambda cursor:sales("SHOPCAISSE"),"PRESTASHOP_SALES":lambda cursor:sales("PRESTASHOP"),"PRESTASHOP_CATALOG":catalog,"BANK":lambda cursor:self.bank.sync("Qonto",self.bank_provider,cursor),"SUMUP_TRANSACTIONS":lambda cursor:self.sumup_transactions.sync(self.sumup_provider,cursor),"SUMUP_PAYOUTS":lambda cursor:{**self.sumup_settlements.sync(self.sumup_provider,cursor),"settlements":self.sumup_settlements.reconcile(),"sales_matches":self.reconciliation.reconcile_sales_sumup()["created"]},"RECONCILE":lambda cursor:{"rows_imported":self.reconciliation.reconcile_sales_bank()["created"]},"FINANCE":lambda cursor:{"rows_imported":0,"projection":self.finance.snapshot()},"DASHBOARD":lambda cursor:{"rows_imported":0},"SALES_METRICS":lambda cursor:{"rows_imported":0,"metrics":self.sales.analytics()},"MARKETING":lambda cursor:{"rows_imported":0}}
 
     def __call__(self, env, start):
         request_id=env.get("HTTP_X_REQUEST_ID") or str(uuid.uuid4()); path=env.get("PATH_INFO", "/"); method=env.get("REQUEST_METHOD", "GET")
@@ -257,10 +271,10 @@ class InventoryApp:
                 return self._json(start,self.sales_sync.failed_sales("SHOPCAISSE"))
             if path.startswith("/api/data-hub/sources/") and path.endswith("/test") and method == "POST":
                 source_id=unquote(path.removeprefix("/api/data-hub/sources/").removesuffix("/test")); sources={s["source_id"]:s for s in self.data_hub.sources()}
-                source=sources.get(source_id); client=self.shopcaisse_client if source_id=="shopcaisse_sales" else self.prestashop_client if source_id in {"prestashop_sales","prestashop_catalog"} else None
+                source=sources.get(source_id); client=self.shopcaisse_client if source_id=="shopcaisse_sales" else self.prestashop_client if source_id in {"prestashop_sales","prestashop_catalog"} else self.sumup_provider if source_id.startswith("sumup_") else None
                 if not source or not client: return self._json(start,{"error":"Connecteur non configuré"},"409 Conflict")
-                operation="authentication" if source_id=="shopcaisse_sales" else "order_states"; path_value="/authentication" if source_id=="shopcaisse_sales" else "/order_states"
-                check=client.health if source_id=="shopcaisse_sales" else lambda: next(client.iter_resource("order_states"),None)
+                operation="authentication" if source_id=="shopcaisse_sales" or source_id.startswith("sumup_") else "order_states"; path_value="/transactions/history" if source_id.startswith("sumup_") else "/authentication" if source_id=="shopcaisse_sales" else "/order_states"
+                check=client.health if source_id=="shopcaisse_sales" or source_id.startswith("sumup_") else lambda: next(client.iter_resource("order_states"),None)
                 diagnostic_id, diagnostic=self.data_hub.connector_health_check(source_id,source["provider"],check,
                     operation=operation,stage="manual_health",endpoint_path=path_value,request_id=request_id)
                 status="OK" if diagnostic.success else "ERROR"

@@ -19,4 +19,16 @@ class ReconciliationService:
    stamp=datetime.now(timezone.utc).isoformat()
    with self.db: created+=self.db.execute("INSERT OR IGNORE INTO reconciliation_matches VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(f'match:{uuid.uuid4()}','SALE',sale['sale_event_id'],'BANK_TRANSACTION',target['transaction_id'],'SALE_SETTLEMENT',confidence,reason,status,'SYSTEM' if status=='MATCHED' else 'PROPOSED',stamp,stamp)).rowcount
   return {'created':created,'matches':self.list()}
+ def reconcile_sales_sumup(self):
+  """Match payments without turning them into Sale events or revenue."""
+  sales=self.db.execute("SELECT sale_event_id,raw_reference,line_total_ttc,currency,sold_at FROM sale_events WHERE event_kind='SALE' AND line_total_ttc IS NOT NULL").fetchall()
+  payments=self.db.execute("SELECT sumup_transaction_id,transaction_code,client_transaction_id,amount,currency,timestamp FROM sumup_transactions WHERE upper(coalesce(status,'')) NOT IN ('FAILED','CANCELLED')").fetchall();created=0
+  for sale in sales:
+   candidates=[p for p in payments if p['currency']==sale['currency'] and Decimal(p['amount'])==Decimal(sale['line_total_ttc']) and abs((datetime.fromisoformat(p['timestamp'].replace('Z','+00:00'))-datetime.fromisoformat(sale['sold_at'].replace('Z','+00:00'))).total_seconds())<=86400]
+   exact=[p for p in candidates if sale['raw_reference'] and sale['raw_reference'] in {p['transaction_code'],p['client_transaction_id']}]
+   target=exact[0] if len(exact)==1 else candidates[0] if len(candidates)==1 else None
+   if not target: continue
+   status='MATCHED' if len(exact)==1 else 'POSSIBLE';stamp=datetime.now(timezone.utc).isoformat()
+   with self.db: created+=self.db.execute("INSERT OR IGNORE INTO reconciliation_matches VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(f'match:{uuid.uuid4()}','SALE',sale['sale_event_id'],'SUMUP_TRANSACTION',target['sumup_transaction_id'],'SALE_PAYMENT','1.0' if status=='MATCHED' else '0.7','reference, amount and time' if status=='MATCHED' else 'amount and time; validation required',status,'SYSTEM' if status=='MATCHED' else 'PROPOSED',stamp,stamp)).rowcount
+  return {'created':created,'matches':self.list()}
  def list(self): return [dict(r) for r in self.db.execute('SELECT * FROM reconciliation_matches ORDER BY created_at DESC')]

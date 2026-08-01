@@ -68,6 +68,12 @@
           "name": "Connecteur bancaire Qonto read-only réel",
           "status": "DONE",
           "evidence": "qonto.py; QONTO_CONNECTOR.md; tests/test_qonto_connector.py — activation possible, NOT_CONFIGURED sans credential"
+        },
+        {
+          "id": "01-core-m13",
+          "name": "Data Hub SumUp transactions et payouts",
+          "status": "DONE",
+          "evidence": "Sources SUMUP_TRANSACTIONS/SUMUP_PAYOUTS, jobs automation-worker, freshness et diagnostics authentifiés"
         }
       ]
     },
@@ -376,7 +382,8 @@
         {
           "id": "06-sales-m10",
           "name": "Paiements opérationnels",
-          "status": "TODO"
+          "status": "DONE",
+          "evidence": "sumup.py; SumUp Transaction Ledger read-only; rapprochement ShopCaisse/Sales Ledger ↔ paiement; tests/test_sumup_connector.py"
         },
         {
           "id": "06-sales-m11",
@@ -467,6 +474,12 @@
           "name": "Contrôles de cohérence",
           "status": "DONE",
           "evidence": "src/dr_cloud_sync/finance.py et tests/test_finance_v1.py"
+        },
+        {
+          "id": "07-finance-m11",
+          "name": "Encaissements, commissions et payouts SumUp",
+          "status": "DONE",
+          "evidence": "finance.py consomme les ledgers SumUp sans inclure les paiements dans le CA; payout ↔ Qonto reste à faire"
         }
       ]
     },

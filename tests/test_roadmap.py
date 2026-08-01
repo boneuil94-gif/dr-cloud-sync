@@ -160,7 +160,7 @@ def test_sales_distinguishes_analytic_ledger_from_operational_sales():
     assert by_id["06-sales-m09"]["status"] == "DONE"  # GET-only paid orders
     assert "ShopCaisse" in sales["next"]
     assert sales["status"] == "IN_PROGRESS"
-    assert sales["progress_percent"] == 76.92
+    assert sales["progress_percent"] == 84.62
 
 
 def test_canonical_file_contains_no_derived_progress_values():
