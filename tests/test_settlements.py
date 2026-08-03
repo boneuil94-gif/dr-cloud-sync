@@ -41,7 +41,7 @@ def test_ambiguous_amount_and_failed_reference_are_conflicts():
 def test_mixed_ticket_payments_are_matched_separately_and_idempotently():
     db=database();stamp=datetime.now(timezone.utc).isoformat()
     db.execute("INSERT INTO sales VALUES(?,?,?,?,?,?,?,?,?,?,?)",("sale","SHOPCAISSE","ticket",stamp,"UTC","STORE","Paris","EUR","PAID",stamp,stamp))
-    db.executemany("INSERT INTO sale_payments VALUES(?,?,?,?,?,?,?)",[("card","sale","ref-1","CB","98",None,None),("cash","sale","cash","CASH","20",None,None)])
+    db.executemany("INSERT INTO sale_payments(payment_id,sale_id,external_payment_id,payment_type,amount,name,description) VALUES(?,?,?,?,?,?,?)",[("card","sale","ref-1","CB","98",None,None),("cash","sale","cash","CASH","20",None,None)])
     row=transaction(); values=(row["sumup_transaction_id"],row["transaction_code"],row["amount"],row["currency"],row["timestamp"],row["status"],row["status"],None,None,None,None,None,"0","0","0","0",None,None,None,None,"1.7","[]","{}",stamp)
     db.execute("INSERT INTO sumup_transactions VALUES("+",".join("?"*24)+")",values)
     service=PaymentSettlementService(db)
@@ -77,6 +77,12 @@ def test_empty_summary_never_returns_nan_and_marks_unknown_bank():
     assert result["coverage_percent"] is None
     assert result["qonto_credits"] is None
     assert "NaN" not in str(result)
+
+
+def test_naive_payment_time_is_rejected_and_backfill_preview_has_common_period():
+    assert match_payment(payment(occurred_at="2026-08-03T10:00:00"),[transaction()])["match_method"]=="INVALID_PAYMENT_TIME"
+    preview=PaymentSettlementService(database()).backfill_preview()
+    assert preview["card_candidates"]==0 and preview["intersection_start"] is None
 
 
 def test_settlement_ui_contract_has_central_formatters_and_responsive_views():

@@ -17,3 +17,7 @@ Le détail est chargé à la demande dans un drawer desktop et plein écran mobi
 ## Responsive et accessibilité
 
 La table desktop devient une liste de cartes sous 1 000 px. Le panneau de détail occupe l’écran sur mobile; filtres et fraîcheur passent à deux puis une colonne à 768/375 px. Les statuts associent icône, texte, couleur et libellé ARIA. Le focus entre dans le drawer et revient à son déclencheur.
+
+## Paiements ShopCaisse
+
+Le détail différé joint le lien à `sale_payments` et montre identifiants paiement/vente, libellé brut, catégorie/règle/version canonique, montant de la part, date, statut et qualité, puis la transaction candidate et la preuve de décision. La recherche indexée retrouve les identifiants projetés, codes SumUp, montants et dates sans exposer le payload fournisseur ni les données carte.
