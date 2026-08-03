@@ -1,28 +1,21 @@
 # Cockpit Settlements
 
-## Audit préalable du ledger mergé (2026-08-03)
+## États métier
 
-Cet état a été établi avant les modifications de la présente livraison. Il distingue le code disponible d'une preuve d'alimentation de la base de production, à laquelle ce dépôt n'a pas accès.
+Le cockpit synthétise l'état réel sans créer de données : **READY** signifie que les quatre étapes sont alimentées, **PARTIAL** qu'une partie de la chaîne reste exploitable, **STALE** qu'une source doit être actualisée et **ERROR** qu'une erreur active empêche le calcul. Une erreur historique n'entraîne jamais `ERROR`.
 
-| Capacité | Existe | Alimentée réellement | API | UI | Tests | Action restante avant cette PR |
-|---|---:|---:|---:|---:|---:|---|
-| `PaymentSettlement`, liens et preuves | oui | production non vérifiable | oui | non | oui | cockpit |
-| Matching ShopCaisse → SumUp | oui | job câblé, données production non vérifiables | oui | non | oui | revue UX |
-| Transactions, frais, refunds, chargebacks SumUp | oui | sync câblée | admin | partielle | oui | synthèse |
-| Payouts SumUp et composition | oui | sync câblée | oui | non | oui | vue payout |
-| Bank Ledger / Qonto read-only | oui | secret production non accessible | Data Hub | Data Hub | oui | lien payout-crédit |
-| Matching payout → Qonto | non | non | non | non | non | implémenter dans le moteur existant |
-| Actions confirmer/rejeter/backfill | oui | non vérifiable | oui | non | oui | UI, notes, détacher |
-| RBAC, CSRF, AuditLog | oui | n/a | oui | n/a | oui | ajouter `qonto.read` |
-| Finance / Dashboard | oui | projections câblées | oui | oui | oui | exposer les indicateurs sans CA SumUp |
-| Administration / Data Hub | oui | état runtime honnête | oui | oui | oui | détails avancés repliés |
+Les helpers `formatCount`, `formatMoney`, `formatPercent`, `formatFreshness` et `formatStatus` centralisent l'affichage. Une valeur inconnue devient `—`, un taux non calculable devient « Non disponible » et aucune division par zéro n'est présentée.
 
-## Exploitation
+## Vues et filtres
 
-La page `/settlements` met les anomalies en premier, puis huit KPI et une table filtrable avec variante mobile. Les valeurs indisponibles sont libellées comme telles. Les actions mutantes passent par session, permission explicite, CSRF et AuditLog. Le drawer présente les preuves métier sans payload brut.
+Les huit KPI, la frise responsive et la zone compacte « À traiter » expliquent immédiatement la couverture. Les vues Rapprochements, Transactions, Payouts et Tendances utilisent uniquement les données réelles. Recherche, statut, période et bornes de montant sont combinables ; les chips indiquent les filtres actifs. Les résultats sont paginés à 12 éléments. En l'absence de liens, une carte explique la source manquante et propose synchronisation, recalcul ou accès aux sources.
 
-Le bouton Synchroniser exécute le job settlement dont les dépendances sont ShopCaisse, transactions et payouts SumUp, puis banque Qonto. Recalculer est idempotent et ne remplace pas une décision humaine. Backfill conserve un run auditable.
+Le détail latéral présente ShopCaisse, transaction SumUp, payout, Qonto, preuves et historique sans JSON brut. Confirmer, rejeter, détacher, marquer à revoir, recalculer et ajouter une note exigent une confirmation ; l'API applique permission, CSRF et AuditLog.
 
-## Autorités et limites
+## Responsive et accessibilité
 
-Le Sales Ledger est la seule autorité de chiffre d'affaires. SumUp et Qonto sont des preuves d'encaissement et de versement (`revenue_included=false`). Sans base de production ni secret Qonto, aucun statut CONNECTED, montant ou taux réel n'est affirmé. La v1 du cockpit détaille les liens; l'agrégation multi-transactions d'un payout demeure une projection séparée.
+Sous 1 000 px, la table devient une liste de cartes et la frise devient verticale. À 320 px, KPI et filtres passent sur une colonne ; le drawer occupe tout l'écran. Les contrôles ont des labels, les notifications utilisent `aria-live`, les statuts combinent texte et couleur, et le focus clavier est visible.
+
+## Performance et données
+
+Les appels récapitulatif, liens et Data Hub sont parallélisés. Le navigateur filtre une projection bornée et n'affiche que 12 lignes ; aucune donnée de démonstration n'est injectée. Les graphiques restent compacts et annoncent l'absence de séries journalières plutôt que d'afficher un canevas vide.
