@@ -95,7 +95,8 @@ class InventoryApp:
         self.bank=BankLedger(service.repo.path)
         self.sumup_transactions=SumUpTransactionLedger(self.bank.db);self.sumup_settlements=PaymentSettlementLedger(self.bank.db)
         self.settlements=PaymentSettlementService(self.bank.db,
-            window_seconds=int(os.environ.get("SETTLEMENT_MATCH_WINDOW_SECONDS","900")),
+            priority_window_seconds=int(os.environ.get("SETTLEMENT_PRIORITY_WINDOW_SECONDS","120")),
+            window_seconds=int(os.environ.get("SETTLEMENT_MATCH_WINDOW_SECONDS","600")),
             rounding_tolerance=os.environ.get("SETTLEMENT_ROUNDING_TOLERANCE","0.01"))
         register_runtime(self.bank.db, "web")
         secrets_provider=EnvironmentSecretProvider(os.environ,{
@@ -111,6 +112,7 @@ class InventoryApp:
             try: qonto_connected=candidate.health()["status"]=="CONNECTED"
             except QontoError: pass
         self.bank_provider=candidate if candidate.configured else DisabledQontoProvider()
+        self.settlements.qonto_configured=qonto_connected
         sumup_ref=os.environ.get("SUMUP_SECRET_REF") or ("sumup.production" if os.environ.get("SUMUP_API_KEY") else "")
         self.sumup_provider=SumUpProvider(os.environ.get("SUMUP_MERCHANT_CODE"),sumup_ref,secrets_provider,base_url=os.environ.get("SUMUP_API_URL","https://api.sumup.com"),timeout=float(os.environ.get("SUMUP_TIMEOUT_SECONDS","8")))
         sumup_connected=False
@@ -180,7 +182,7 @@ class InventoryApp:
         for job in (JobDefinition("sync_shopcaisse_sales","shopcaisse_sales","SHOPCAISSE_SALES",int(os.environ.get("SHOPCAISSE_SYNC_INTERVAL_SECONDS","600"))),JobDefinition("sync_prestashop_sales","prestashop_sales","PRESTASHOP_SALES",intervals["sales"]),JobDefinition("sync_prestashop_catalog","prestashop_catalog","PRESTASHOP_CATALOG",intervals["sales"]),JobDefinition("sync_bank_transactions","bank","BANK",intervals["bank"]),JobDefinition("refresh_sales_metrics","prestashop_sales","SALES_METRICS",intervals["projection"],("sync_prestashop_sales",)),JobDefinition("reconcile_bank_sales","bank","RECONCILE",intervals["projection"],("sync_bank_transactions",)),JobDefinition("refresh_finance","bank","FINANCE",intervals["projection"],("reconcile_bank_sales",)),JobDefinition("refresh_dashboard","purchases","DASHBOARD",intervals["projection"]),JobDefinition("refresh_marketing_signals","prestashop_sales","MARKETING",intervals["projection"],("refresh_sales_metrics",))): self.data_hub.register_job(job)
         self.data_hub.register_job(JobDefinition("sync_sumup_transactions","sumup_transactions","SUMUP_TRANSACTIONS",sumup_interval))
         self.data_hub.register_job(JobDefinition("sync_sumup_payouts","sumup_payouts","SUMUP_PAYOUTS",sumup_interval,("sync_sumup_transactions",)))
-        self.data_hub.register_job(JobDefinition("sync_payment_settlements","sumup_payouts","PAYMENT_SETTLEMENTS",sumup_interval,("sync_shopcaisse_sales","sync_sumup_transactions","sync_sumup_payouts","sync_bank_transactions")))
+        self.data_hub.register_job(JobDefinition("sync_payment_settlements","sumup_transactions","PAYMENT_SETTLEMENTS",sumup_interval,("sync_shopcaisse_sales","sync_sumup_transactions")))
         self.prestashop_client=prestashop_client
         self.shopcaisse_client=shopcaisse_client
         self.sales_import_preview=None
@@ -310,6 +312,7 @@ class InventoryApp:
             if path == "/api/finance/profitability" and method == "GET": return self._json(start,self.finance.profitability())
             if path == "/api/finance/reconciliations" and method == "GET": return self._json(start,{"counts":self.finance._reconciliation_counts(),"items":self.reconciliation.list()})
             if path == "/api/settlements/summary" and method == "GET": return self._json(start,self.settlements.summary())
+            if path == "/api/settlements/backfill-preview" and method == "GET": return self._json(start,self.settlements.backfill_preview())
             if path == "/api/settlements/explorer" and method == "GET":
                 query={k:v[0] for k,v in parse_qs(env.get("QUERY_STRING","")).items()}; return self._json(start,self.settlements.explorer(query))
             if path == "/api/settlements/anomalies" and method == "GET":

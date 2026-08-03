@@ -23,3 +23,7 @@ Les appels récapitulatif, liens et Data Hub sont parallélisés. Le navigateur 
 ## Settlement Explorer
 
 Le Cockpit propose désormais un accès direct à `/settlements/explorer`. Le Cockpit reste la synthèse de pilotage; l’Explorer est la vue d’investigation paginée, filtrable et actionnable. Les filtres sont conservés dans l’URL lors des allers-retours.
+
+## Données alimentées
+
+La frise affiche désormais le nombre et le montant CARD ShopCaisse, les transactions SumUp finales et leur couverture, puis les transactions réellement rattachées aux payouts. Qonto affiche « non configuré » tant qu'aucun connecteur/compte attesté n'existe : zéro n'est pas interprété comme une absence bancaire prouvée. Les KPI exposent MATCHED/POSSIBLE/UNMATCHED/CONFLICT, montants rapproché/non rapproché, taux principal par nombre et taux secondaire par montant. Si les paiements existent sans lien déterministe, l'état vide le dit explicitement et conserve les actions Recalculer et anomalies.

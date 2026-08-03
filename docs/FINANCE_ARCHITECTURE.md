@@ -12,3 +12,7 @@ Finance expose les encaissements carte, frais, remboursements, chargebacks, net 
 ## Settlements carte
 
 Les transactions SumUp, frais, remboursements, chargebacks, payouts et crédits Qonto enrichissent uniquement la projection d'encaissement. Ils ne sont jamais additionnés au chiffre d'affaires, qui reste exclusivement issu du Sales Ledger.
+
+## Encaissements carte et absence de double comptage
+
+Les paiements CARD ShopCaisse, transactions SumUp finales, montants rapprochés, frais disponibles, net attendu et transit sont des indicateurs d'encaissement. Ils ne sont jamais ajoutés au chiffre d'affaires : le CA provient exclusivement du Sales Ledger. Un ticket mixte contribue avec sa seule part CARD au settlement, tandis que ses autres moyens restent séparés. Les transactions SumUp et payouts restent des preuves opérationnelles (`revenue_included=false`).

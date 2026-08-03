@@ -21,3 +21,9 @@ La projection relie désormais `SUMUP_PAYOUT` à `QONTO_CREDIT` dans les mêmes 
 ## Projection Explorer
 
 L’Explorer lit exclusivement les liens et preuves du ledger avec des requêtes bornées et paginées. Il ne modifie jamais les ledgers ShopCaisse, SumUp ou Qonto. Les détails, preuves et événements sont différés jusqu’à l’ouverture du drawer; les décisions humaines continuent d’empêcher un recalcul de les écraser.
+
+## Alimentation ShopCaisse réelle
+
+La source du ledger est la table existante `sale_payments`, enrichie additivement; aucune seconde table de paiements n'est créée. La population éligible est `canonical_payment_type='CARD' AND quality_status='VALID'`. Les colonnes conservent identifiants paiement/vente, magasin, montant de la part de paiement, devise, brut, catégorie, règle/version, instant, statut, libellés, source et import. Le backfill est paginé, idempotent et ne publie son curseur de run qu'après le commit de chaque lot. Son aperçu expose les périodes ShopCaisse/SumUp, leur intersection et les volumes avant lancement.
+
+La métrique principale du cockpit est le taux **par nombre** (`MATCHED / paiements CARD éligibles`); le taux par montant est secondaire. Une division sans population renvoie `null`, jamais `NaN`. Les liens transaction → payout proviennent exclusivement des items/références SumUp existants; une composition absente reste `UNAVAILABLE`.

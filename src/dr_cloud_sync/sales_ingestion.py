@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import csv, io, json, sqlite3
+import re
+import unicodedata
 from pathlib import Path
 from typing import Any, Mapping, Protocol, Sequence
 from uuid import uuid4
@@ -36,6 +38,34 @@ class CanonicalPayment:
     amount: Decimal
     name: str|None = None
     description: str|None = None
+    canonical_payment_type: str = "UNKNOWN"
+    mapping_rule: str = "unmapped"
+    mapping_version: str = "shopcaisse-payment-types-v1"
+    status: str = "UNKNOWN"
+
+
+PAYMENT_TYPE_MAPPING_VERSION = "shopcaisse-payment-types-v1"
+PAYMENT_TYPES = {"CARD", "CASH", "BANK_TRANSFER", "VOUCHER", "GIFT_CARD", "STORE_CREDIT", "OTHER", "UNKNOWN"}
+
+
+def canonicalize_payment_type(value: Any) -> tuple[str, str, str]:
+    """Map observed ShopCaisse labels without treating unknown values as cards."""
+    raw = "" if value is None else str(value)
+    token = unicodedata.normalize("NFKD", raw).encode("ascii", "ignore").decode().casefold()
+    token = re.sub(r"[^a-z0-9]+", " ", token).strip()
+    aliases = {
+        "card": "CARD", "cb": "CARD", "carte": "CARD", "carte bancaire": "CARD",
+        "credit card": "CARD", "creditcard": "CARD", "visa": "CARD", "mastercard": "CARD",
+        "cash": "CASH", "espece": "CASH", "especes": "CASH", "liquide": "CASH",
+        "bank transfer": "BANK_TRANSFER", "virement": "BANK_TRANSFER", "virement bancaire": "BANK_TRANSFER",
+        "voucher": "VOUCHER", "bon": "VOUCHER", "bon achat": "VOUCHER",
+        "gift card": "GIFT_CARD", "carte cadeau": "GIFT_CARD",
+        "store credit": "STORE_CREDIT", "avoir": "STORE_CREDIT",
+        "other": "OTHER", "autre": "OTHER",
+    }
+    category = aliases.get(token, "UNKNOWN")
+    rule = f"exact-normalized:{token}" if token in aliases else ("missing" if not token else "unknown-label")
+    return category, rule, PAYMENT_TYPE_MAPPING_VERSION
 
 
 @dataclass(frozen=True)
@@ -79,8 +109,14 @@ CREATE TABLE IF NOT EXISTS sale_lines(
  FOREIGN KEY(sale_id) REFERENCES sales(sale_id));
 CREATE TABLE IF NOT EXISTS sale_payments(
  payment_id TEXT PRIMARY KEY,sale_id TEXT NOT NULL,external_payment_id TEXT NOT NULL,payment_type TEXT NOT NULL,
- amount TEXT NOT NULL,name TEXT,description TEXT,UNIQUE(sale_id,external_payment_id),
+ amount TEXT NOT NULL,name TEXT,description TEXT,canonical_payment_type TEXT NOT NULL DEFAULT 'UNKNOWN',
+ mapping_rule TEXT NOT NULL DEFAULT 'legacy-unmapped',mapping_version TEXT NOT NULL DEFAULT 'shopcaisse-payment-types-v1',
+ currency TEXT,occurred_at TEXT,status TEXT,source TEXT,store_id TEXT,imported_at TEXT,
+ quality_status TEXT NOT NULL DEFAULT 'INCOMPLETE',quality_reason TEXT,UNIQUE(sale_id,external_payment_id),
  FOREIGN KEY(sale_id) REFERENCES sales(sale_id));
+CREATE INDEX IF NOT EXISTS idx_sale_payments_external_payment ON sale_payments(external_payment_id);
+CREATE INDEX IF NOT EXISTS idx_sale_payments_sale ON sale_payments(sale_id,external_payment_id);
+CREATE INDEX IF NOT EXISTS idx_sale_payments_matching ON sale_payments(canonical_payment_type,quality_status,currency,occurred_at,amount);
 CREATE TABLE IF NOT EXISTS shopcaisse_stock_observations(
  store_id TEXT NOT NULL,item_id TEXT NOT NULL,stock TEXT NOT NULL,reserved_customers TEXT NOT NULL,
  reserved_suppliers TEXT NOT NULL,observed_at TEXT NOT NULL,PRIMARY KEY(store_id,item_id));
@@ -156,10 +192,15 @@ class ShopCaisseAPISalesProvider:
                         str(item.get("id") or "") or None,None,str(item.get("reference") or "") or None,
                         (str((item.get("barcodes") or [""])[0]) or None),None,_decimal(line.get("unitPrice")),None,
                         _decimal(price.get("vatIncluded")),_decimal(price.get("vatExcluded")),_decimal(price.get("vatRate"))))
-                payments=tuple(CanonicalPayment(str(p.get("id") or f"{row['id']}:{i}"),str(p.get("type") or "UNKNOWN"),
-                    _decimal(p.get("amount"),required=True),p.get("name"),p.get("description")) for i,p in enumerate(row.get("payments",[])))
+                payments=[]
+                for i,p in enumerate(row.get("payments",[])):
+                    raw_type=p.get("type")
+                    canonical,rule,version=canonicalize_payment_type(raw_type)
+                    payments.append(CanonicalPayment(str(p.get("id") or f"{row['id']}:{i}"),str(raw_type or ""),
+                        _decimal(p.get("amount"),required=True),p.get("name"),p.get("description"),canonical,rule,version,
+                        str(p.get("status") or row.get("status") or "UNKNOWN").upper()))
                 sales.append(CanonicalSale(self.source,str(row["id"]),sold,"UTC","STORE","EUR",str(row.get("status") or "UNKNOWN").upper(),
-                    tuple(lines),store_id,sold,payments))
+                    tuple(lines),store_id,sold,tuple(payments)))
             observed=_now()
             stocks=self.client.pull_store_stocks(store_id,self.stock_board_type)
             with self.db:
@@ -275,7 +316,20 @@ class SalesSyncService:
                             report["errors"].append({"sale":failure["sale"],"line":failure["line"],"error":failure["message"]})
                             report["failure_details"].append(failure)
                     for payment in sale.payments:
-                        inserted=self.db.execute("INSERT OR IGNORE INTO sale_payments (payment_id,sale_id,external_payment_id,payment_type,amount,name,description) VALUES(?,?,?,?,?,?,?)",(f"payment:{source}:{sale.external_sale_id}:{payment.external_payment_id}",sale_id,payment.external_payment_id,payment.payment_type,str(payment.amount),payment.name,payment.description)).rowcount
+                        canonical,rule,version=(payment.canonical_payment_type,payment.mapping_rule,payment.mapping_version)
+                        if canonical not in PAYMENT_TYPES or canonical=="UNKNOWN" and rule=="unmapped":
+                            canonical,rule,version=canonicalize_payment_type(payment.payment_type)
+                        quality,reason="VALID",None
+                        if not payment.external_payment_id or not sale.external_sale_id: quality,reason="INCOMPLETE","missing source identity"
+                        elif payment.amount <= 0: quality,reason="INVALID","amount must be positive"
+                        elif not sale.currency: quality,reason="INCOMPLETE","missing currency"
+                        elif _utc(sale.sold_at).tzinfo is None: quality,reason="INVALID","occurred_at must be timezone-aware"
+                        elif canonical=="UNKNOWN": quality,reason="UNSUPPORTED","unknown payment type"
+                        elif payment.status.upper() in {"CANCELLED","CANCELED","REFUNDED","REVERSED"} or sale.status in {"CANCELLED","CANCELED","REFUNDED"}: quality,reason="INVALID","cancelled or fully refunded"
+                        imported=_now()
+                        inserted=self.db.execute("""INSERT OR IGNORE INTO sale_payments
+                          (payment_id,sale_id,external_payment_id,payment_type,amount,name,description,canonical_payment_type,mapping_rule,mapping_version,currency,occurred_at,status,source,store_id,imported_at,quality_status,quality_reason)
+                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(f"payment:{source}:{sale.external_sale_id}:{payment.external_payment_id}",sale_id,payment.external_payment_id,payment.payment_type,str(payment.amount),payment.name,payment.description,canonical,rule,version,sale.currency,sale.sold_at,payment.status,source,sale.location,imported,quality,reason)).rowcount
                         report["payments"]+=inserted
                 now=_now();self.db.execute("INSERT INTO sales_sync_states(source,last_success_at,last_attempt_at,status,cursor,last_error,imported_count,unmatched_count,last_report_json) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(source) DO UPDATE SET last_success_at=excluded.last_success_at,last_attempt_at=excluded.last_attempt_at,status=excluded.status,cursor=excluded.cursor,last_error=NULL,imported_count=excluded.imported_count,unmatched_count=excluded.unmatched_count,last_report_json=excluded.last_report_json",(source,now,attempt,"SUCCESS",batch.cursor,None,report["imported"],report["unmatched"]+report["ambiguous"],json.dumps(report,ensure_ascii=False)))
                 self.ledger._audit("SALES_SYNC_COMPLETED",actor,report)
