@@ -6,8 +6,8 @@ import json
 import sqlite3
 
 
-SUMUP_SCHEMA_VERSION = 2
-MIGRATION_NAME = "sumup_columns_verified_20260803"
+SUMUP_SCHEMA_VERSION = 3
+MIGRATION_NAME = "sumup_reversals_and_settlement_coverage_20260803"
 
 
 class SumUpSchemaMigrationError(RuntimeError):

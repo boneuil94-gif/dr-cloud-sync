@@ -1,6 +1,6 @@
 # Connecteur SumUp : contrat, couverture et limites
 
-Audit réalisé le **1er août 2026** à partir du contrat public SumUp et du code
+Audit revérifié le **3 août 2026** à partir du contrat public SumUp et du code
 déployable. Aucun secret Dr Cloud n'est présent dans le dépôt ou l'environnement
 d'audit : l'accessibilité effective du compte ne peut donc pas être affirmée.
 Une réponse `403` doit être classée `SCOPE_MISSING`, jamais contournée.
@@ -36,7 +36,8 @@ toujours persisté, ce qui évite qu'un champ métier additionnel soit perdu.
 | Transaction | history/detail | id/code, amount/currency, timestamp, status/simple status | oui | oui | oui | oui | Finance/rapprochement | — |
 | Transaction | detail | payment/entry/card type, terminal, client/foreign ids | si présent | oui | oui | oui | rapprochement | `API_NOT_EXPOSED` si absent |
 | Transaction | detail | product summary, VAT, tip, reference/description, receipt URL | si présent | oui | oui | oui | diagnostic/Finance | `API_NOT_EXPOSED` si absent |
-| Event | detail | historique, refunds, reversals, chargebacks, payout events | si présent | oui | oui | oui | Finance/settlement | — |
+| Event | detail | historique, refunds, reversals, chargebacks, payout events | si présent | oui | oui | oui | Finance/settlement | champ absent : `API_NOT_EXPOSED` |
+| Reversal | detail events | id, transaction, montant/devise, date/statut, raison, impact payout | si présent | oui | oui | oui | sous-ledger distinct | champ absent : `API_NOT_EXPOSED` |
 | Fee | detail | type, amount, currency, adjustments | si présent | oui | oui | oui | Finance | ajustement seulement si exposé |
 | Refund | detail events | id, original tx, amount/date/status, partial/full, reason | si présent | oui | oui | oui | Finance | reason `API_NOT_EXPOSED` si absent |
 | Chargeback | detail events | id, original tx, amount/date/status/reason | si présent | oui | oui | oui | Finance | dispute autonome `API_NOT_EXPOSED` |
@@ -53,7 +54,7 @@ métadonnées carte non sensibles éventuellement renvoyées sont admises.
 
 Les tables sont volontairement séparées : `sumup_merchants`,
 `sumup_transactions`, `sumup_transaction_events`, `sumup_fees`,
-`sumup_refunds`, `sumup_chargebacks`, `sumup_payouts`, `sumup_payout_items`,
+`sumup_refunds`, `sumup_chargebacks`, `sumup_reversals`, `sumup_payouts`, `sumup_payout_items`,
 `sumup_readers` et `payment_settlements`. Elles ne sont ni le Sales Ledger, ni
 le Bank Ledger/Qonto. Les identifiants fournisseur sont les clés primaires ; à
 défaut, une empreinte déterministe est employée. Les upserts rendent le replay
@@ -84,7 +85,7 @@ sur le compte et consignée comme couverture historique ; elle n'est pas invent�
 |---|---:|---:|---:|---:|---:|
 | Merchant | 7 | 7 | 0 | 0 | 100 % |
 | Transactions/détail | 27 | 27 | 0 | 0 | 100 % |
-| Refund/chargeback/event | 19 | 19 | 0 | 0 | 100 % |
+| Refund/chargeback/reversal/event | 27 | 27 | 0 | 0 | 100 % |
 | Fees | 4 | 4 | 0 | 0 | 100 % |
 | Payout/items | 18 | 18 | 0 | 0 | 100 % |
 | Readers | 8 | 8 | 0 | 0 | 100 % |
@@ -99,7 +100,7 @@ compte. Après homologation, chaque champ absent doit être classé parmi
 ### Couverture avant/après
 
 Avant : transactions aplaties et payouts, sans sous-ledgers ; dates payout non
-bornées. Après : 5 endpoints GET, 10 tables indépendantes, événements/frais/
+bornées. Après : 5 endpoints GET, 11 tables indépendantes, événements/frais/
 refunds/chargebacks/items typés, payload complet filtré, fenêtres et reprise.
 L'historique importé pendant cet audit est **0** (aucun credential de production,
 donc aucun appel au compte), et cette limite est explicitement observable.
