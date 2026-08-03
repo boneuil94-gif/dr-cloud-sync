@@ -40,19 +40,21 @@ class CanonicalPayment:
     description: str|None = None
     canonical_payment_type: str = "UNKNOWN"
     mapping_rule: str = "unmapped"
-    mapping_version: str = "shopcaisse-payment-types-v1"
+    mapping_version: str = "shopcaisse-payment-types-v2"
     status: str = "UNKNOWN"
 
 
-PAYMENT_TYPE_MAPPING_VERSION = "shopcaisse-payment-types-v1"
+PAYMENT_TYPE_MAPPING_VERSION = "shopcaisse-payment-types-v2"
 PAYMENT_TYPES = {"CARD", "CASH", "BANK_TRANSFER", "VOUCHER", "GIFT_CARD", "STORE_CREDIT", "OTHER", "UNKNOWN"}
 
 
-def canonicalize_payment_type(value: Any) -> tuple[str, str, str]:
-    """Map observed ShopCaisse labels without treating unknown values as cards."""
-    raw = "" if value is None else str(value)
-    token = unicodedata.normalize("NFKD", raw).encode("ascii", "ignore").decode().casefold()
-    token = re.sub(r"[^a-z0-9]+", " ", token).strip()
+def canonicalize_payment_type(value: Any, name: Any = None, description: Any = None) -> tuple[str, str, str]:
+    """Map the first recognised persisted ShopCaisse label, never guessing CARD.
+
+    ShopCaisse installations do not consistently populate ``type``: some put the
+    tender label in ``name`` or ``description``.  The selected field is recorded
+    in the rule while every raw field remains stored in ``sale_payments``.
+    """
     aliases = {
         "card": "CARD", "cb": "CARD", "carte": "CARD", "carte bancaire": "CARD",
         "credit card": "CARD", "creditcard": "CARD", "visa": "CARD", "mastercard": "CARD",
@@ -63,9 +65,14 @@ def canonicalize_payment_type(value: Any) -> tuple[str, str, str]:
         "store credit": "STORE_CREDIT", "avoir": "STORE_CREDIT",
         "other": "OTHER", "autre": "OTHER",
     }
-    category = aliases.get(token, "UNKNOWN")
-    rule = f"exact-normalized:{token}" if token in aliases else ("missing" if not token else "unknown-label")
-    return category, rule, PAYMENT_TYPE_MAPPING_VERSION
+    observed = []
+    for field, raw in (("payment_type", value), ("name", name), ("description", description)):
+        token = unicodedata.normalize("NFKD", "" if raw is None else str(raw)).encode("ascii", "ignore").decode().casefold()
+        token = re.sub(r"[^a-z0-9]+", " ", token).strip()
+        observed.append(token)
+        if token in aliases:
+            return aliases[token], f"exact-normalized:{field}:{token}", PAYMENT_TYPE_MAPPING_VERSION
+    return "UNKNOWN", ("missing" if not any(observed) else "unknown-label"), PAYMENT_TYPE_MAPPING_VERSION
 
 
 @dataclass(frozen=True)
@@ -318,7 +325,7 @@ class SalesSyncService:
                     for payment in sale.payments:
                         canonical,rule,version=(payment.canonical_payment_type,payment.mapping_rule,payment.mapping_version)
                         if canonical not in PAYMENT_TYPES or canonical=="UNKNOWN" and rule=="unmapped":
-                            canonical,rule,version=canonicalize_payment_type(payment.payment_type)
+                            canonical,rule,version=canonicalize_payment_type(payment.payment_type,payment.name,payment.description)
                         quality,reason="VALID",None
                         if not payment.external_payment_id or not sale.external_sale_id: quality,reason="INCOMPLETE","missing source identity"
                         elif payment.amount <= 0: quality,reason="INVALID","amount must be positive"

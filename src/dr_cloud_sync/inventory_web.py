@@ -312,6 +312,7 @@ class InventoryApp:
             if path == "/api/finance/profitability" and method == "GET": return self._json(start,self.finance.profitability())
             if path == "/api/finance/reconciliations" and method == "GET": return self._json(start,{"counts":self.finance._reconciliation_counts(),"items":self.reconciliation.list()})
             if path == "/api/settlements/summary" and method == "GET": return self._json(start,self.settlements.summary())
+            if path == "/api/settlements/shopcaisse-audit" and method == "GET": return self._json(start,self.settlements.shopcaisse_audit())
             if path.startswith("/api/settlements/aggregates/") and method == "GET":
                 name=path.rsplit("/",1)[-1]; summary=self.settlements.summary()
                 if name not in {"cash_summary","in_transit","expected_payouts","anomaly_breakdown","settlement_coverage","daily_trends"}: return self._json(start,{"error":"Agrégat inconnu"},"404 Not Found")

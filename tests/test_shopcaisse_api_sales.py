@@ -61,12 +61,12 @@ def test_network_failure_preserves_cursor_then_resumes(tmp_path):
     ("quelque chose","UNKNOWN"),(None,"UNKNOWN")])
 def test_real_shopcaisse_payment_labels_are_explicitly_canonicalized(raw,expected):
     category,rule,version=canonicalize_payment_type(raw)
-    assert category==expected and rule and version=="shopcaisse-payment-types-v1"
+    assert category==expected and rule and version=="shopcaisse-payment-types-v2"
 
 
 def test_payment_mapping_and_source_fields_are_persisted(tmp_path):
     sync,_=service(tmp_path); sync.sync("SHOPCAISSE")
     row=sync.db.execute("SELECT payment_type,canonical_payment_type,mapping_rule,mapping_version,currency,occurred_at,source,store_id,quality_status FROM sale_payments").fetchone()
     assert tuple(row)[0:2]==("CARD","CARD")
-    assert row[2].startswith("exact-normalized") and row[3]=="shopcaisse-payment-types-v1"
+    assert row[2].startswith("exact-normalized") and row[3]=="shopcaisse-payment-types-v2"
     assert tuple(row)[4:]==("EUR","2026-08-01T10:00:00+00:00","SHOPCAISSE","store-1","VALID")

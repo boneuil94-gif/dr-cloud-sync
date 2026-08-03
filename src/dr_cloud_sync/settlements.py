@@ -34,6 +34,10 @@ CREATE TABLE IF NOT EXISTS payment_settlement_evidence(
 CREATE TABLE IF NOT EXISTS payment_settlement_runs(
  run_id TEXT PRIMARY KEY,started_at TEXT NOT NULL,completed_at TEXT,cursor TEXT,
  diagnostics_json TEXT NOT NULL,status TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS payment_mapping_history(
+ payment_id TEXT NOT NULL,old_category TEXT NOT NULL,new_category TEXT NOT NULL,
+ old_rule TEXT NOT NULL,new_rule TEXT NOT NULL,old_version TEXT NOT NULL,new_version TEXT NOT NULL,
+ changed_at TEXT NOT NULL,PRIMARY KEY(payment_id,new_version));
 """
 
 
@@ -147,13 +151,30 @@ class PaymentSettlementService:
 
     def _backfill_payment_mapping(self):
         """Upgrade already persisted payments; the raw provider label remains untouched."""
-        rows=self.db.execute("SELECT payment_id,payment_type FROM sale_payments WHERE canonical_payment_type='UNKNOWN' AND mapping_rule='legacy-unmapped'").fetchall()
+        current=canonicalize_payment_type(None)[2]
+        rows=self.db.execute("SELECT payment_id,payment_type,name,description,canonical_payment_type,mapping_rule,mapping_version FROM sale_payments WHERE mapping_version!=? OR canonical_payment_type='UNKNOWN'",(current,)).fetchall()
+        stamp=datetime.now(timezone.utc).isoformat()
         with self.db:
             for row in rows:
-                category,rule,version=canonicalize_payment_type(row["payment_type"])
+                category,rule,version=canonicalize_payment_type(row["payment_type"],row["name"],row["description"])
                 quality="VALID" if category!="UNKNOWN" else "UNSUPPORTED"
+                self.db.execute("INSERT OR IGNORE INTO payment_mapping_history VALUES(?,?,?,?,?,?,?,?)",(row["payment_id"],row["canonical_payment_type"],category,row["mapping_rule"],rule,row["mapping_version"],version,stamp))
                 self.db.execute("UPDATE sale_payments SET canonical_payment_type=?,mapping_rule=?,mapping_version=?,quality_status=?,quality_reason=? WHERE payment_id=?",
                     (category,rule,version,quality,None if quality=="VALID" else "unknown payment type",row["payment_id"]))
+
+    def shopcaisse_audit(self):
+        """Return a deliberately aggregate-only payment audit (no source IDs)."""
+        grouped={}
+        for field in ("payment_type","name","description"):
+            grouped[field]=[{"value":r[0] if r[0] not in (None,"") else None,"count":r[1],"amount":str(r[2] or 0)}
+                for r in self.db.execute(f"SELECT {field},count(*),sum(CAST(amount AS NUMERIC)) FROM sale_payments GROUP BY {field} ORDER BY count(*) DESC")]
+        period=self.db.execute("SELECT min(coalesce(p.occurred_at,s.sold_at)),max(coalesce(p.occurred_at,s.sold_at)) FROM sale_payments p JOIN sales s USING(sale_id) WHERE s.source='SHOPCAISSE'").fetchone()
+        categories={r[0]:{"count":r[1],"amount":str(r[2] or 0)} for r in self.db.execute("SELECT canonical_payment_type,count(*),sum(CAST(amount AS NUMERIC)) FROM sale_payments GROUP BY canonical_payment_type")}
+        return {"total":self.db.execute("SELECT count(*) FROM sale_payments").fetchone()[0],"raw_values":grouped,
+            "categories":categories,"without_type":self.db.execute("SELECT count(*) FROM sale_payments WHERE trim(coalesce(payment_type,''))='' ").fetchone()[0],
+            "zero_amount":self.db.execute("SELECT count(*) FROM sale_payments WHERE CAST(amount AS NUMERIC)=0").fetchone()[0],
+            "period":{"start":period[0],"end":period[1]},"mixed_tickets":self.db.execute("SELECT count(*) FROM (SELECT sale_id FROM sale_payments GROUP BY sale_id HAVING count(*)>1)").fetchone()[0],
+            "mapping_version":canonicalize_payment_type(None)[2]}
 
     @staticmethod
     def _key(source_type, source_id, target_type, target_id):
@@ -384,19 +405,27 @@ class PaymentSettlementService:
         payout_linked=self.db.execute("SELECT count(DISTINCT sumup_transaction_id) FROM payment_settlements").fetchone()[0]
         final_where="upper(coalesce(status,simple_status,'')) IN ('SUCCESSFUL','SUCCESS','COMPLETED','PAID','VALIDATED')"
         tx=self.db.execute(f"SELECT count(*),coalesce(sum(CAST(amount AS NUMERIC)),0),coalesce(sum(CAST(fee AS NUMERIC)),0),coalesce(sum(CAST(refunded_amount AS NUMERIC)),0),coalesce(sum(CAST(chargeback_amount AS NUMERIC)),0) FROM sumup_transactions WHERE {final_where}").fetchone()
-        cash=self.db.execute("SELECT count(*),coalesce(sum(CAST(p.amount AS NUMERIC)),0) FROM sale_payments p JOIN sales s USING(sale_id) WHERE s.source='SHOPCAISSE' AND p.canonical_payment_type='CASH' AND p.quality_status='VALID'").fetchone()
-        sales_today=self.db.execute("SELECT sum(CASE WHEN event_kind='REFUND' THEN -abs(CAST(line_total_ttc AS NUMERIC)) ELSE CAST(line_total_ttc AS NUMERIC) END) FROM sale_events WHERE date(sold_at)=date('now') AND event_kind IN ('SALE','REFUND')").fetchone()[0] if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sale_events'").fetchone() else None
+        valid="s.source='SHOPCAISSE' AND p.quality_status='VALID' AND upper(coalesce(p.status,'')) NOT IN ('CANCELLED','CANCELED','REFUNDED','REVERSED') AND upper(coalesce(s.status,'')) NOT IN ('CANCELLED','CANCELED','REFUNDED')"
+        cash=self.db.execute(f"SELECT count(*),sum(CAST(p.amount AS NUMERIC)) FROM sale_payments p JOIN sales s USING(sale_id) WHERE {valid} AND p.canonical_payment_type='CASH' AND date(coalesce(p.occurred_at,s.sold_at))=date('now')").fetchone()
+        card_today=self.db.execute(f"SELECT count(*),sum(CAST(p.amount AS NUMERIC)) FROM sale_payments p JOIN sales s USING(sale_id) WHERE {valid} AND p.canonical_payment_type='CARD' AND date(coalesce(p.occurred_at,s.sold_at))=date('now')").fetchone()
+        today=self.db.execute(f"SELECT count(*),sum(CAST(p.amount AS NUMERIC)) FROM sale_payments p JOIN sales s USING(sale_id) WHERE {valid} AND p.canonical_payment_type!='UNKNOWN' AND date(coalesce(p.occurred_at,s.sold_at))=date('now')").fetchone()
+        unknown_today=self.db.execute(f"SELECT count(*) FROM sale_payments p JOIN sales s USING(sale_id) WHERE s.source='SHOPCAISSE' AND date(coalesce(p.occurred_at,s.sold_at))=date('now') AND (p.quality_status!='VALID' OR p.canonical_payment_type='UNKNOWN')").fetchone()[0]
         paid=self.db.execute("SELECT coalesce(sum(CAST(amount_source AS NUMERIC)),0) FROM payment_settlement_links WHERE source_type='SUMUP_PAYOUT' AND status='MATCHED' AND target_id IS NOT NULL").fetchone()[0]
-        pending_payout=self.db.execute("SELECT coalesce(sum(CAST(p.amount AS NUMERIC)),0) FROM sumup_payouts p LEFT JOIN payment_settlement_links l ON l.source_type='SUMUP_PAYOUT' AND l.source_id=p.payout_id AND l.status='MATCHED' WHERE l.settlement_id IS NULL").fetchone()[0]
+        pending_states=("PENDING","SCHEDULED","IN_PROGRESS","PROCESSING")
+        pending_marks=",".join("?" for _ in pending_states)
+        pending_rows=self.db.execute(f"SELECT payout_id,amount,coalesce(paid_date,payout_date),status FROM sumup_payouts WHERE upper(coalesce(status,'')) IN ({pending_marks}) ORDER BY payout_date LIMIT 20",pending_states).fetchall()
+        pending_payout=sum((Decimal(str(r[1])) for r in pending_rows),Decimal())
         unassigned=self.db.execute("SELECT coalesce(sum(CAST(t.amount AS NUMERIC)-CAST(t.fee AS NUMERIC)-CAST(t.refunded_amount AS NUMERIC)-CAST(t.chargeback_amount AS NUMERIC)),0) FROM sumup_transactions t LEFT JOIN payment_settlements p ON p.sumup_transaction_id=t.sumup_transaction_id WHERE p.settlement_id IS NULL AND upper(coalesce(t.status,t.simple_status,'')) IN ('SUCCESSFUL','SUCCESS','COMPLETED','PAID','VALIDATED')").fetchone()[0]
-        transit=Decimal(str(pending_payout))+Decimal(str(unassigned))
+        # Without a bank authority, emitted payouts are not asserted as money due.
+        transit=Decimal(str(unassigned))+(Decimal(str(pending_payout)) if qonto_available else Decimal())
         active_clause="status IN ('UNMATCHED','POSSIBLE','CONFLICT') AND NOT (source_type='SUMUP_PAYOUT' AND match_method='WAITING_FOR_BANK_SOURCE')"
         active_count=self.db.execute(f"SELECT count(*) FROM payment_settlement_links WHERE {active_clause}").fetchone()[0]
         configuration=({"code":"QONTO_NOT_CONFIGURED","status":"NOT_CONFIGURED","count":self.db.execute("SELECT count(*) FROM sumup_payouts").fetchone()[0],"message":"Qonto n’est pas configuré : les payouts ne peuvent pas encore être vérifiés.","action":"Configurer Qonto"} if not qonto_available else None)
         return {"shopcaisse_card_payments":card_count,"shopcaisse_card_amount":str(card_amount),"sumup_transactions":tx[0],"payouts":self.db.execute("SELECT count(*) FROM sumup_payouts").fetchone()[0],"payout_linked_transactions":payout_linked,"qonto_credits":qonto_credits,"counts":counts,"matched_amount":str(matched_amount),"unmatched_amount":str(max(Decimal(),Decimal(str(card_amount))-Decimal(str(matched_amount)))),"coverage_percent":str(coverage_amount) if coverage_amount is not None else None,"coverage_count_percent":str(coverage_count) if coverage_count is not None else None,"coverage_amount_percent":str(coverage_amount) if coverage_amount is not None else None,"coverage_metric":"AMOUNT","payment_quality":quality,"windows_seconds":{"priority":self.priority_window_seconds,"extension":self.window_seconds},"payout_balance":payout_states,"period":{"start":period[0],"end":period[1]},"common_period":self._source_ranges(),"revenue_included":False,
-          "cash_summary":{"total_collected_today":str(sales_today) if sales_today is not None else None,"card_declared":str(card_amount) if card_count else None,"card_processed":str(tx[1]) if tx[0] else None,"cash":str(cash[1]) if cash[0] else None,"fees":str(tx[2]) if tx[0] else None,"refunds":str(tx[3]) if tx[0] else None,"chargebacks":str(tx[4]) if tx[0] else None,"paid":str(paid) if qonto_available else None,"unmatched":str(max(Decimal(),Decimal(str(card_amount))-Decimal(str(matched_amount))))},
+          "cash_summary":{"total_collected_today":str(today[1]) if today[0] and not unknown_today else None,"total_collected_reliable":not bool(unknown_today),"card_declared":str(card_today[1]) if card_today[0] else None,"card_count_today":card_today[0],"card_processed":str(tx[1]) if tx[0] else None,"cash":str(cash[1]) if cash[0] else None,"cash_count_today":cash[0],"period":"TODAY_UTC","fees":str(tx[2]) if tx[0] else None,"refunds":str(tx[3]) if tx[0] else None,"chargebacks":str(tx[4]) if tx[0] else None,"paid":str(paid) if qonto_available else None,"unmatched":str(max(Decimal(),Decimal(str(card_amount))-Decimal(str(matched_amount))))},
           "in_transit":{"amount":str(transit),"transactions_without_payout":str(unassigned),"payouts_waiting_bank":str(pending_payout),"partially_matched":None,"reversals_pending":str(Decimal(str(tx[3]))+Decimal(str(tx[4]))),"oldest":period[0],"average_delay_days":None,"recommended_action":"Configurer Qonto" if not qonto_available else "Examiner les éléments les plus anciens"},
-          "expected_payouts":[{"reference":r[0],"amount":r[1],"date":r[2],"status":"WAITING_FOR_BANK_SOURCE" if not qonto_available else "WAITING_FOR_BANK","bank":"Qonto" if qonto_available else None} for r in self.db.execute("SELECT payout_id,amount,coalesce(paid_date,payout_date) FROM sumup_payouts WHERE payout_id NOT IN (SELECT source_id FROM payment_settlement_links WHERE source_type='SUMUP_PAYOUT' AND status='MATCHED') ORDER BY payout_date LIMIT 20")],
+          "expected_payouts":[{"reference":r[0],"amount":r[1],"date":r[2],"sumup_status":r[3],"status":"SUMUP_ISSUED_BANK_UNAVAILABLE" if not qonto_available else "WAITING_FOR_BANK","bank":None if not qonto_available else "Qonto","received":None,"confidence":"NOT_EVALUATED" if not qonto_available else "PENDING"} for r in pending_rows],
+          "payout_status_counts":{"pending":self.db.execute(f"SELECT count(*) FROM sumup_payouts WHERE upper(coalesce(status,'')) IN ({pending_marks})",pending_states).fetchone()[0],"paid":self.db.execute("SELECT count(*) FROM sumup_payouts WHERE upper(coalesce(status,'')) IN ('PAID','COMPLETED','SUCCESSFUL')").fetchone()[0],"unknown":self.db.execute(f"SELECT count(*) FROM sumup_payouts WHERE trim(coalesce(status,''))='' OR upper(status) NOT IN ({pending_marks},'PAID','COMPLETED','SUCCESSFUL','FAILED','CANCELLED','CANCELED')",pending_states).fetchone()[0]},
           "settlement_coverage":{"amount_percent":str(coverage_amount) if coverage_amount is not None else None,"count_percent":str(coverage_count) if coverage_count is not None else None},"anomaly_breakdown":self.anomaly_breakdown(qonto_available),"active_anomalies":active_count,"configuration_alert":configuration,"daily_trends":self.daily_trends()}
 
     def anomaly_breakdown(self, qonto_available=None):
