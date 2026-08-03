@@ -42,6 +42,7 @@ def test_payout_deduction_link_and_idempotence(tmp_path):
  payout={"id":"pay1","date":"2026-01-02","amount":"9.7","currency":"EUR","fee":".3","status":"PAID","deductions":[{"transaction_code":"CODE","type":"REFUND"}]}
  page=type("P",(),{"rows":(payout,),"next_cursor":None})();assert s.import_page(page)["rows_imported"]==1
  assert s.reconcile()==1 and s.import_page(page)["rows_imported"]==0
+ assert s.cockpit()["revenue_included"] is False
 
 def test_payout_insert_values_match_sqlite_schema(tmp_path):
  ledger=PaymentSettlementLedger(tmp_path/"db.sqlite")
@@ -103,6 +104,7 @@ def test_event_subledgers_partial_refund_chargeback_tip_tax_and_fee(tmp_path):
  assert ledger.db.execute("select is_partial from sumup_refunds").fetchone()[0]==1
  assert ledger.db.execute("select count(*) from sumup_fees").fetchone()[0]==1
  assert ledger.db.execute("select count(*) from sumup_transaction_events").fetchone()[0]==3
+ assert ledger.db.execute("select count(*) from sumup_reversals").fetchone()[0]==1
 
 def test_merchant_and_readers_are_separate_and_sanitized(tmp_path):
  ledger=SumUpTransactionLedger(tmp_path/"db.sqlite")
@@ -111,6 +113,14 @@ def test_merchant_and_readers_are_separate_and_sanitized(tmp_path):
  assert ledger.db.execute("select legal_name from sumup_merchants").fetchone()[0]=="Dr Cloud"
  assert "must-not-persist" not in ledger.db.execute("select raw_json from sumup_merchants").fetchone()[0]
  assert ledger.db.execute("select model from sumup_readers").fetchone()[0]=="SOLO"
+
+def test_sensitive_card_material_is_never_persisted(tmp_path):
+ ledger=SumUpTransactionLedger(tmp_path/"db.sqlite")
+ row={"id":"tx","amount":"1","currency":"EUR","timestamp":"2026-01-01T00:00:00Z",
+      "card":{"scheme":"VISA","pan":"4111111111111111","cvv":"123","payment_token":"token"}}
+ ledger.import_page(type("P",(),{"rows":(row,),"next_cursor":None})())
+ raw=ledger.db.execute("select raw_json from sumup_transactions").fetchone()[0]
+ assert "4111111111111111" not in raw and '123' not in raw and 'token' not in raw
 
 def test_payout_dates_are_mandatory_and_more_than_100_is_paginated():
  first={"items":[{"id":f"p{i}","date":"2026-01-01"} for i in range(100)]}

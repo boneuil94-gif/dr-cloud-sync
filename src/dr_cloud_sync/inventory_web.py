@@ -162,7 +162,7 @@ class InventoryApp:
         for args in (("prestashop_sales","PRESTASHOP_SALES","PrestaShop",configured_ps),("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",prestashop_connected),("bank","BANK","Qonto",qonto_connected),("purchases","PURCHASES","LOCAL",True),("stock","STOCK","LOCAL",True)):
             self.data_hub.register_source(*args[:3],configured=args[3],capabilities=("READ",),stale_after_seconds=intervals["bank"]*2 if args[0]=="bank" else intervals["sales"]*2)
         sumup_interval=int(os.environ.get("SUMUP_SYNC_INTERVAL_SECONDS","900"))
-        for source_id,source_type in (("sumup_transactions","SUMUP_TRANSACTIONS"),("sumup_payouts","SUMUP_PAYOUTS")):
+        for source_id,source_type in (("sumup_merchant","SUMUP_MERCHANT"),("sumup_transactions","SUMUP_TRANSACTIONS"),("sumup_payouts","SUMUP_PAYOUTS"),("sumup_fees","SUMUP_FEES"),("sumup_refunds","SUMUP_REFUNDS"),("sumup_chargebacks","SUMUP_CHARGEBACKS"),("sumup_readers","SUMUP_READERS")):
             self.data_hub.register_source(source_id,source_type,"SumUp",configured=sumup_connected,capabilities=("READ_ONLY",),stale_after_seconds=sumup_interval*2)
         if prestashop_client:
             self.data_hub.register_source("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",status="UNAVAILABLE",capabilities=("READ",),stale_after_seconds=intervals["sales"]*2)
@@ -272,6 +272,8 @@ class InventoryApp:
             if path == "/api/admin/sumup-schema" and method == "GET":
                 return self._json(start,{**sumup_schema_diagnostic(self.bank.db),
                     "sqlite_consumers":runtime_diagnostics(self.bank.db)})
+            if path == "/api/admin/sumup" and method == "GET":
+                return self._json(start,self.sumup_settlements.cockpit())
             if path == "/api/data-hub" and method == "GET": return self._json(start,{**self.data_hub.health(),"sales_diagnostics":self.sales_sync.diagnostics(),"runtime":{**self.data_hub.runtime(self.automation_operations()),"configuration":{"prestashop_paid_state_ids":"CONFIGURED" if self.prestashop_paid_states_configured else "MISSING"}}})
             if path == "/api/admin/shopcaisse-sales/failures" and method == "GET":
                 return self._json(start,self.sales_sync.failed_sales("SHOPCAISSE"))

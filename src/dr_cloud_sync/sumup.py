@@ -48,6 +48,8 @@ class SumUpRefund: refund_id: str; transaction_id: str; raw: dict
 @dataclass(frozen=True)
 class SumUpChargeback: chargeback_id: str; transaction_id: str; raw: dict
 @dataclass(frozen=True)
+class SumUpReversal: reversal_id: str; transaction_id: str; raw: dict
+@dataclass(frozen=True)
 class SumUpPayout: payout_id: str; raw: dict
 @dataclass(frozen=True)
 class SumUpPayoutItem: item_id: str; payout_id: str; raw: dict
@@ -74,7 +76,8 @@ def _cursor(value):
 def _safe_raw(value):
     """Recursively remove credentials while retaining all business fields."""
     if isinstance(value, dict):
-        return {k: _safe_raw(v) for k, v in value.items() if not any(s in k.lower() for s in ("authorization", "access_token", "api_key", "secret"))}
+        forbidden = ("authorization", "access_token", "api_key", "secret", "cvv", "cvc", "payment_token", "card_token", "pan")
+        return {k: _safe_raw(v) for k, v in value.items() if not any(s in k.lower() for s in forbidden)}
     if isinstance(value, list):
         return [_safe_raw(v) for v in value]
     return value
@@ -208,6 +211,7 @@ CREATE TABLE IF NOT EXISTS sumup_transaction_events(event_id TEXT PRIMARY KEY,su
 CREATE TABLE IF NOT EXISTS sumup_fees(fee_id TEXT PRIMARY KEY,sumup_transaction_id TEXT NOT NULL,fee_type TEXT,amount TEXT NOT NULL,currency TEXT,raw_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sumup_refunds(refund_id TEXT PRIMARY KEY,sumup_transaction_id TEXT NOT NULL,amount TEXT NOT NULL,currency TEXT,refund_at TEXT,status TEXT,is_partial INTEGER,reason TEXT,raw_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sumup_chargebacks(chargeback_id TEXT PRIMARY KEY,sumup_transaction_id TEXT NOT NULL,amount TEXT NOT NULL,currency TEXT,chargeback_at TEXT,status TEXT,reason TEXT,raw_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sumup_reversals(reversal_id TEXT PRIMARY KEY,sumup_transaction_id TEXT NOT NULL,amount TEXT NOT NULL,currency TEXT,reversal_at TEXT,status TEXT,reason TEXT,payout_id TEXT,source TEXT NOT NULL DEFAULT 'transaction_detail',raw_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sumup_payouts(payout_id TEXT PRIMARY KEY,type TEXT,payout_date TEXT NOT NULL,amount TEXT NOT NULL,currency TEXT NOT NULL,fee TEXT NOT NULL,status TEXT,reference TEXT,start_date TEXT,end_date TEXT,paid_date TEXT,deductions_json TEXT NOT NULL DEFAULT '[]',raw_json TEXT NOT NULL,imported_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sumup_payout_items(item_id TEXT PRIMARY KEY,payout_id TEXT NOT NULL,sumup_transaction_id TEXT,transaction_code TEXT,item_type TEXT,amount TEXT,currency TEXT,occurred_at TEXT,raw_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sumup_readers(reader_id TEXT PRIMARY KEY,name TEXT,model TEXT,status TEXT,merchant_code TEXT,store_id TEXT,last_seen TEXT,software_version TEXT,raw_json TEXT NOT NULL,imported_at TEXT NOT NULL);
@@ -291,11 +295,14 @@ class SumUpTransactionLedger:
                 for i, event in enumerate(events):
                     eid = self._id("event", tid, i, event); etype = str(event.get("type") or event.get("event_type") or "UNKNOWN").upper()
                     self.db.execute("INSERT OR REPLACE INTO sumup_transaction_events (event_id,sumup_transaction_id,event_type,status,amount,currency,event_at,payout_id,raw_json) VALUES(?,?,?,?,?,?,?,?,?)", (eid, tid, etype, event.get("status"), _decimal(event.get("amount")), event.get("currency") or row.get("currency"), event.get("timestamp") or event.get("date"), event.get("payout_id"), json.dumps(_safe_raw(event))))
-                    target = "sumup_refunds" if etype == "REFUND" else "sumup_chargebacks" if "CHARGEBACK" in etype else None
+                    target = "sumup_refunds" if etype == "REFUND" else "sumup_chargebacks" if "CHARGEBACK" in etype else "sumup_reversals" if "REVERSAL" in etype else None
                     if target == "sumup_refunds":
                         self.db.execute("INSERT OR REPLACE INTO sumup_refunds (refund_id,sumup_transaction_id,amount,currency,refund_at,status,is_partial,reason,raw_json) VALUES(?,?,?,?,?,?,?,?,?)", (eid, tid, _decimal(event.get("amount")), event.get("currency") or row.get("currency"), event.get("timestamp") or event.get("date"), event.get("status"), int(Decimal(_decimal(event.get("amount"))) < Decimal(_decimal(row.get("amount")))), event.get("reason"), json.dumps(_safe_raw(event))))
                     elif target:
-                        self.db.execute("INSERT OR REPLACE INTO sumup_chargebacks (chargeback_id,sumup_transaction_id,amount,currency,chargeback_at,status,reason,raw_json) VALUES(?,?,?,?,?,?,?,?)", (eid, tid, _decimal(event.get("amount")), event.get("currency") or row.get("currency"), event.get("timestamp") or event.get("date"), event.get("status"), event.get("reason") or event.get("category"), json.dumps(_safe_raw(event))))
+                        if target == "sumup_chargebacks":
+                            self.db.execute("INSERT OR REPLACE INTO sumup_chargebacks (chargeback_id,sumup_transaction_id,amount,currency,chargeback_at,status,reason,raw_json) VALUES(?,?,?,?,?,?,?,?)", (eid, tid, _decimal(event.get("amount")), event.get("currency") or row.get("currency"), event.get("timestamp") or event.get("date"), event.get("status"), event.get("reason") or event.get("category"), json.dumps(_safe_raw(event))))
+                        else:
+                            self.db.execute("INSERT OR REPLACE INTO sumup_reversals (reversal_id,sumup_transaction_id,amount,currency,reversal_at,status,reason,payout_id,source,raw_json) VALUES(?,?,?,?,?,?,?,?,?,?)", (eid, tid, _decimal(event.get("amount")), event.get("currency") or row.get("currency"), event.get("timestamp") or event.get("date"), event.get("status"), event.get("reason") or event.get("category"), event.get("payout_id"), "transaction_detail", json.dumps(_safe_raw(event))))
         return {"rows_imported": inserted, "duplicates": len(page.rows) - inserted, "cursor": page.next_cursor}
 
     def sync(self, provider, cursor=None, **bounds):
@@ -344,6 +351,27 @@ class PaymentSettlementLedger:
         return {"rows_imported": total, "duplicates": duplicates, "cursor": cursor}
 
     def rows(self): return [dict(r) for r in self.db.execute("SELECT * FROM sumup_payouts ORDER BY payout_date DESC")]
+
+    def cockpit(self):
+        """Operational settlement view; amounts are evidence, never revenue."""
+        one = lambda sql: dict(self.db.execute(sql).fetchone())
+        transactions = one("""SELECT count(*) volume,coalesce(sum(CAST(amount AS NUMERIC)),0) amount,
+            min(timestamp) period_start,max(timestamp) period_end,
+            coalesce(sum(CAST(refunded_amount AS NUMERIC)),0) refunds,
+            coalesce(sum(CAST(chargeback_amount AS NUMERIC)),0) chargebacks
+            FROM sumup_transactions""")
+        payouts = one("""SELECT count(*) volume,coalesce(sum(CAST(amount AS NUMERIC)),0) net,
+            coalesce(sum(CAST(fee AS NUMERIC)),0) fees,min(start_date) period_start,max(end_date) period_end
+            FROM sumup_payouts""")
+        composition = one("""SELECT count(*) items,
+            sum(CASE WHEN sumup_transaction_id IS NOT NULL THEN 1 ELSE 0 END) linked
+            FROM sumup_payout_items""")
+        states = {row["status"] or "UNKNOWN": row["n"] for row in self.db.execute(
+            "SELECT status,count(*) n FROM payment_settlements GROUP BY status")}
+        return {"transactions": transactions, "payouts": payouts,
+                "composition": {**composition, "availability": "available" if composition["items"] else "unavailable"},
+                "reconciliations": {key: states.get(key, 0) for key in ("MATCHED", "POSSIBLE", "UNMATCHED", "CONFLICT")},
+                "revenue_included": False}
 
     def reconcile(self):
         created = 0; stamp = datetime.now(timezone.utc).isoformat()

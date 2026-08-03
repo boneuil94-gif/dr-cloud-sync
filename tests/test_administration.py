@@ -37,7 +37,7 @@ def test_administration_exposes_non_sensitive_sumup_schema_diagnostic(configured
     status, _, body = request(app, "/api/admin/sumup-schema", cookie=cookie)
     payload = json.loads(body)
     assert status == "200 OK"
-    assert payload["schema_version"] == payload["target_version"] == 2
+    assert payload["schema_version"] == payload["target_version"] == 3
     assert payload["pending_migrations"] == []
     assert payload["last_check"]["result"] == "OK"
     assert set(payload) == {"schema_version", "target_version", "applied_migrations",
