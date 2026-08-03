@@ -97,7 +97,8 @@ class InventoryApp:
         self.settlements=PaymentSettlementService(self.bank.db,
             priority_window_seconds=int(os.environ.get("SETTLEMENT_PRIORITY_WINDOW_SECONDS","120")),
             window_seconds=int(os.environ.get("SETTLEMENT_MATCH_WINDOW_SECONDS","600")),
-            rounding_tolerance=os.environ.get("SETTLEMENT_ROUNDING_TOLERANCE","0.01"))
+            rounding_tolerance=os.environ.get("SETTLEMENT_ROUNDING_TOLERANCE","0.01"),
+            transit_window_days=int(os.environ.get("SUMUP_TRANSIT_WINDOW_DAYS","14")))
         register_runtime(self.bank.db, "web")
         secrets_provider=EnvironmentSecretProvider(os.environ,{
             "qonto.production": os.environ.get("QONTO_CREDENTIAL_REF","QONTO_CREDENTIAL"),
@@ -361,7 +362,11 @@ class InventoryApp:
                 self.security and self.security.audit(session["uid"],"SETTLEMENT_NOTE_ADDED","PAYMENT_SETTLEMENT",sid,request_id,"settlements")
                 return self._json(start,result)
             if path == "/api/settlements/backfill" and method == "POST":
-                result=self.settlements.backfill(batch_size=int(self._body(env).get("batch_size",500))); self.security and self.security.audit(session["uid"],"SETTLEMENT_BACKFILL_STARTED","PAYMENT_SETTLEMENT_RUN",result["run_id"],request_id,"settlements",result); return self._json(start,result,"202 Accepted")
+                # The settlement projection cannot recover payments skipped by an
+                # already-advanced sales cursor. Re-read the complete read-only
+                # ShopCaisse history first; payment upserts make this idempotent.
+                imported=self.sales_sync.sync("SHOPCAISSE",force=True,actor=session.get("u","authenticated"))
+                result={"shopcaisse_import":imported,**self.settlements.backfill(batch_size=int(self._body(env).get("batch_size",500)))}; self.security and self.security.audit(session["uid"],"SETTLEMENT_BACKFILL_STARTED","PAYMENT_SETTLEMENT_RUN",result["run_id"],request_id,"settlements",result); return self._json(start,result,"202 Accepted")
             if path == "/api/settlements/recompute" and method == "POST":
                 result=self.settlements.recompute(); self.security and self.security.audit(session["uid"],"SETTLEMENT_RECOMPUTED","PAYMENT_SETTLEMENT",None,request_id,"settlements",result); return self._json(start,result)
             if path == "/api/purchasing/costs" and method == "GET": return self._json(start,{"events":self.purchase_costs._rows("SELECT * FROM purchase_cost_events ORDER BY received_at DESC")})

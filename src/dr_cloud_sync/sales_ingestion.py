@@ -202,7 +202,7 @@ class ShopCaisseAPISalesProvider:
                 payments=[]
                 for i,p in enumerate(row.get("payments",[])):
                     raw_type=p.get("type")
-                    canonical,rule,version=canonicalize_payment_type(raw_type)
+                    canonical,rule,version=canonicalize_payment_type(raw_type,p.get("name"),p.get("description"))
                     payments.append(CanonicalPayment(str(p.get("id") or f"{row['id']}:{i}"),str(raw_type or ""),
                         _decimal(p.get("amount"),required=True),p.get("name"),p.get("description"),canonical,rule,version,
                         str(p.get("status") or row.get("status") or "UNKNOWN").upper()))
@@ -334,10 +334,20 @@ class SalesSyncService:
                         elif canonical=="UNKNOWN": quality,reason="UNSUPPORTED","unknown payment type"
                         elif payment.status.upper() in {"CANCELLED","CANCELED","REFUNDED","REVERSED"} or sale.status in {"CANCELLED","CANCELED","REFUNDED"}: quality,reason="INVALID","cancelled or fully refunded"
                         imported=_now()
-                        inserted=self.db.execute("""INSERT OR IGNORE INTO sale_payments
+                        payment_id=f"payment:{source}:{sale.external_sale_id}:{payment.external_payment_id}"
+                        existed=bool(self.db.execute("SELECT 1 FROM sale_payments WHERE payment_id=?",(payment_id,)).fetchone())
+                        self.db.execute("""INSERT INTO sale_payments
                           (payment_id,sale_id,external_payment_id,payment_type,amount,name,description,canonical_payment_type,mapping_rule,mapping_version,currency,occurred_at,status,source,store_id,imported_at,quality_status,quality_reason)
-                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(f"payment:{source}:{sale.external_sale_id}:{payment.external_payment_id}",sale_id,payment.external_payment_id,payment.payment_type,str(payment.amount),payment.name,payment.description,canonical,rule,version,sale.currency,sale.sold_at,payment.status,source,sale.location,imported,quality,reason)).rowcount
-                        report["payments"]+=inserted
+                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                          ON CONFLICT(payment_id) DO UPDATE SET sale_id=excluded.sale_id,external_payment_id=excluded.external_payment_id,
+                          payment_type=excluded.payment_type,amount=excluded.amount,name=excluded.name,description=excluded.description,
+                          canonical_payment_type=excluded.canonical_payment_type,mapping_rule=excluded.mapping_rule,mapping_version=excluded.mapping_version,
+                          currency=excluded.currency,occurred_at=excluded.occurred_at,status=excluded.status,source=excluded.source,
+                          store_id=excluded.store_id,imported_at=excluded.imported_at,quality_status=excluded.quality_status,quality_reason=excluded.quality_reason""",
+                          (payment_id,sale_id,payment.external_payment_id,payment.payment_type,str(payment.amount),payment.name,payment.description,canonical,rule,version,sale.currency,sale.sold_at,payment.status,source,sale.location,imported,quality,reason))
+                        report["payments"]+=int(not existed)
+                        report.setdefault("payments_updated",0)
+                        report["payments_updated"]+=int(existed)
                 now=_now();self.db.execute("INSERT INTO sales_sync_states(source,last_success_at,last_attempt_at,status,cursor,last_error,imported_count,unmatched_count,last_report_json) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(source) DO UPDATE SET last_success_at=excluded.last_success_at,last_attempt_at=excluded.last_attempt_at,status=excluded.status,cursor=excluded.cursor,last_error=NULL,imported_count=excluded.imported_count,unmatched_count=excluded.unmatched_count,last_report_json=excluded.last_report_json",(source,now,attempt,"SUCCESS",batch.cursor,None,report["imported"],report["unmatched"]+report["ambiguous"],json.dumps(report,ensure_ascii=False)))
                 self.ledger._audit("SALES_SYNC_COMPLETED",actor,report)
             return report

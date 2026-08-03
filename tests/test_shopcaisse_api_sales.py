@@ -70,3 +70,20 @@ def test_payment_mapping_and_source_fields_are_persisted(tmp_path):
     assert tuple(row)[0:2]==("CARD","CARD")
     assert row[2].startswith("exact-normalized") and row[3]=="shopcaisse-payment-types-v2"
     assert tuple(row)[4:]==("EUR","2026-08-01T10:00:00+00:00","SHOPCAISSE","store-1","VALID")
+
+
+def test_forced_historical_replay_recovers_payments_after_cursor_advanced(tmp_path):
+    sync,api=service(tmp_path)
+    api.pull_store_sales=lambda store_id,from_ms=None: [{
+        "id":"ticket-1","timestamp":1785578400000,"status":"paid","type":"SALE","lines":[]}]
+    sync.sync("SHOPCAISSE")
+    assert sync.db.execute("SELECT count(*) FROM sale_payments").fetchone()[0] == 0
+    api.pull_store_sales=lambda store_id,from_ms=None: [{
+        "id":"ticket-1","timestamp":1785578400000,"status":"paid","type":"SALE","lines":[],
+        "payments":[{"id":"card","type":None,"name":"Carte bancaire","amount":12},
+                    {"id":"cash","type":"CASH","amount":3}]}]
+    report=sync.sync("SHOPCAISSE",force=True)
+    assert report["payments"] == 2
+    assert [tuple(r) for r in sync.db.execute("SELECT canonical_payment_type,amount FROM sale_payments ORDER BY canonical_payment_type")] == [("CARD","12"),("CASH","3")]
+    replay=sync.sync("SHOPCAISSE",force=True)
+    assert replay["payments"] == 0 and replay["payments_updated"] == 2

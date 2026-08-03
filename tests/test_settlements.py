@@ -164,6 +164,17 @@ def test_paid_payout_is_not_expected_or_counted_in_transit_without_bank():
     assert result["payout_status_counts"]["paid"] == 1
 
 
+def test_old_unassigned_sumup_history_is_not_current_transit_and_unknown_fees_are_unavailable():
+    db=database(); service=PaymentSettlementService(db,transit_window_days=14)
+    row=transaction(timestamp="2023-09-25T10:00:00Z")
+    values=(row["sumup_transaction_id"],row["transaction_code"],row["amount"],row["currency"],row["timestamp"],row["status"],row["status"],None,None,None,None,None,"0","0","0","0",None,None,None,None,"0","[]","{}","2023-09-25T10:00:00Z")
+    db.execute("INSERT INTO sumup_transactions VALUES("+",".join("?"*24)+")",values)
+    result=service.summary()
+    assert result["in_transit"]["amount"] == "0"
+    assert result["in_transit"]["historical_unreconciled"] == "98"
+    assert result["cash_summary"]["fees"] is None
+
+
 def test_settlement_table_contract_has_one_cell_per_column():
     from pathlib import Path
     root=Path(__file__).parents[1]/"src"/"dr_cloud_sync"/"static"
