@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 import sqlite3
 
 from dr_cloud_sync.sales_ingestion import OPERATIONAL_SCHEMA
-from dr_cloud_sync.settlements import PaymentSettlementService, match_payment
+from dr_cloud_sync.settlements import PaymentSettlementService, match_payment, match_payout
 from dr_cloud_sync.sumup import SCHEMA as SUMUP_SCHEMA
 
 
@@ -60,3 +60,13 @@ def test_payout_balance_fee_refund_chargeback_adjustment_and_unavailable():
     assert service.payout("pay")["balance_status"] == "BALANCED"
     db.execute("INSERT INTO sumup_payouts VALUES("+",".join("?"*14)+")",("empty",None,stamp,"1","EUR","0","PAID",None,None,None,None,"[]","{}",stamp))
     assert service.payout("empty")["composition"] == "UNAVAILABLE"
+
+
+def test_payout_to_qonto_requires_reference_or_unique_sumup_counterparty():
+    payout={"payout_id":"pay-1","reference":"bank-ref","amount":"96.30","currency":"EUR","payout_date":"2026-08-03T10:00:00Z","paid_date":None}
+    credit={"transaction_id":"bank-1","booked_at":"2026-08-04T10:00:00Z","amount":"96.30","currency":"EUR","direction":"CREDIT","counterparty":"SumUp Payments","label":"Settlement","reference":None}
+    assert match_payout(payout,[credit])["status"] == "MATCHED"
+    assert match_payout(payout,[{**credit,"counterparty":"Other"}])["status"] == "UNMATCHED"
+    assert match_payout(payout,[credit,{**credit,"transaction_id":"bank-2"}])["status"] == "CONFLICT"
+    exact=match_payout(payout,[{**credit,"counterparty":"Other","reference":"bank-ref"}])
+    assert (exact["status"],exact["match_method"]) == ("MATCHED","EXACT_BANK_REFERENCE")

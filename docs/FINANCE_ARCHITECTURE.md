@@ -8,3 +8,7 @@ Les synchronisations Data Hub enchaînent ingestion, rapprochement, Finance puis
 # Payment Settlement Ledger
 
 Finance expose les encaissements carte, frais, remboursements, chargebacks, net attendu et payouts comme projection du Payment Settlement Ledger. Ces valeurs ne sont jamais ajoutées au CA : l'autorité du revenu demeure le Sales Ledger. Le futur lien payout → Qonto rapprochera un mouvement bancaire réel sans modifier le Bank Ledger. Voir `PAYMENT_SETTLEMENT_LEDGER.md` et `SUMUP_PAYOUT_RECONCILIATION.md`.
+
+## Settlements carte
+
+Les transactions SumUp, frais, remboursements, chargebacks, payouts et crédits Qonto enrichissent uniquement la projection d'encaissement. Ils ne sont jamais additionnés au chiffre d'affaires, qui reste exclusivement issu du Sales Ledger.

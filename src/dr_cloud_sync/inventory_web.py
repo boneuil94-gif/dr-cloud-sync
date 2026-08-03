@@ -105,7 +105,7 @@ class InventoryApp:
             "sumup.production": "SUMUP_API_KEY",
         })
         secret_ref=os.environ.get("QONTO_SECRET_REF") or ("qonto.production" if os.environ.get(os.environ.get("QONTO_CREDENTIAL_REF","QONTO_CREDENTIAL")) else "")
-        candidate=QontoBankProvider(secret_ref,secrets_provider,timeout=float(os.environ.get("QONTO_TIMEOUT_SECONDS","8")))
+        candidate=QontoBankProvider(secret_ref,secrets_provider,timeout=float(os.environ.get("QONTO_TIMEOUT_SECONDS","8")),base_url=os.environ.get("QONTO_API_URL") or None)
         qonto_connected=False
         if candidate.configured:
             try: qonto_connected=candidate.health()["status"]=="CONNECTED"
@@ -144,7 +144,7 @@ class InventoryApp:
                 refunded_state_ids=state_ids("PRESTASHOP_REFUNDED_STATE_IDS"),
                 partially_refunded_state_ids=state_ids("PRESTASHOP_PARTIALLY_REFUNDED_STATE_IDS"))
         configured_ps="PRESTASHOP" in sales_providers
-        intervals={"sales":int(os.environ.get("DATA_HUB_SALES_INTERVAL_SECONDS","900")),"bank":int(os.environ.get("DATA_HUB_BANK_INTERVAL_SECONDS","10800")),"projection":int(os.environ.get("DATA_HUB_PROJECTION_INTERVAL_SECONDS","900"))}
+        intervals={"sales":int(os.environ.get("DATA_HUB_SALES_INTERVAL_SECONDS","900")),"bank":int(os.environ.get("QONTO_SYNC_INTERVAL_SECONDS",os.environ.get("DATA_HUB_BANK_INTERVAL_SECONDS","10800"))),"projection":int(os.environ.get("DATA_HUB_PROJECTION_INTERVAL_SECONDS","900"))}
         self.data_hub.register_source("shopcaisse_sales","SHOPCAISSE_SALES","ShopCaisse",
             status="UNAVAILABLE" if shopcaisse_key else "NOT_CONFIGURED",
             capabilities=("READ_SALES","READ_PAYMENTS","READ_STOCK"),stale_after_seconds=intervals["sales"]*2)
@@ -180,7 +180,7 @@ class InventoryApp:
         for job in (JobDefinition("sync_shopcaisse_sales","shopcaisse_sales","SHOPCAISSE_SALES",int(os.environ.get("SHOPCAISSE_SYNC_INTERVAL_SECONDS","600"))),JobDefinition("sync_prestashop_sales","prestashop_sales","PRESTASHOP_SALES",intervals["sales"]),JobDefinition("sync_prestashop_catalog","prestashop_catalog","PRESTASHOP_CATALOG",intervals["sales"]),JobDefinition("sync_bank_transactions","bank","BANK",intervals["bank"]),JobDefinition("refresh_sales_metrics","prestashop_sales","SALES_METRICS",intervals["projection"],("sync_prestashop_sales",)),JobDefinition("reconcile_bank_sales","bank","RECONCILE",intervals["projection"],("sync_bank_transactions",)),JobDefinition("refresh_finance","bank","FINANCE",intervals["projection"],("reconcile_bank_sales",)),JobDefinition("refresh_dashboard","purchases","DASHBOARD",intervals["projection"]),JobDefinition("refresh_marketing_signals","prestashop_sales","MARKETING",intervals["projection"],("refresh_sales_metrics",))): self.data_hub.register_job(job)
         self.data_hub.register_job(JobDefinition("sync_sumup_transactions","sumup_transactions","SUMUP_TRANSACTIONS",sumup_interval))
         self.data_hub.register_job(JobDefinition("sync_sumup_payouts","sumup_payouts","SUMUP_PAYOUTS",sumup_interval,("sync_sumup_transactions",)))
-        self.data_hub.register_job(JobDefinition("sync_payment_settlements","sumup_payouts","PAYMENT_SETTLEMENTS",sumup_interval,("sync_shopcaisse_sales","sync_sumup_transactions","sync_sumup_payouts")))
+        self.data_hub.register_job(JobDefinition("sync_payment_settlements","sumup_payouts","PAYMENT_SETTLEMENTS",sumup_interval,("sync_shopcaisse_sales","sync_sumup_transactions","sync_sumup_payouts","sync_bank_transactions")))
         self.prestashop_client=prestashop_client
         self.shopcaisse_client=shopcaisse_client
         self.sales_import_preview=None
@@ -233,7 +233,7 @@ class InventoryApp:
                 "/inventory.css": ("inventory.css", "text/css; charset=utf-8"),
                 **{f"/{name}": (name, "text/javascript; charset=utf-8") for name in (
                     "app-shell.js", "inventory.js", "roadmap.js", "dashboard.js",
-                    "administration.js", "stock.js", "purchasing.js", "security.js", "marketing.js", "sales.js", "finance.js",
+                    "administration.js", "stock.js", "purchasing.js", "security.js", "marketing.js", "sales.js", "finance.js", "settlements.js",
                 )},
             }
             if path in public_assets:
@@ -272,6 +272,7 @@ class InventoryApp:
             if path == "/marketing": return self._html(start,"marketing.html",session,request_id)
             if path == "/sales": return self._html(start,"sales.html",session,request_id)
             if path == "/finance": return self._html(start,"finance.html",session,request_id)
+            if path == "/settlements": return self._html(start,"settlements.html",session,request_id)
             if path == "/api/data-hub/diagnostics" and method == "GET":
                 query=parse_qs(env.get("QUERY_STRING", "")); return self._json(start,{"diagnostics":self.data_hub.diagnostics.recent(query.get("source_id",[None])[0],query.get("limit",[10])[0])})
             if path == "/api/admin/sumup-schema" and method == "GET":
@@ -310,6 +311,10 @@ class InventoryApp:
             if path == "/api/settlements/summary" and method == "GET": return self._json(start,self.settlements.summary())
             if path == "/api/settlements/matches" and method == "GET": return self._json(start,{"items":self.settlements.matches()})
             if path == "/api/settlements/conflicts" and method == "GET": return self._json(start,{"items":self.settlements.matches("CONFLICT")})
+            if path.startswith("/api/settlements/") and path.endswith("/details") and method == "GET":
+                sid=unquote(path.removeprefix("/api/settlements/").removesuffix("/details"))
+                try:return self._json(start,self.settlements.details(sid))
+                except KeyError:return self._json(start,{"error":"Rapprochement introuvable"},"404 Not Found")
             if path.startswith("/api/settlements/payouts/") and method == "GET":
                 try: return self._json(start,self.settlements.payout(unquote(path.removeprefix("/api/settlements/payouts/"))))
                 except KeyError: return self._json(start,{"error":"Payout introuvable"},"404 Not Found")
@@ -318,6 +323,19 @@ class InventoryApp:
                 try: result=self.settlements.review(sid,"MATCHED" if action=="confirm" else "REJECTED",session["uid"])
                 except KeyError: return self._json(start,{"error":"Rapprochement introuvable"},"404 Not Found")
                 self.security and self.security.audit(session["uid"],"SETTLEMENT_CONFIRMED" if action=="confirm" else "SETTLEMENT_REJECTED","PAYMENT_SETTLEMENT",sid,request_id,"settlements",{"match_method":result["match_method"]})
+                return self._json(start,result)
+            if path.startswith("/api/settlements/") and path.endswith(("/detach","/review")) and method == "POST":
+                action="detach" if path.endswith("/detach") else "review"; sid=unquote(path.removeprefix("/api/settlements/").removesuffix("/"+action))
+                try:result=self.settlements.review(sid,"UNMATCHED" if action=="detach" else "POSSIBLE",session["uid"])
+                except (KeyError,ValueError):return self._json(start,{"error":"Rapprochement ou décision invalide"},"404 Not Found")
+                self.security and self.security.audit(session["uid"],"SETTLEMENT_"+action.upper(),"PAYMENT_SETTLEMENT",sid,request_id,"settlements")
+                return self._json(start,result)
+            if path.startswith("/api/settlements/") and path.endswith("/note") and method == "POST":
+                sid=unquote(path.removeprefix("/api/settlements/").removesuffix("/note"))
+                try:result=self.settlements.note(sid,self._body(env).get("note"),session["uid"])
+                except KeyError:return self._json(start,{"error":"Rapprochement introuvable"},"404 Not Found")
+                except ValueError:return self._json(start,{"error":"Note invalide"},"400 Bad Request")
+                self.security and self.security.audit(session["uid"],"SETTLEMENT_NOTE_ADDED","PAYMENT_SETTLEMENT",sid,request_id,"settlements")
                 return self._json(start,result)
             if path == "/api/settlements/backfill" and method == "POST":
                 result=self.settlements.backfill(batch_size=int(self._body(env).get("batch_size",500))); self.security and self.security.audit(session["uid"],"SETTLEMENT_BACKFILL_STARTED","PAYMENT_SETTLEMENT_RUN",result["run_id"],request_id,"settlements",result); return self._json(start,result,"202 Accepted")
@@ -671,7 +689,7 @@ class InventoryApp:
     @staticmethod
     def _route_permission(path,method):
         """Return the explicit grant required by a route; unknown routes fail closed."""
-        pages={"/":"catalogue.read","/catalogue":"catalogue.read","/inventaire":"stock.read","/stock":"stock.read","/sales":"sales.read","/finance":"finance.read","/achats":"purchasing.read","/marketing":"marketing.read","/administration":"admin.read","/securite":"security.read","/roadmap":"admin.read"}
+        pages={"/":"catalogue.read","/catalogue":"catalogue.read","/inventaire":"stock.read","/stock":"stock.read","/sales":"sales.read","/finance":"finance.read","/settlements":"settlements.read","/achats":"purchasing.read","/marketing":"marketing.read","/administration":"admin.read","/securite":"security.read","/roadmap":"admin.read"}
         if path in pages: return pages[path]
         if path.startswith("/achats/"): return "purchasing.read"
         if path.startswith("/media/"): return "catalogue.read"

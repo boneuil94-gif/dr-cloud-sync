@@ -13,3 +13,7 @@ Le backfill lit les ledgers par lots, avec curseur et diagnostic de période/vol
 ## Limites v1
 
 La fraîcheur reste celle des trois sources Data Hub. Les remboursements SumUp restent distincts des retours commerciaux et ne déclenchent aucun stock. La liaison à un payout exige un item ou identifiant exact ; sans composition, le résultat est `UNAVAILABLE`. Qonto est préparé comme future cible, mais volontairement non activé.
+
+## Extension payout bancaire
+
+La projection relie désormais `SUMUP_PAYOUT` à `QONTO_CREDIT` dans les mêmes tables et avec le même mécanisme d'idempotence et de preuves. Elle n'altère ni les modèles SumUp, ni le Bank Ledger, ni l'autorité du Sales Ledger. Voir `SUMUP_QONTO_RECONCILIATION.md`.

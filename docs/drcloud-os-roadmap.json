@@ -479,7 +479,7 @@
           "id": "07-finance-m11",
           "name": "Encaissements, commissions et payouts SumUp",
           "status": "DONE",
-          "evidence": "finance.py consomme les ledgers SumUp sans inclure les paiements dans le CA; payout ↔ Qonto reste à faire"
+          "evidence": "finance.py conserve le Sales Ledger comme autorité CA; settlements.py rapproche ShopCaisse, SumUp payout et crédit Qonto; cockpit /settlements et tests dédiés"
         }
       ]
     },
