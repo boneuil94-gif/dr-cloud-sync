@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 import hashlib
 import json
+import re
 import sqlite3
 
 FINAL = {"SUCCESSFUL", "SUCCESS", "COMPLETED", "PAID", "VALIDATED"}
@@ -223,6 +224,61 @@ class PaymentSettlementService:
         link=self.db.execute("SELECT * FROM payment_settlement_links WHERE settlement_id=?",(settlement_id,)).fetchone()
         if not link: raise KeyError(settlement_id)
         return {"link":dict(link),"evidence":[dict(r) for r in self.db.execute("SELECT evidence_type,evidence_json,created_at FROM payment_settlement_evidence WHERE settlement_id=? ORDER BY created_at",(settlement_id,))]}
+
+    @staticmethod
+    def _safe_json(value):
+        """Decode evidence while keeping credentials and raw connector payloads out."""
+        try: data=json.loads(value or "{}")
+        except (TypeError,json.JSONDecodeError): return {}
+        forbidden=re.compile(r"(?i)(pan|cvv|token|authorization|secret|password|payload|raw)")
+        return {str(k):v for k,v in data.items() if not forbidden.search(str(k))}
+
+    def explorer(self, params=None):
+        """Server-side, bounded explorer query over the settlement projection."""
+        p=params or {}; page=max(1,int(p.get("page",1))); limit=min(100,max(1,int(p.get("limit",25))))
+        where=[]; args=[]
+        q=" ".join(str(p.get("q") or "").split()).casefold()
+        if q:
+            like=f"%{q}%"; where.append("(lower(replace(l.source_id,' ','')) LIKE replace(?,' ','') OR lower(replace(coalesce(l.target_id,''),' ','')) LIKE replace(?,' ','') OR lower(coalesce(l.match_method,'')) LIKE ? OR lower(coalesce(e.evidence_json,'')) LIKE ? OR lower(coalesce(n.evidence_json,'')) LIKE ? OR CAST(l.amount_source AS TEXT) LIKE ? OR substr(l.updated_at,1,10)=?)")
+            args.extend([like,like,like,like,like,like,q])
+        allowed={"status":"l.status","currency":"l.currency","source_type":"l.source_type","target_type":"l.target_type"}
+        for key,column in allowed.items():
+            if p.get(key): where.append(f"{column}=?"); args.append(str(p[key]).upper() if key in {"status","source_type","target_type"} else p[key])
+        if p.get("exclude_resolved"): where.append("l.status NOT IN ('MATCHED','REJECTED')")
+        for key,op in (("amount_min",">="),("amount_max","<=")):
+            if p.get(key) not in (None,""): where.append(f"CAST(l.amount_source AS NUMERIC){op}?");args.append(str(p[key]))
+        if p.get("from"): where.append("date(l.updated_at)>=date(?)");args.append(p["from"])
+        if p.get("to"): where.append("date(l.updated_at)<=date(?)");args.append(p["to"])
+        for key,column in (("has_ticket","l.source_type='SHOPCAISSE_PAYMENT'"),("has_qonto","l.target_type='QONTO_CREDIT'")):
+            if str(p.get(key,"" )).lower() in {"true","false"}: where.append(column if str(p[key]).lower()=="true" else f"NOT ({column})")
+        clause=" WHERE "+" AND ".join(where) if where else ""
+        base=""" FROM payment_settlement_links l
+          LEFT JOIN payment_settlement_evidence e ON e.evidence_id=(SELECT evidence_id FROM payment_settlement_evidence WHERE settlement_id=l.settlement_id AND evidence_type!='INTERNAL_NOTE' ORDER BY created_at DESC LIMIT 1)
+          LEFT JOIN payment_settlement_evidence n ON n.evidence_id=(SELECT evidence_id FROM payment_settlement_evidence WHERE settlement_id=l.settlement_id AND evidence_type='INTERNAL_NOTE' ORDER BY created_at DESC LIMIT 1)"""
+        total=self.db.execute("SELECT count(*)"+base+clause,args).fetchone()[0]
+        sorts={"date":"l.updated_at","amount":"CAST(l.amount_source AS NUMERIC)","confidence":"CAST(l.confidence AS NUMERIC)","status":"l.status","difference":"CAST(l.amount_difference AS NUMERIC)"}
+        order=sorts.get(p.get("sort"),"l.updated_at"); direction="ASC" if str(p.get("direction")).lower()=="asc" else "DESC"
+        rows=[]
+        for row in self.db.execute("SELECT l.*"+base+clause+f" ORDER BY {order} {direction},l.settlement_id LIMIT ? OFFSET ?",(*args,limit,(page-1)*limit)):
+            item=dict(row); item["result_type"]="payout" if item["source_type"]=="SUMUP_PAYOUT" else "payment"; rows.append(item)
+        return {"items":rows,"pagination":{"page":page,"limit":limit,"total":total,"pages":max(1,(total+limit-1)//limit)}}
+
+    def evidence(self, settlement_id):
+        detail=self.details(settlement_id); link=detail["link"]
+        return {"settlement_id":settlement_id,"method":link["match_method"],"status":link["status"],"confidence":link["confidence"],"amount_source":link["amount_source"],"amount_target":link["amount_target"],"difference":link["amount_difference"],"time_difference_seconds":link["time_difference_seconds"],"currency":link["currency"],"signals":[{"type":x["evidence_type"],"values":self._safe_json(x["evidence_json"])} for x in detail["evidence"] if x["evidence_type"]!="INTERNAL_NOTE"],"decision":"HUMAN" if link["confirmed_by"] else "AUTOMATIC"}
+
+    def timeline(self, settlement_id):
+        detail=self.details(settlement_id); link=detail["link"]
+        events=[{"date":link["created_at"],"source":"Settlement","type":"PROPOSITION","actor":"Moteur","result":link["status"]}]
+        for x in detail["evidence"]:
+            values=self._safe_json(x["evidence_json"]); events.append({"date":x["created_at"],"source":"Utilisateur" if x["evidence_type"]=="INTERNAL_NOTE" else "Moteur","type":x["evidence_type"],"actor":values.get("actor","Moteur"),"result":values.get("note","Preuve enregistrée")})
+        if link["confirmed_at"]: events.append({"date":link["confirmed_at"],"source":"Settlement","type":"DECISION_HUMAINE","actor":link["confirmed_by"],"result":link["status"]})
+        return {"items":sorted(events,key=lambda x:x["date"])}
+
+    def anomalies(self, params=None):
+        p=dict(params or {}); p.setdefault("limit",25); p["exclude_resolved"]=True; result=self.explorer(p)
+        result["items"]=[{**x,"priority":"HIGH" if x["status"]=="CONFLICT" else "NORMAL","impact":x.get("amount_source"),"recommended_action":"Résoudre le conflit" if x["status"]=="CONFLICT" else "Examiner les candidats"} for x in result["items"]]
+        return result
 
     def matches(self, status=None):
         sql = "SELECT * FROM payment_settlement_links"; args = ()

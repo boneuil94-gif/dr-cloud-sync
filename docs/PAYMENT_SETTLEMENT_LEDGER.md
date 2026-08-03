@@ -17,3 +17,7 @@ La fraîcheur reste celle des trois sources Data Hub. Les remboursements SumUp r
 ## Extension payout bancaire
 
 La projection relie désormais `SUMUP_PAYOUT` à `QONTO_CREDIT` dans les mêmes tables et avec le même mécanisme d'idempotence et de preuves. Elle n'altère ni les modèles SumUp, ni le Bank Ledger, ni l'autorité du Sales Ledger. Voir `SUMUP_QONTO_RECONCILIATION.md`.
+
+## Projection Explorer
+
+L’Explorer lit exclusivement les liens et preuves du ledger avec des requêtes bornées et paginées. Il ne modifie jamais les ledgers ShopCaisse, SumUp ou Qonto. Les détails, preuves et événements sont différés jusqu’à l’ouverture du drawer; les décisions humaines continuent d’empêcher un recalcul de les écraser.

@@ -24,7 +24,7 @@ PERMISSIONS = {
     "marketing.approve", "marketing.schedule", "admin.read", "admin.write",
     "security.read", "security.manage_users", "security.manage_roles",
     "security.manage_secrets", "settings.read", "settings.write", "backup.manage",
-    "settlements.read", "settlements.review", "settlements.backfill", "sumup.read",
+    "settlements.read", "settlements.review", "settlements.notes", "settlements.export", "settlements.backfill", "sumup.read",
     "finance.settlements.read", "qonto.read",
 }
 ROLE_PERMISSIONS = {
