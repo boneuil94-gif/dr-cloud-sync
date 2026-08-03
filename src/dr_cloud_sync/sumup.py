@@ -208,7 +208,7 @@ CREATE TABLE IF NOT EXISTS sumup_transaction_events(event_id TEXT PRIMARY KEY,su
 CREATE TABLE IF NOT EXISTS sumup_fees(fee_id TEXT PRIMARY KEY,sumup_transaction_id TEXT NOT NULL,fee_type TEXT,amount TEXT NOT NULL,currency TEXT,raw_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sumup_refunds(refund_id TEXT PRIMARY KEY,sumup_transaction_id TEXT NOT NULL,amount TEXT NOT NULL,currency TEXT,refund_at TEXT,status TEXT,is_partial INTEGER,reason TEXT,raw_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sumup_chargebacks(chargeback_id TEXT PRIMARY KEY,sumup_transaction_id TEXT NOT NULL,amount TEXT NOT NULL,currency TEXT,chargeback_at TEXT,status TEXT,reason TEXT,raw_json TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS sumup_payouts(payout_id TEXT PRIMARY KEY,type TEXT,payout_date TEXT NOT NULL,amount TEXT NOT NULL,currency TEXT NOT NULL,fee TEXT NOT NULL,status TEXT,reference TEXT,start_date TEXT,end_date TEXT,paid_date TEXT,raw_json TEXT NOT NULL,imported_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sumup_payouts(payout_id TEXT PRIMARY KEY,type TEXT,payout_date TEXT NOT NULL,amount TEXT NOT NULL,currency TEXT NOT NULL,fee TEXT NOT NULL,status TEXT,reference TEXT,start_date TEXT,end_date TEXT,paid_date TEXT,deductions_json TEXT NOT NULL DEFAULT '[]',raw_json TEXT NOT NULL,imported_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sumup_payout_items(item_id TEXT PRIMARY KEY,payout_id TEXT NOT NULL,sumup_transaction_id TEXT,transaction_code TEXT,item_type TEXT,amount TEXT,currency TEXT,occurred_at TEXT,raw_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sumup_readers(reader_id TEXT PRIMARY KEY,name TEXT,model TEXT,status TEXT,merchant_code TEXT,store_id TEXT,last_seen TEXT,software_version TEXT,raw_json TEXT NOT NULL,imported_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS payment_settlements(settlement_id TEXT PRIMARY KEY,sumup_transaction_id TEXT NOT NULL,payout_id TEXT NOT NULL,amount TEXT,currency TEXT,status TEXT NOT NULL DEFAULT 'MATCHED',created_at TEXT NOT NULL,UNIQUE(sumup_transaction_id,payout_id));
@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS payment_settlements(settlement_id TEXT PRIMARY KEY,su
 
 PAYOUT_COLUMNS = (
     "payout_id", "type", "payout_date", "amount", "currency", "fee", "status",
-    "reference", "start_date", "end_date", "paid_date", "raw_json", "imported_at",
+    "reference", "start_date", "end_date", "paid_date", "deductions_json", "raw_json", "imported_at",
 )
 
 
@@ -227,7 +227,7 @@ def _payout_values(row, payout_id, stamp):
         _decimal(row.get("amount")), row.get("currency") or "EUR", _decimal(row.get("fee")),
         row.get("status"), row.get("reference") or row.get("bank_reference"),
         row.get("start_date"), row.get("end_date"), row.get("paid_date"),
-        json.dumps(_safe_raw(row)), stamp,
+        json.dumps(_safe_raw(row.get("deductions") or [])), json.dumps(_safe_raw(row)), stamp,
     )
 
 
@@ -239,9 +239,6 @@ def _payout_insert(db, row, payout_id, stamp):
     if "transaction_code" in live:
         columns.append("transaction_code")
         values.append(row.get("transaction_code"))
-    if "deductions_json" in live:
-        columns.append("deductions_json")
-        values.append(json.dumps(_safe_raw(row.get("deductions") or [])))
     return tuple(columns), tuple(values)
 
 

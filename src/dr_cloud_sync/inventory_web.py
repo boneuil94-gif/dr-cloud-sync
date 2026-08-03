@@ -40,6 +40,7 @@ from .bank import BankLedger, DisabledQontoProvider
 from .qonto import EnvironmentSecretProvider, QontoBankProvider, QontoError
 from .sumup import SumUpProvider, SumUpError, SumUpTransactionLedger, PaymentSettlementLedger
 from .sumup_migrations import sumup_schema_diagnostic
+from .sqlite_diagnostics import register_runtime, runtime_diagnostics
 from .reconciliation import ReconciliationService
 from .finance import FinanceProjection
 from .purchase_cost import PurchaseCostLedger
@@ -92,6 +93,7 @@ class InventoryApp:
         self.data_hub=DataHub(service.repo.path)
         self.bank=BankLedger(service.repo.path)
         self.sumup_transactions=SumUpTransactionLedger(self.bank.db);self.sumup_settlements=PaymentSettlementLedger(self.bank.db)
+        register_runtime(self.bank.db, "web")
         secrets_provider=EnvironmentSecretProvider(os.environ,{
             "qonto.production": os.environ.get("QONTO_CREDENTIAL_REF","QONTO_CREDENTIAL"),
             "prestashop.production": "PRESTASHOP_API_KEY",
@@ -268,7 +270,8 @@ class InventoryApp:
             if path == "/api/data-hub/diagnostics" and method == "GET":
                 query=parse_qs(env.get("QUERY_STRING", "")); return self._json(start,{"diagnostics":self.data_hub.diagnostics.recent(query.get("source_id",[None])[0],query.get("limit",[10])[0])})
             if path == "/api/admin/sumup-schema" and method == "GET":
-                return self._json(start,sumup_schema_diagnostic(self.bank.db))
+                return self._json(start,{**sumup_schema_diagnostic(self.bank.db),
+                    "sqlite_consumers":runtime_diagnostics(self.bank.db)})
             if path == "/api/data-hub" and method == "GET": return self._json(start,{**self.data_hub.health(),"sales_diagnostics":self.sales_sync.diagnostics(),"runtime":{**self.data_hub.runtime(self.automation_operations()),"configuration":{"prestashop_paid_state_ids":"CONFIGURED" if self.prestashop_paid_states_configured else "MISSING"}}})
             if path == "/api/admin/shopcaisse-sales/failures" and method == "GET":
                 return self._json(start,self.sales_sync.failed_sales("SHOPCAISSE"))

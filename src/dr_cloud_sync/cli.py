@@ -30,7 +30,7 @@ from .repositories import SQLiteOSRepository
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Importe le catalogue maître PrestaShop")
-    parser.add_argument("command", choices=["pull", "shopcaisse-pull", "shopcaisse-import-dry-run", "shopcaisse-import-pilot", "shopcaisse-import-controlled", "shopcaisse-import-all", "build-catalog-mapping", "analyse-mapping-exceptions", "create-mapping-exceptions", "build-final-mapping", "inventory-serve", "os-serve", "automation-worker", "os-init-catalog", "os-backup", "catalogue-rehydrate"], help="Commande DrCloud")
+    parser.add_argument("command", choices=["pull", "shopcaisse-pull", "shopcaisse-import-dry-run", "shopcaisse-import-pilot", "shopcaisse-import-controlled", "shopcaisse-import-all", "build-catalog-mapping", "analyse-mapping-exceptions", "create-mapping-exceptions", "build-final-mapping", "inventory-serve", "os-serve", "automation-worker", "sumup-migrate", "os-init-catalog", "os-backup", "catalogue-rehydrate"], help="Commande DrCloud")
     parser.add_argument("--apply-safe", action="store_true", help="Applique explicitement les seuls enrichissements SAFE")
     parser.add_argument("--snapshot", type=Path, default=packaged_historical_snapshot())
     parser.add_argument("--report", type=Path, default=Path("dist/rapport-rehydratation-catalogue.json"))
@@ -203,13 +203,26 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "automation-worker":
         import time
         from .inventory_web import create_app
-        settings=OSSettings.from_env(); app=create_app(settings); delay=int(os.environ.get("AUTOMATION_TICK_SECONDS","30"))
+        settings=OSSettings.from_env(); app=create_app(settings)
+        from .sqlite_diagnostics import register_runtime
+        register_runtime(app.bank.db, "automation-worker")
+        delay=int(os.environ.get("AUTOMATION_TICK_SECONDS","30"))
         while True:
             try:
                 app.data_hub.heartbeat()
                 app.data_hub.run_due(app.automation_operations())
             except Exception as exc: print(f"automation cycle degraded: {type(exc).__name__}",file=sys.stderr)
             time.sleep(delay)
+    elif args.command == "sumup-migrate":
+        import sqlite3
+        from .sumup import SCHEMA
+        from .sumup_migrations import migrate_sumup_schema
+        from .sqlite_diagnostics import register_runtime, sqlite_file_diagnostic
+        settings=OSSettings.from_env(require_secrets=False)
+        with sqlite3.connect(settings.database) as db:
+            migration=migrate_sumup_schema(db,SCHEMA);register_runtime(db,"migration-command")
+        print(json.dumps({**migration,"sqlite":sqlite_file_diagnostic(
+            settings.database,role="migration-command")},ensure_ascii=False))
     else:
         from waitress import serve
         from .inventory_web import create_app

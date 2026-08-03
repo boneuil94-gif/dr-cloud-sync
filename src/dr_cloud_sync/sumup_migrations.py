@@ -6,8 +6,8 @@ import json
 import sqlite3
 
 
-SUMUP_SCHEMA_VERSION = 1
-MIGRATION_NAME = "sumup_additive_schema_20260803"
+SUMUP_SCHEMA_VERSION = 2
+MIGRATION_NAME = "sumup_columns_verified_20260803"
 
 
 class SumUpSchemaMigrationError(RuntimeError):
@@ -83,6 +83,7 @@ def migrate_sumup_schema(db: sqlite3.Connection, schema: str) -> dict:
         missing = {table: names for table, names in missing.items() if names}
         if missing:
             raise SumUpSchemaMigrationError(f"SumUp schema remains incomplete: {missing}")
+        db.execute(f"PRAGMA user_version={SUMUP_SCHEMA_VERSION}")
         db.execute(
             "INSERT OR IGNORE INTO sumup_schema_migrations(version,name,applied_at) VALUES(?,?,?)",
             (SUMUP_SCHEMA_VERSION, MIGRATION_NAME, now),
