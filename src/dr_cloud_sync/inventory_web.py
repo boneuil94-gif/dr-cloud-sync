@@ -39,6 +39,7 @@ from .data_hub import DataHub, JobDefinition
 from .bank import BankLedger, DisabledQontoProvider
 from .qonto import EnvironmentSecretProvider, QontoBankProvider, QontoError
 from .sumup import SumUpProvider, SumUpError, SumUpTransactionLedger, PaymentSettlementLedger
+from .sumup_migrations import sumup_schema_diagnostic
 from .reconciliation import ReconciliationService
 from .finance import FinanceProjection
 from .purchase_cost import PurchaseCostLedger
@@ -266,6 +267,8 @@ class InventoryApp:
             if path == "/finance": return self._html(start,"finance.html",session,request_id)
             if path == "/api/data-hub/diagnostics" and method == "GET":
                 query=parse_qs(env.get("QUERY_STRING", "")); return self._json(start,{"diagnostics":self.data_hub.diagnostics.recent(query.get("source_id",[None])[0],query.get("limit",[10])[0])})
+            if path == "/api/admin/sumup-schema" and method == "GET":
+                return self._json(start,sumup_schema_diagnostic(self.bank.db))
             if path == "/api/data-hub" and method == "GET": return self._json(start,{**self.data_hub.health(),"sales_diagnostics":self.sales_sync.diagnostics(),"runtime":{**self.data_hub.runtime(self.automation_operations()),"configuration":{"prestashop_paid_state_ids":"CONFIGURED" if self.prestashop_paid_states_configured else "MISSING"}}})
             if path == "/api/admin/shopcaisse-sales/failures" and method == "GET":
                 return self._json(start,self.sales_sync.failed_sales("SHOPCAISSE"))

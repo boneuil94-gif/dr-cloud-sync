@@ -17,7 +17,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-from .schema import ensure_schema
+from .sumup_migrations import migrate_sumup_schema
 
 
 class SumUpError(RuntimeError):
@@ -231,11 +231,25 @@ def _payout_values(row, payout_id, stamp):
     )
 
 
+def _payout_insert(db, row, payout_id, stamp):
+    """Return explicit columns/values, including required legacy-only fields."""
+    columns = list(PAYOUT_COLUMNS)
+    values = list(_payout_values(row, payout_id, stamp))
+    live = {item[1] for item in db.execute("PRAGMA table_info(sumup_payouts)")}
+    if "transaction_code" in live:
+        columns.append("transaction_code")
+        values.append(row.get("transaction_code"))
+    if "deductions_json" in live:
+        columns.append("deductions_json")
+        values.append(json.dumps(_safe_raw(row.get("deductions") or [])))
+    return tuple(columns), tuple(values)
+
+
 class SumUpTransactionLedger:
     def __init__(self, path: Path | sqlite3.Connection):
         self.db = path if isinstance(path, sqlite3.Connection) else sqlite3.connect(path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
-        ensure_schema(self.db, SCHEMA, owner="SumUp")
+        self.schema_migration = migrate_sumup_schema(self.db, SCHEMA)
 
     def import_merchant(self, row):
         profile = row.get("merchant_profile", row)
@@ -301,7 +315,8 @@ class SumUpTransactionLedger:
 class PaymentSettlementLedger:
     def __init__(self, path: Path | sqlite3.Connection):
         self.db = path if isinstance(path, sqlite3.Connection) else sqlite3.connect(path, check_same_thread=False)
-        self.db.row_factory = sqlite3.Row; ensure_schema(self.db, SCHEMA, owner="SumUp")
+        self.db.row_factory = sqlite3.Row
+        self.schema_migration = migrate_sumup_schema(self.db, SCHEMA)
 
     def import_page(self, page):
         inserted = 0; stamp = datetime.now(timezone.utc).isoformat()
@@ -310,8 +325,8 @@ class PaymentSettlementLedger:
                 pid = str(row.get("payout_id") or row.get("id") or row.get("reference") or hashlib.sha256(json.dumps(row, sort_keys=True).encode()).hexdigest())
                 inserted += not bool(self.db.execute("SELECT 1 FROM sumup_payouts WHERE payout_id=?", (pid,)).fetchone())
                 items = row.get("items") or row.get("deductions") or row.get("transactions") or []
-                values = _payout_values(row, pid, stamp)
-                columns = ",".join(PAYOUT_COLUMNS)
+                insert_columns, values = _payout_insert(self.db, row, pid, stamp)
+                columns = ",".join(insert_columns)
                 self.db.execute("INSERT OR REPLACE INTO sumup_payouts (" + columns + ") VALUES(" + ",".join("?" * len(values)) + ")", values)
                 if row.get("transaction_code") and not items: items = [row]
                 for i, item in enumerate(items):
