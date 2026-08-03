@@ -19,3 +19,7 @@ Sous 1 000 px, la table devient une liste de cartes et la frise devient vertical
 ## Performance et données
 
 Les appels récapitulatif, liens et Data Hub sont parallélisés. Le navigateur filtre une projection bornée et n'affiche que 12 lignes ; aucune donnée de démonstration n'est injectée. Les graphiques restent compacts et annoncent l'absence de séries journalières plutôt que d'afficher un canevas vide.
+
+## Settlement Explorer
+
+Le Cockpit propose désormais un accès direct à `/settlements/explorer`. Le Cockpit reste la synthèse de pilotage; l’Explorer est la vue d’investigation paginée, filtrable et actionnable. Les filtres sont conservés dans l’URL lors des allers-retours.

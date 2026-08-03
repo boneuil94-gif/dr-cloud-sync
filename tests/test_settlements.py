@@ -92,3 +92,25 @@ def test_settlement_ui_contract_has_central_formatters_and_responsive_views():
     assert 'data-panel="payouts"' in markup and 'data-panel="transactions"' in markup
     assert "@media(max-width:360px)" in styles
     assert ".settlement-mobile" in styles and ".settlement-drawer" in styles
+
+
+def test_explorer_server_search_pagination_evidence_timeline_and_secret_redaction():
+    db=database(); service=PaymentSettlementService(db); stamp=datetime.now(timezone.utc).isoformat()
+    db.execute("INSERT INTO payment_settlement_links VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("settlement:explorer","SHOPCAISSE_PAYMENT","ticket 98","SUMUP_TRANSACTION","TX-CODE","POSSIBLE","0.82","AMOUNT_TIME_UNIQUE","98","98","0","EUR",74,'{"reference_equal":false,"token":"never"}',stamp,stamp,None,None,"key-explorer"))
+    db.execute("INSERT INTO payment_settlement_evidence VALUES(?,?,?,?,?)",("e1","settlement:explorer","MATCH_SIGNALS",'{"candidate_count":1,"authorization":"never"}',stamp))
+    service.note("settlement:explorer","Appeler le magasin", "manager")
+    assert service.explorer({"q":" TICKET   98 ","limit":"1"})["pagination"]["total"] == 1
+    assert service.explorer({"q":"appeler le magasin"})["items"][0]["settlement_id"] == "settlement:explorer"
+    evidence=service.evidence("settlement:explorer")
+    assert evidence["time_difference_seconds"] == 74 and "authorization" not in str(evidence).lower()
+    assert any(x["type"]=="INTERNAL_NOTE" for x in service.timeline("settlement:explorer")["items"])
+
+
+def test_explorer_static_mobile_and_safe_display_contracts():
+    from pathlib import Path
+    root=Path(__file__).parents[1]/"src"/"dr_cloud_sync"/"static"
+    markup=(root/"settlement-explorer.html").read_text(); script=(root/"settlement-explorer.js").read_text(); styles=(root/"inventory.css").read_text()
+    assert 'aria-live="polite"' in markup and "Settlement Explorer" in markup
+    assert "AbortController" in script and "history.replaceState" in script and "Number.isFinite" in script
+    assert "@media(max-width:375px)" in styles and "@media(max-width:768px)" in styles
