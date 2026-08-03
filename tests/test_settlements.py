@@ -70,3 +70,25 @@ def test_payout_to_qonto_requires_reference_or_unique_sumup_counterparty():
     assert match_payout(payout,[credit,{**credit,"transaction_id":"bank-2"}])["status"] == "CONFLICT"
     exact=match_payout(payout,[{**credit,"counterparty":"Other","reference":"bank-ref"}])
     assert (exact["status"],exact["match_method"]) == ("MATCHED","EXACT_BANK_REFERENCE")
+
+
+def test_empty_summary_never_returns_nan_and_marks_unknown_bank():
+    result = PaymentSettlementService(database()).summary()
+    assert result["coverage_percent"] is None
+    assert result["qonto_credits"] is None
+    assert "NaN" not in str(result)
+
+
+def test_settlement_ui_contract_has_central_formatters_and_responsive_views():
+    from pathlib import Path
+    root = Path(__file__).parents[1] / "src" / "dr_cloud_sync" / "static"
+    script = (root / "settlements.js").read_text(encoding="utf-8")
+    markup = (root / "settlements.html").read_text(encoding="utf-8")
+    styles = (root / "inventory.css").read_text(encoding="utf-8")
+    for helper in ("formatCount", "formatMoney", "formatPercent", "formatFreshness", "formatStatus"):
+        assert f"function {helper}" in script
+    assert "Number.isFinite" in script
+    assert 'aria-live="polite"' in markup
+    assert 'data-panel="payouts"' in markup and 'data-panel="transactions"' in markup
+    assert "@media(max-width:360px)" in styles
+    assert ".settlement-mobile" in styles and ".settlement-drawer" in styles
