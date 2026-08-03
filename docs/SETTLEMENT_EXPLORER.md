@@ -21,3 +21,7 @@ La table desktop devient une liste de cartes sous 1 000 px. Le panneau de détai
 ## Paiements ShopCaisse
 
 Le détail différé joint le lien à `sale_payments` et montre identifiants paiement/vente, libellé brut, catégorie/règle/version canonique, montant de la part, date, statut et qualité, puis la transaction candidate et la preuve de décision. La recherche indexée retrouve les identifiants projetés, codes SumUp, montants et dates sans exposer le payload fournisseur ni les données carte.
+
+## Lecture financière depuis le Cockpit
+
+Le tableau métier distingue désormais ticket, transaction, payout, banque, brut, frais, net attendu, reçu et écart. Une proposition jamais évaluée affiche « Non évalué » ou « Source manquante », jamais une confiance trompeuse à 0 %. Rejeter et détacher ne sont proposés que lorsqu'une cible existe. Le drawer place la synthèse financière avant la chaîne de preuves.
