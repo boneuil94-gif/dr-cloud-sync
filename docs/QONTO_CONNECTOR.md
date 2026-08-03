@@ -14,3 +14,7 @@ La cadence est `DATA_HUB_BANK_INTERVAL_SECONDS` (1 800 secondes par défaut). Un
 
 ## Activation production vérifiable
 Le workflow transmet `QONTO_CREDENTIAL` au script protégé, qui établit la référence opaque `qonto.production`. Le provider reste désactivé si la résolution échoue et CONNECTED exige le GET organisation réel. Le contrôle final doit conserver uniquement comptes/transactions/counts, dates et erreurs assainies; jamais l’en-tête Authorization. Voir `CONNECTOR_ACTIVATION_AUDIT.md` pour les limites de preuve de cette livraison.
+
+## Paramètres runtime confirmés
+
+Le code attend `QONTO_CREDENTIAL_REF` (référence vers `QONTO_CREDENTIAL`), `QONTO_API_URL`, `QONTO_TIMEOUT_SECONDS` et `QONTO_SYNC_INTERVAL_SECONDS`. L'organisation et les comptes sont découverts par le GET `/v2/organization`; aucun identifiant de compte ou d'organisation supplémentaire n'est requis par ce contrat. Le workflow production injecte la valeur via stdin dans `drcloud.env`, consommé par web et automation-worker; elle n'est jamais affichée.

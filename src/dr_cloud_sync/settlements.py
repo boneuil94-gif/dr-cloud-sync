@@ -94,6 +94,32 @@ def match_payment(payment: dict, transactions: list[dict], *, window_seconds=900
                          "currency_equal": True, "candidate_count": 1}}
 
 
+def match_payout(payout: dict, credits: list[dict], *, window_seconds=604800) -> dict:
+    """Match a SumUp payout to one Qonto credit without amount-only guesses."""
+    amount, currency = Decimal(str(payout["amount"])), payout.get("currency") or "EUR"
+    occurred = _time(payout.get("paid_date") or payout["payout_date"])
+    references = {str(payout.get(k) or "").strip().casefold() for k in ("payout_id", "reference")} - {""}
+    plausible, exact = [], []
+    for credit in credits:
+        if credit.get("direction") != "CREDIT" or credit.get("currency") != currency: continue
+        seconds = int(abs((_time(credit["booked_at"]) - occurred).total_seconds()))
+        shared = any(ref in " ".join(str(credit.get(k) or "") for k in ("reference", "label")).casefold() for ref in references)
+        counterparty_sumup = "sumup" in str(credit.get("counterparty") or "").casefold()
+        candidate = {**credit, "time_difference_seconds": seconds}
+        if shared: exact.append(candidate)
+        if Decimal(str(credit["amount"])) == amount and seconds <= window_seconds and counterparty_sumup: plausible.append(candidate)
+    selected = exact or plausible
+    if len(selected) > 1:
+        return {"status":"CONFLICT","confidence":"0","match_method":"MULTIPLE_BANK_CANDIDATES","target":None,
+                "evidence":{"candidate_ids":sorted(x["transaction_id"] for x in selected),"candidate_count":len(selected)}}
+    if not selected:
+        return {"status":"UNMATCHED","confidence":"0","match_method":"NO_BANK_CANDIDATE","target":None,
+                "evidence":{"candidate_count":0,"window_seconds":window_seconds}}
+    target=selected[0]
+    return {"status":"MATCHED","confidence":"1" if exact else "0.9","match_method":"EXACT_BANK_REFERENCE" if exact else "NET_CURRENCY_SUMUP_TIME_UNIQUE","target":target,
+            "evidence":{"reference_equal":bool(exact),"amount_equal":Decimal(str(target["amount"]))==amount,"currency_equal":True,"counterparty_sumup":"sumup" in str(target.get("counterparty") or "").casefold(),"candidate_count":1}}
+
+
 class PaymentSettlementService:
     """Projection-only settlement ledger; source ledgers are never mutated."""
     def __init__(self, db: sqlite3.Connection, *, window_seconds=900, rounding_tolerance="0.01"):
@@ -140,6 +166,23 @@ class PaymentSettlementService:
                 self.db.execute("INSERT OR IGNORE INTO payment_settlement_evidence VALUES(?,?,?,?,?)",
                                 ("evidence:"+key[:24],sid,"MATCH_SIGNALS",evidence,stamp))
                 counts[proposal["status"].lower()] += 1
+            payouts = [dict(r) for r in self.db.execute("SELECT * FROM sumup_payouts ORDER BY payout_id")]
+            has_bank=self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='bank_transactions'").fetchone()
+            credits = [dict(r) for r in self.db.execute("SELECT * FROM bank_transactions WHERE provider='Qonto' AND direction='CREDIT'")] if has_bank else []
+            for payout in payouts:
+                proposal=match_payout(payout,credits); target=proposal["target"]
+                target_id=target["transaction_id"] if target else None
+                key=self._key("SUMUP_PAYOUT",payout["payout_id"],"QONTO_CREDIT",target_id); sid="settlement:"+key[:24]
+                existing=self.db.execute("SELECT confirmed_by FROM payment_settlement_links WHERE idempotency_key=?",(key,)).fetchone()
+                if existing and existing["confirmed_by"]: continue
+                difference=str(Decimal(str(target["amount"]))-Decimal(str(payout["amount"]))) if target else None
+                evidence=json.dumps(proposal["evidence"],sort_keys=True)
+                self.db.execute("""INSERT INTO payment_settlement_links VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                  ON CONFLICT(idempotency_key) DO UPDATE SET status=excluded.status,confidence=excluded.confidence,
+                  match_method=excluded.match_method,amount_target=excluded.amount_target,amount_difference=excluded.amount_difference,
+                  time_difference_seconds=excluded.time_difference_seconds,evidence_json=excluded.evidence_json,updated_at=excluded.updated_at""",
+                  (sid,"SUMUP_PAYOUT",payout["payout_id"],"QONTO_CREDIT",target_id,proposal["status"],proposal["confidence"],proposal["match_method"],str(payout["amount"]),str(target["amount"]) if target else None,difference,payout["currency"],target.get("time_difference_seconds") if target else None,evidence,stamp,stamp,None,None,key))
+                self.db.execute("INSERT OR IGNORE INTO payment_settlement_evidence VALUES(?,?,?,?,?)",("evidence:"+key[:24],sid,"BANK_MATCH_SIGNALS",evidence,stamp))
         return {"analysed": len(payments), "last_cursor": payments[-1]["payment_id"] if payments else after, **counts}
 
     def backfill(self, *, batch_size=500):
@@ -161,12 +204,25 @@ class PaymentSettlementService:
         return {"run_id": run_id, **diagnostics}
 
     def review(self, settlement_id, status, actor):
-        if status not in {"MATCHED", "REJECTED", "UNMATCHED"}: raise ValueError("Décision invalide")
+        if status not in {"MATCHED", "POSSIBLE", "REJECTED", "UNMATCHED"}: raise ValueError("Décision invalide")
         stamp = datetime.now(timezone.utc).isoformat()
         with self.db:
             changed = self.db.execute("UPDATE payment_settlement_links SET status=?,confirmed_at=?,confirmed_by=?,updated_at=? WHERE settlement_id=?", (status, stamp, actor, stamp, settlement_id)).rowcount
         if not changed: raise KeyError(settlement_id)
         return dict(self.db.execute("SELECT * FROM payment_settlement_links WHERE settlement_id=?", (settlement_id,)).fetchone())
+
+    def note(self, settlement_id, note, actor):
+        note=str(note or "").strip()
+        if not note or len(note)>1000: raise ValueError("Note invalide")
+        if not self.db.execute("SELECT 1 FROM payment_settlement_links WHERE settlement_id=?",(settlement_id,)).fetchone(): raise KeyError(settlement_id)
+        stamp=datetime.now(timezone.utc).isoformat(); key=hashlib.sha256(f"{settlement_id}:{actor}:{note}".encode()).hexdigest()
+        with self.db: self.db.execute("INSERT OR IGNORE INTO payment_settlement_evidence VALUES(?,?,?,?,?)",("note:"+key[:24],settlement_id,"INTERNAL_NOTE",json.dumps({"note":note,"actor":actor}),stamp))
+        return {"settlement_id":settlement_id,"saved":True}
+
+    def details(self, settlement_id):
+        link=self.db.execute("SELECT * FROM payment_settlement_links WHERE settlement_id=?",(settlement_id,)).fetchone()
+        if not link: raise KeyError(settlement_id)
+        return {"link":dict(link),"evidence":[dict(r) for r in self.db.execute("SELECT evidence_type,evidence_json,created_at FROM payment_settlement_evidence WHERE settlement_id=? ORDER BY created_at",(settlement_id,))]}
 
     def matches(self, status=None):
         sql = "SELECT * FROM payment_settlement_links"; args = ()
@@ -192,7 +248,11 @@ class PaymentSettlementService:
         counts.update({r[0]: r[1] for r in self.db.execute("SELECT status,count(*) FROM payment_settlement_links GROUP BY status")})
         card_count, card_amount = self.db.execute("""SELECT count(*),coalesce(sum(CAST(p.amount AS NUMERIC)),0) FROM sale_payments p JOIN sales s USING(sale_id) WHERE s.source='SHOPCAISSE' AND upper(p.payment_type) IN ('CB','CARD','CREDIT_CARD','CARTE')""").fetchone()
         matched_amount = self.db.execute("SELECT coalesce(sum(CAST(amount_source AS NUMERIC)),0) FROM payment_settlement_links WHERE status='MATCHED' AND source_type='SHOPCAISSE_PAYMENT'").fetchone()[0]
-        payout_states = {"BALANCED": 0, "UNBALANCED": 0, "UNAVAILABLE": 0}
+        payout_states = {"BALANCED": 0, "PARTIAL": 0, "UNBALANCED": 0, "UNAVAILABLE": 0}
         for row in self.db.execute("SELECT payout_id FROM sumup_payouts"):
             payout_states[self.payout(row[0])["balance_status"]] += 1
-        return {"shopcaisse_card_payments": card_count, "shopcaisse_card_amount": str(card_amount), "sumup_transactions": self.db.execute("SELECT count(*) FROM sumup_transactions").fetchone()[0], "payouts": self.db.execute("SELECT count(*) FROM sumup_payouts").fetchone()[0], "counts": counts, "matched_amount": str(matched_amount), "unmatched_amount": str(Decimal(str(card_amount))-Decimal(str(matched_amount))), "coverage_percent": str((Decimal(str(matched_amount))/Decimal(str(card_amount))*100) if card_amount else Decimal()), "payout_balance": payout_states, "revenue_included": False}
+        has_bank=self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='bank_transactions'").fetchone()
+        qonto_credits=self.db.execute("SELECT count(*) FROM bank_transactions WHERE provider='Qonto' AND direction='CREDIT'").fetchone()[0] if has_bank else None
+        bank_union=" UNION ALL SELECT booked_at FROM bank_transactions WHERE provider='Qonto'" if has_bank else ""
+        period=self.db.execute("SELECT min(d),max(d) FROM (SELECT sold_at d FROM sales WHERE source='SHOPCAISSE' UNION ALL SELECT timestamp FROM sumup_transactions UNION ALL SELECT payout_date FROM sumup_payouts"+bank_union+")").fetchone()
+        return {"shopcaisse_card_payments": card_count, "shopcaisse_card_amount": str(card_amount), "sumup_transactions": self.db.execute("SELECT count(*) FROM sumup_transactions").fetchone()[0], "payouts": self.db.execute("SELECT count(*) FROM sumup_payouts").fetchone()[0], "qonto_credits":qonto_credits,"counts": counts, "matched_amount": str(matched_amount), "unmatched_amount": str(Decimal(str(card_amount))-Decimal(str(matched_amount))), "coverage_percent": str((Decimal(str(matched_amount))/Decimal(str(card_amount))*100) if card_amount else None), "payout_balance": payout_states, "period":{"start":period[0],"end":period[1]},"revenue_included": False}

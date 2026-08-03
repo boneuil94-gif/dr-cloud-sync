@@ -42,3 +42,5 @@ La réponse authentifiée `/api/data-hub` inclut `runtime.database_fingerprint`,
 Le job `sync_payment_settlements` dépend de `sync_shopcaisse_sales`, `sync_sumup_transactions` et `sync_sumup_payouts`. Il relit les sources sans les modifier et rafraîchit la projection settlement utilisée par Finance et Dashboard. Les diagnostics donnent période, paiements, transactions, payouts et états de rapprochement.
 
 La lisibilité historique est conservée lorsqu'une source est stale, mais les consommateurs doivent présenter la fraîcheur des trois sources sans annoncer de faux temps réel. Qonto reste hors de cette chaîne v1.
+
+Le rafraîchissement Settlement dépend aussi de `sync_bank_transactions` : la chaîne effective est ShopCaisse, transactions SumUp, payouts SumUp, Qonto, Settlement. Qonto ne passe à CONNECTED/FRESH qu'après appel réel valide et sync durable; l'absence de credential reste `NOT_CONFIGURED`.
