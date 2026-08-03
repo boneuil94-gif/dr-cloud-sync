@@ -6,6 +6,7 @@ import pytest
 
 from dr_cloud_sync.schema import SchemaMismatchError, ensure_schema
 from dr_cloud_sync.sumup import PaymentSettlementLedger, SumUpTransactionLedger
+from dr_cloud_sync.sumup_migrations import SUMUP_SCHEMA_VERSION, sumup_schema_diagnostic
 
 
 def test_audited_ledgers_never_depend_on_physical_column_order():
@@ -53,6 +54,73 @@ def test_old_sumup_database_is_fully_migrated_before_sync(tmp_path):
     assert payouts.db.execute(
         "SELECT start_date FROM sumup_payouts WHERE payout_id=?", ("payout-1",)
     ).fetchone()[0] == "2026-08-01"
+
+
+def test_exact_production_regressions_preserve_rows_and_replay(tmp_path):
+    """The observed 16/12-column production shapes upgrade without replacement."""
+    path = tmp_path / "production.sqlite"
+    db = sqlite3.connect(path)
+    db.executescript("""
+      CREATE TABLE sumup_transactions(
+        sumup_transaction_id TEXT PRIMARY KEY,transaction_code TEXT,amount TEXT NOT NULL,
+        currency TEXT NOT NULL,timestamp TEXT NOT NULL,status TEXT,payment_type TEXT,
+        entry_mode TEXT,vat_amount TEXT,tip_amount TEXT,foreign_transaction_id TEXT,
+        client_transaction_id TEXT,fee TEXT NOT NULL,events_json TEXT NOT NULL,
+        raw_json TEXT NOT NULL,imported_at TEXT NOT NULL);
+      CREATE TABLE sumup_payouts(
+        payout_id TEXT PRIMARY KEY,type TEXT,payout_date TEXT NOT NULL,amount TEXT NOT NULL,
+        currency TEXT NOT NULL,fee TEXT NOT NULL,status TEXT,reference TEXT,
+        transaction_code TEXT,deductions_json TEXT NOT NULL,raw_json TEXT NOT NULL,
+        imported_at TEXT NOT NULL);
+      INSERT INTO sumup_transactions(sumup_transaction_id,amount,currency,timestamp,fee,
+        events_json,raw_json,imported_at) VALUES('legacy-tx','4','EUR','2026-01-01','0','[]','{}','then');
+      INSERT INTO sumup_payouts(payout_id,payout_date,amount,currency,fee,deductions_json,
+        raw_json,imported_at) VALUES('legacy-pay','2026-01-02','4','EUR','0','[]','{}','then');
+    """)
+    db.close()
+
+    transactions = SumUpTransactionLedger(path)
+    first = transactions.schema_migration
+    transactions.db.close()
+    payouts = PaymentSettlementLedger(path)
+    second = payouts.schema_migration
+    assert first["added_columns_this_start"]
+    assert second["added_columns_this_start"] == []
+    assert second["schema_version"] == SUMUP_SCHEMA_VERSION
+    assert second["pending_migrations"] == []
+    assert payouts.db.execute("SELECT amount FROM sumup_transactions WHERE sumup_transaction_id='legacy-tx'").fetchone()[0] == "4"
+    assert payouts.db.execute("SELECT amount FROM sumup_payouts WHERE payout_id='legacy-pay'").fetchone()[0] == "4"
+    assert payouts.db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+    page = type("Page", (), {"rows": ({"id": "new-pay", "date": "2026-01-03", "amount": "4"},), "next_cursor": None})()
+    payouts.import_page(page)
+    assert payouts.db.execute("SELECT count(*) FROM sumup_payouts").fetchone()[0] == 2
+    # These exact SQLite exceptions were the production regression. Explicit
+    # columns plus the startup migration make both structurally impossible.
+    errors = ("table sumup_transactions has no column named simple_status",
+              "table sumup_payouts has 12 columns but 13 values were supplied")
+    assert all(message not in str(first) + str(second) for message in errors)
+    assert sumup_schema_diagnostic(payouts.db)["last_check"]["result"] == "OK"
+    payouts.db.close()
+
+
+def test_fresh_sumup_database_contains_every_declared_ledger(tmp_path):
+    ledger = SumUpTransactionLedger(tmp_path / "fresh.sqlite")
+    tables = {row[0] for row in ledger.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert {"sumup_transactions", "sumup_payouts", "sumup_transaction_events", "sumup_fees",
+            "sumup_refunds", "sumup_chargebacks", "sumup_payout_items",
+            "payment_settlements", "sumup_schema_migrations"} <= tables
+    assert ledger.schema_migration["schema_version"] == SUMUP_SCHEMA_VERSION
+
+
+def test_web_and_worker_share_startup_factory_database_and_volume():
+    root = Path(__file__).parents[1]
+    cli = (root / "src/dr_cloud_sync/cli.py").read_text()
+    web = (root / "src/dr_cloud_sync/inventory_web.py").read_text()
+    compose = (root / "deploy/ovh/docker-compose.yml").read_text()
+    assert 'settings=OSSettings.from_env(); app=create_app(settings)' in cli
+    assert "InventoryRepository(settings.database)" in web
+    assert compose.count("- drcloud-data:/data") == 2
 
 
 def test_validator_adds_defaulted_columns_idempotently():
