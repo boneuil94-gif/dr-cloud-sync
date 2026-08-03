@@ -43,6 +43,7 @@ from .sumup_migrations import sumup_schema_diagnostic
 from .sqlite_diagnostics import register_runtime, runtime_diagnostics
 from .reconciliation import ReconciliationService
 from .finance import FinanceProjection
+from .settlements import PaymentSettlementService
 from .purchase_cost import PurchaseCostLedger
 
 ROOT = Path(__file__).parent / "static"
@@ -93,6 +94,9 @@ class InventoryApp:
         self.data_hub=DataHub(service.repo.path)
         self.bank=BankLedger(service.repo.path)
         self.sumup_transactions=SumUpTransactionLedger(self.bank.db);self.sumup_settlements=PaymentSettlementLedger(self.bank.db)
+        self.settlements=PaymentSettlementService(self.bank.db,
+            window_seconds=int(os.environ.get("SETTLEMENT_MATCH_WINDOW_SECONDS","900")),
+            rounding_tolerance=os.environ.get("SETTLEMENT_ROUNDING_TOLERANCE","0.01"))
         register_runtime(self.bank.db, "web")
         secrets_provider=EnvironmentSecretProvider(os.environ,{
             "qonto.production": os.environ.get("QONTO_CREDENTIAL_REF","QONTO_CREDENTIAL"),
@@ -176,6 +180,7 @@ class InventoryApp:
         for job in (JobDefinition("sync_shopcaisse_sales","shopcaisse_sales","SHOPCAISSE_SALES",int(os.environ.get("SHOPCAISSE_SYNC_INTERVAL_SECONDS","600"))),JobDefinition("sync_prestashop_sales","prestashop_sales","PRESTASHOP_SALES",intervals["sales"]),JobDefinition("sync_prestashop_catalog","prestashop_catalog","PRESTASHOP_CATALOG",intervals["sales"]),JobDefinition("sync_bank_transactions","bank","BANK",intervals["bank"]),JobDefinition("refresh_sales_metrics","prestashop_sales","SALES_METRICS",intervals["projection"],("sync_prestashop_sales",)),JobDefinition("reconcile_bank_sales","bank","RECONCILE",intervals["projection"],("sync_bank_transactions",)),JobDefinition("refresh_finance","bank","FINANCE",intervals["projection"],("reconcile_bank_sales",)),JobDefinition("refresh_dashboard","purchases","DASHBOARD",intervals["projection"]),JobDefinition("refresh_marketing_signals","prestashop_sales","MARKETING",intervals["projection"],("refresh_sales_metrics",))): self.data_hub.register_job(job)
         self.data_hub.register_job(JobDefinition("sync_sumup_transactions","sumup_transactions","SUMUP_TRANSACTIONS",sumup_interval))
         self.data_hub.register_job(JobDefinition("sync_sumup_payouts","sumup_payouts","SUMUP_PAYOUTS",sumup_interval,("sync_sumup_transactions",)))
+        self.data_hub.register_job(JobDefinition("sync_payment_settlements","sumup_payouts","PAYMENT_SETTLEMENTS",sumup_interval,("sync_shopcaisse_sales","sync_sumup_transactions","sync_sumup_payouts")))
         self.prestashop_client=prestashop_client
         self.shopcaisse_client=shopcaisse_client
         self.sales_import_preview=None
@@ -210,7 +215,7 @@ class InventoryApp:
             if not self.prestashop_client: raise PrestaShopError("PrestaShop credential is not configured")
             products=sum(1 for _ in self.prestashop_client.iter_resource("products")); combinations=sum(1 for _ in self.prestashop_client.iter_resource("combinations"))
             return {"rows_imported":products+combinations,"products_read":products,"combinations_read":combinations}
-        return {"SHOPCAISSE_SALES":lambda cursor:sales("SHOPCAISSE"),"PRESTASHOP_SALES":lambda cursor:sales("PRESTASHOP"),"PRESTASHOP_CATALOG":catalog,"BANK":lambda cursor:self.bank.sync("Qonto",self.bank_provider,cursor),"SUMUP_TRANSACTIONS":lambda cursor:self.sumup_transactions.sync(self.sumup_provider,cursor),"SUMUP_PAYOUTS":lambda cursor:{**self.sumup_settlements.sync(self.sumup_provider,cursor),"settlements":self.sumup_settlements.reconcile(),"sales_matches":self.reconciliation.reconcile_sales_sumup()["created"]},"RECONCILE":lambda cursor:{"rows_imported":self.reconciliation.reconcile_sales_bank()["created"]},"FINANCE":lambda cursor:{"rows_imported":0,"projection":self.finance.snapshot()},"DASHBOARD":lambda cursor:{"rows_imported":0},"SALES_METRICS":lambda cursor:{"rows_imported":0,"metrics":self.sales.analytics()},"MARKETING":lambda cursor:{"rows_imported":0}}
+        return {"SHOPCAISSE_SALES":lambda cursor:sales("SHOPCAISSE"),"PRESTASHOP_SALES":lambda cursor:sales("PRESTASHOP"),"PRESTASHOP_CATALOG":catalog,"BANK":lambda cursor:self.bank.sync("Qonto",self.bank_provider,cursor),"SUMUP_TRANSACTIONS":lambda cursor:self.sumup_transactions.sync(self.sumup_provider,cursor),"SUMUP_PAYOUTS":lambda cursor:{**self.sumup_settlements.sync(self.sumup_provider,cursor),"settlements":self.sumup_settlements.reconcile()},"PAYMENT_SETTLEMENTS":lambda cursor:{"rows_imported":self.settlements.recompute()["analysed"],"summary":self.settlements.summary()},"RECONCILE":lambda cursor:{"rows_imported":self.reconciliation.reconcile_sales_bank()["created"]},"FINANCE":lambda cursor:{"rows_imported":0,"projection":self.finance.snapshot()},"DASHBOARD":lambda cursor:{"rows_imported":0},"SALES_METRICS":lambda cursor:{"rows_imported":0,"metrics":self.sales.analytics()},"MARKETING":lambda cursor:{"rows_imported":0}}
 
     def __call__(self, env, start):
         request_id=env.get("HTTP_X_REQUEST_ID") or str(uuid.uuid4()); path=env.get("PATH_INFO", "/"); method=env.get("REQUEST_METHOD", "GET")
@@ -302,6 +307,22 @@ class InventoryApp:
             if path == "/api/finance/tax" and method == "GET": return self._json(start,self.finance.tax())
             if path == "/api/finance/profitability" and method == "GET": return self._json(start,self.finance.profitability())
             if path == "/api/finance/reconciliations" and method == "GET": return self._json(start,{"counts":self.finance._reconciliation_counts(),"items":self.reconciliation.list()})
+            if path == "/api/settlements/summary" and method == "GET": return self._json(start,self.settlements.summary())
+            if path == "/api/settlements/matches" and method == "GET": return self._json(start,{"items":self.settlements.matches()})
+            if path == "/api/settlements/conflicts" and method == "GET": return self._json(start,{"items":self.settlements.matches("CONFLICT")})
+            if path.startswith("/api/settlements/payouts/") and method == "GET":
+                try: return self._json(start,self.settlements.payout(unquote(path.removeprefix("/api/settlements/payouts/"))))
+                except KeyError: return self._json(start,{"error":"Payout introuvable"},"404 Not Found")
+            if path.startswith("/api/settlements/") and path.endswith(("/confirm","/reject")) and method == "POST":
+                action="confirm" if path.endswith("/confirm") else "reject"; sid=unquote(path.removeprefix("/api/settlements/").removesuffix("/"+action))
+                try: result=self.settlements.review(sid,"MATCHED" if action=="confirm" else "REJECTED",session["uid"])
+                except KeyError: return self._json(start,{"error":"Rapprochement introuvable"},"404 Not Found")
+                self.security and self.security.audit(session["uid"],"SETTLEMENT_CONFIRMED" if action=="confirm" else "SETTLEMENT_REJECTED","PAYMENT_SETTLEMENT",sid,request_id,"settlements",{"match_method":result["match_method"]})
+                return self._json(start,result)
+            if path == "/api/settlements/backfill" and method == "POST":
+                result=self.settlements.backfill(batch_size=int(self._body(env).get("batch_size",500))); self.security and self.security.audit(session["uid"],"SETTLEMENT_BACKFILL_STARTED","PAYMENT_SETTLEMENT_RUN",result["run_id"],request_id,"settlements",result); return self._json(start,result,"202 Accepted")
+            if path == "/api/settlements/recompute" and method == "POST":
+                result=self.settlements.recompute(); self.security and self.security.audit(session["uid"],"SETTLEMENT_RECOMPUTED","PAYMENT_SETTLEMENT",None,request_id,"settlements",result); return self._json(start,result)
             if path == "/api/purchasing/costs" and method == "GET": return self._json(start,{"events":self.purchase_costs._rows("SELECT * FROM purchase_cost_events ORDER BY received_at DESC")})
             if path == "/api/purchasing/cost-lots" and method == "GET": return self._json(start,{"lots":self.purchase_costs._rows("SELECT * FROM inventory_cost_lots ORDER BY received_at,cost_lot_id")})
             if path == "/api/purchasing/stock-value" and method == "GET": return self._json(start,self.purchase_costs.stock_value())
@@ -660,6 +681,9 @@ class InventoryApp:
         if path.startswith("/api/security/change-password"): return "security.read"
         if path.startswith("/api/security/users") or path.startswith("/api/security/sessions/"): return "security.manage_users" if method!="GET" else "security.read"
         if path.startswith("/api/security/"): return "security.read"
+        if path.startswith("/api/settlements/"):
+            if method == "GET": return "settlements.read"
+            return "settlements.backfill" if path.endswith(("/backfill","/recompute")) else "settlements.review"
         domains=(("/api/purchasing","purchasing.cost.read" if method=="GET" else "purchasing.cost.validate"),("/api/finance","finance.read" if method=="GET" else "finance.write"),("/api/data-hub/sources/","admin.write"),("/api/data-hub/jobs/","bank.sync"),("/api/data-hub","admin.read"),("/api/sales","sales.read" if method=="GET" else "sales.sync"),("/api/marketing","marketing.read" if method=="GET" else "marketing.approve"),("/api/purchase-orders","purchasing.read" if method=="GET" else "purchasing.write"),("/api/goods-receipts","purchasing.read" if method=="GET" else "purchasing.write"),("/api/suppliers","purchasing.read" if method=="GET" else "purchasing.write"),("/api/admin","admin.read" if method=="GET" else "admin.write"),("/api/roadmap","admin.read"),("/api/stock","stock.read"),("/api/inventory","stock.read" if method=="GET" else "stock.validate"),("/api/count","stock.write"),("/api/complete","stock.validate"),("/api/barcodes","catalogue.write"),("/api/products","catalogue.read" if method=="GET" else "catalogue.write"),("/api/catalogue","catalogue.read"),("/api/search","catalogue.read"),("/api/scan","catalogue.read"),("/api/history","stock.read"),("/api/report","stock.read"),("/api/export.csv","stock.read"),("/api/state","stock.read"),("/api/dashboard","catalogue.read"))
         for prefix,permission in domains:
             if path.startswith(prefix): return permission

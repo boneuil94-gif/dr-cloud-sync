@@ -24,6 +24,8 @@ PERMISSIONS = {
     "marketing.approve", "marketing.schedule", "admin.read", "admin.write",
     "security.read", "security.manage_users", "security.manage_roles",
     "security.manage_secrets", "settings.read", "settings.write", "backup.manage",
+    "settlements.read", "settlements.review", "settlements.backfill", "sumup.read",
+    "finance.settlements.read",
 }
 ROLE_PERMISSIONS = {
     "ADMIN": PERMISSIONS,
