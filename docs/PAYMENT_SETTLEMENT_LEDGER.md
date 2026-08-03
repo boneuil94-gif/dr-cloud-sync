@@ -1,0 +1,15 @@
+# Payment Settlement Ledger v1
+
+## Autorités et invariant comptable
+
+Une vente ShopCaisse décrit l'activité commerciale, son paiement le moyen déclaré en caisse, une transaction SumUp le traitement de la carte et un payout SumUp le reversement groupé. Le ledger de settlement ne contient que leurs liens et preuves. **Le chiffre d'affaires reste exclusivement calculé depuis le Sales Ledger** : les montants SumUp sont une projection d'encaissement et portent `revenue_included=false`. Le Bank Ledger et Qonto ne sont ni écrits ni simulés.
+
+## Modèle, preuve et idempotence
+
+`payment_settlement_links` conserve source/cible, état, confiance, méthode explicite, écarts de montant/temps, preuve JSON filtrée, validation et clé d'idempotence. `payment_settlement_evidence` rend les signaux auditables. Les états sont `MATCHED`, `POSSIBLE`, `UNMATCHED`, `CONFLICT` et `REJECTED`. Un recalcul n'écrase jamais une décision humaine.
+
+Le backfill lit les ledgers par lots, avec curseur et diagnostic de période/volumes. Il est reprenable et ne modifie aucune table source. Les mutations API exigent session, permission dédiée, CSRF et AuditLog.
+
+## Limites v1
+
+La fraîcheur reste celle des trois sources Data Hub. Les remboursements SumUp restent distincts des retours commerciaux et ne déclenchent aucun stock. La liaison à un payout exige un item ou identifiant exact ; sans composition, le résultat est `UNAVAILABLE`. Qonto est préparé comme future cible, mais volontairement non activé.

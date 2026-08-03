@@ -36,3 +36,9 @@ Les états normalisés sont `CONNECTED`, `PARTIAL`, `NOT_CONFIGURED`, `DISABLED`
 
 ## Diagnostic d’activation externe
 La réponse authentifiée `/api/data-hub` inclut `runtime.database_fingerprint`, les heartbeats worker et `handler_registered` par job. Ces éléments prouvent le câblage sans révéler un secret. CONNECTED résulte d’un health réel; FRESH seulement d’un run réussi. Le tableau avant/après et les limites de preuve production figurent dans `CONNECTOR_ACTIVATION_AUDIT.md`.
+
+## Payment Settlement Ledger
+
+Le job `sync_payment_settlements` dépend de `sync_shopcaisse_sales`, `sync_sumup_transactions` et `sync_sumup_payouts`. Il relit les sources sans les modifier et rafraîchit la projection settlement utilisée par Finance et Dashboard. Les diagnostics donnent période, paiements, transactions, payouts et états de rapprochement.
+
+La lisibilité historique est conservée lorsqu'une source est stale, mais les consommateurs doivent présenter la fraîcheur des trois sources sans annoncer de faux temps réel. Qonto reste hors de cette chaîne v1.
