@@ -142,3 +142,38 @@ def test_validator_diagnoses_unsafe_drift_before_writes():
             owner="Purchase Ledger",
         )
     assert db.execute("SELECT count(*) FROM ledger").fetchone()[0] == 0
+
+
+def test_diagnostic_proves_roles_resolve_same_file_and_schema(tmp_path):
+    from dr_cloud_sync.sqlite_diagnostics import register_runtime, runtime_diagnostics
+    path = tmp_path / "shared.sqlite"
+    ledger = SumUpTransactionLedger(path)
+    register_runtime(ledger.db, "automation-worker")
+    register_runtime(ledger.db, "migration-command")
+    diagnostics = runtime_diagnostics(ledger.db)
+    assert {item["role"] for item in diagnostics} == {"web", "automation-worker", "migration-command"}
+    assert len({item["absolute_path"] for item in diagnostics}) == 1
+    assert len({item["sha256"] for item in diagnostics}) == 1
+    assert {item["user_version"] for item in diagnostics} == {SUMUP_SCHEMA_VERSION}
+    assert all("simple_status" in {row[1] for row in item["sumup_transactions"]} for item in diagnostics)
+    assert all("deductions_json" in {row[1] for row in item["sumup_payouts"]} for item in diagnostics)
+
+
+def test_recorded_ok_migration_cannot_hide_missing_simple_status(tmp_path):
+    path=tmp_path/"false-green.sqlite";db=sqlite3.connect(path)
+    db.executescript("""
+      CREATE TABLE sumup_transactions(sumup_transaction_id TEXT PRIMARY KEY);
+      CREATE TABLE sumup_schema_migrations(version INTEGER PRIMARY KEY,name TEXT UNIQUE,applied_at TEXT);
+      INSERT INTO sumup_schema_migrations VALUES(1,'old-ok','then');
+    """);db.close()
+    ledger=SumUpTransactionLedger(path)
+    assert "simple_status" in {row[1] for row in ledger.db.execute("PRAGMA table_info(sumup_transactions)")}
+    assert ledger.schema_migration["schema_version"] == SUMUP_SCHEMA_VERSION
+
+
+def test_deductions_json_has_database_and_writer_defaults(tmp_path):
+    ledger=PaymentSettlementLedger(tmp_path/"deductions.sqlite")
+    info={row[1]:row for row in ledger.db.execute("PRAGMA table_info(sumup_payouts)")}
+    assert info["deductions_json"][3] == 1 and info["deductions_json"][4] == "'[]'"
+    ledger.import_page(type("Page",(),{"rows":({"id":"p","date":"2026-08-03","amount":"1"},),"next_cursor":None})())
+    assert ledger.db.execute("SELECT deductions_json FROM sumup_payouts").fetchone()[0] == "[]"
