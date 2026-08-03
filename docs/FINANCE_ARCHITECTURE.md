@@ -16,3 +16,7 @@ Les transactions SumUp, frais, remboursements, chargebacks, payouts et crédits 
 ## Encaissements carte et absence de double comptage
 
 Les paiements CARD ShopCaisse, transactions SumUp finales, montants rapprochés, frais disponibles, net attendu et transit sont des indicateurs d'encaissement. Ils ne sont jamais ajoutés au chiffre d'affaires : le CA provient exclusivement du Sales Ledger. Un ticket mixte contribue avec sa seule part CARD au settlement, tandis que ses autres moyens restent séparés. Les transactions SumUp et payouts restent des preuves opérationnelles (`revenue_included=false`).
+
+## Agrégats du cockpit de trésorerie
+
+Le cockpit consomme des agrégats serveur en lecture seule. `cash_summary` conserve le Sales Ledger comme unique autorité du CA; SumUp et Qonto sont des preuves de traitement et de transfert, jamais de nouvelles ventes. Le transit additionne le net SumUp sans payout et les payouts sans crédit bancaire; le versé exige un lien vers un crédit réel. Toute valeur non attestée reste indisponible.

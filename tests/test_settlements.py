@@ -79,6 +79,23 @@ def test_empty_summary_never_returns_nan_and_marks_unknown_bank():
     assert "NaN" not in str(result)
 
 
+def test_cash_cockpit_keeps_unconfigured_qonto_as_one_global_fact():
+    db=database(); stamp="2026-08-03T10:00:00+00:00"
+    db.execute("INSERT INTO sales VALUES(?,?,?,?,?,?,?,?,?,?,?)",("sale","SHOPCAISSE","ticket",stamp,"UTC","STORE","Paris","EUR","PAID",stamp,stamp))
+    db.execute("INSERT INTO sale_payments(payment_id,sale_id,external_payment_id,payment_type,amount,name,description) VALUES(?,?,?,?,?,?,?)",("card","sale","ref-1","CB","98",None,None))
+    row=transaction(); values=(row["sumup_transaction_id"],row["transaction_code"],row["amount"],row["currency"],row["timestamp"],row["status"],row["status"],None,None,None,None,None,"0","0","0","0",None,None,None,None,"1.70","[]","{}",stamp)
+    db.execute("INSERT INTO sumup_transactions VALUES("+",".join("?"*24)+")",values)
+    db.execute("INSERT INTO sumup_payouts VALUES("+",".join("?"*14)+")",("pay",None,stamp,"96.30","EUR","1.70","PAID",None,None,None,None,"[]","{}",stamp))
+    service=PaymentSettlementService(db); service.recompute(); result=service.summary()
+    assert result["cash_summary"]["card_declared"] == "98"
+    assert result["cash_summary"]["fees"] == "1.7"
+    assert result["cash_summary"]["paid"] is None
+    assert result["configuration_alert"]["count"] == 1
+    assert result["active_anomalies"] == 0
+    payout_link=[x for x in service.matches() if x["source_type"]=="SUMUP_PAYOUT"][0]
+    assert (payout_link["status"],payout_link["match_method"]) == ("NOT_EVALUATED","WAITING_FOR_BANK_SOURCE")
+
+
 def test_naive_payment_time_is_rejected_and_backfill_preview_has_common_period():
     assert match_payment(payment(occurred_at="2026-08-03T10:00:00"),[transaction()])["match_method"]=="INVALID_PAYMENT_TIME"
     preview=PaymentSettlementService(database()).backfill_preview()

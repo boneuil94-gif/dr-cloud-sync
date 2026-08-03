@@ -13,3 +13,7 @@ Les actions d'administration conservent contrôle de permission, CSRF, désactiv
 ## Frontière avec Settlement Explorer
 
 Settlement Explorer ne présente que les informations métier et les états de fraîcheur utiles à l’exploitation. Les diagnostics SQLite, schémas, erreurs techniques détaillées et payloads connecteur restent dans **Administration → Avancé**.
+
+## Exploitation quotidienne Settlements
+
+Depuis le cockpit, **Synchroniser**, **Recalculer** et **Importer l'historique** désactivent l'action pendant son exécution et annoncent le résultat via une zone `aria-live`. Une absence Qonto renvoie vers la configuration et reste un état global gris, non une série d'erreurs rouges. L'exploitant commence par les cinq anomalies P0/P1 les plus anciennes, puis ouvre l'Explorer pour la preuve et la décision.
