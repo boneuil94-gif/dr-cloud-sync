@@ -137,3 +137,37 @@ def test_explorer_static_mobile_and_safe_display_contracts():
     assert 'aria-live="polite"' in markup and "Settlement Explorer" in markup
     assert "AbortController" in script and "history.replaceState" in script and "Number.isFinite" in script
     assert "@media(max-width:375px)" in styles and "@media(max-width:768px)" in styles
+
+
+def test_today_metrics_use_authoritative_payments_and_refuse_incomplete_data():
+    db=database(); now=datetime.now(timezone.utc).isoformat()
+    db.execute("INSERT INTO sales VALUES(?,?,?,?,?,?,?,?,?,?,?)",("today","SHOPCAISSE","ticket",now,"UTC","STORE","Paris","EUR","PAID",now,now))
+    db.executemany("INSERT INTO sale_payments(payment_id,sale_id,external_payment_id,payment_type,amount,name,description) VALUES(?,?,?,?,?,?,?)",[("cash","today","cash","CASH","20",None,None),("card","today","card","", "30","Carte bancaire",None)])
+    service=PaymentSettlementService(db); result=service.summary()
+    assert result["cash_summary"]["total_collected_today"] == "50"
+    assert result["cash_summary"]["cash"] == "20"
+    assert result["cash_summary"]["card_declared"] == "30"
+    assert service.shopcaisse_audit()["mixed_tickets"] == 1
+    history=db.execute("SELECT old_category,new_category,new_version FROM payment_mapping_history WHERE payment_id='card'").fetchone()
+    assert tuple(history) == ("UNKNOWN","CARD","shopcaisse-payment-types-v2")
+    db.execute("INSERT INTO sale_payments(payment_id,sale_id,external_payment_id,payment_type,amount,name,description) VALUES(?,?,?,?,?,?,?)",("unknown","today","unknown","local mystery","1",None,None))
+    service=PaymentSettlementService(db)
+    assert service.summary()["cash_summary"]["total_collected_today"] is None
+
+
+def test_paid_payout_is_not_expected_or_counted_in_transit_without_bank():
+    db=database(); stamp=datetime.now(timezone.utc).isoformat(); service=PaymentSettlementService(db)
+    db.execute("INSERT INTO sumup_payouts VALUES("+",".join("?"*14)+")",("paid",None,stamp,"100","EUR","0","PAID",None,None,None,stamp,"[]","{}",stamp))
+    result=service.summary()
+    assert result["expected_payouts"] == []
+    assert result["in_transit"]["amount"] == "0"
+    assert result["payout_status_counts"]["paid"] == 1
+
+
+def test_settlement_table_contract_has_one_cell_per_column():
+    from pathlib import Path
+    root=Path(__file__).parents[1]/"src"/"dr_cloud_sync"/"static"
+    assert (root/"settlements.html").read_text().split("<thead>",1)[1].split("</thead>",1)[0].count("<th>") == 13
+    template=(root/"settlements.js").read_text().split("document.querySelector('#settlementRows').innerHTML=",1)[1].split(".join('')",1)[0]
+    assert template.count("<td>") == 13
+    assert "x.target_type==='QONTO_CREDIT'&&x.target_id" in template
