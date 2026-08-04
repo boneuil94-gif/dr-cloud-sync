@@ -101,12 +101,12 @@ class InventoryApp:
             transit_window_days=int(os.environ.get("SUMUP_TRANSIT_WINDOW_DAYS","14")))
         register_runtime(self.bank.db, "web")
         secrets_provider=EnvironmentSecretProvider(os.environ,{
-            "qonto.production": os.environ.get("QONTO_CREDENTIAL_REF","QONTO_CREDENTIAL"),
+            "qonto.production": "QONTO_CREDENTIAL",
             "prestashop.production": "PRESTASHOP_API_KEY",
             "shopcaisse.production": "SHOPCAISSE_API_KEY",
             "sumup.production": "SUMUP_API_KEY",
         })
-        secret_ref=os.environ.get("QONTO_SECRET_REF") or ("qonto.production" if os.environ.get(os.environ.get("QONTO_CREDENTIAL_REF","QONTO_CREDENTIAL")) else "")
+        secret_ref=os.environ.get("QONTO_SECRET_REF") or os.environ.get("QONTO_CREDENTIAL_REF","env:QONTO_CREDENTIAL")
         candidate=QontoBankProvider(secret_ref,secrets_provider,timeout=float(os.environ.get("QONTO_TIMEOUT_SECONDS","8")),base_url=os.environ.get("QONTO_API_URL") or None)
         qonto_connected=False
         if candidate.configured:
@@ -167,7 +167,11 @@ class InventoryApp:
                 configured=True,capabilities=("READ_SALES",),stale_after_seconds=intervals["sales"]*2)
         self.sales_sync=SalesSyncService(self.sales,sales_providers)
         for args in (("prestashop_sales","PRESTASHOP_SALES","PrestaShop",configured_ps),("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",prestashop_connected),("bank","BANK","Qonto",qonto_connected),("purchases","PURCHASES","LOCAL",True),("stock","STOCK","LOCAL",True)):
-            self.data_hub.register_source(*args[:3],configured=args[3],capabilities=("READ",),stale_after_seconds=intervals["bank"]*2 if args[0]=="bank" else intervals["sales"]*2)
+            # An authenticated Qonto health check makes the source runnable, but it
+            # remains unavailable (never CONNECTED/FRESH) until BANK has imported a
+            # real page and DataHub.run records the successful synchronization.
+            initial_status="UNAVAILABLE" if args[0]=="bank" and args[3] else None
+            self.data_hub.register_source(*args[:3],configured=args[3],status=initial_status,capabilities=("READ",),stale_after_seconds=intervals["bank"]*2 if args[0]=="bank" else intervals["sales"]*2)
         sumup_interval=int(os.environ.get("SUMUP_SYNC_INTERVAL_SECONDS","900"))
         for source_id,source_type in (("sumup_merchant","SUMUP_MERCHANT"),("sumup_transactions","SUMUP_TRANSACTIONS"),("sumup_payouts","SUMUP_PAYOUTS"),("sumup_fees","SUMUP_FEES"),("sumup_refunds","SUMUP_REFUNDS"),("sumup_chargebacks","SUMUP_CHARGEBACKS"),("sumup_readers","SUMUP_READERS")):
             self.data_hub.register_source(source_id,source_type,"SumUp",configured=sumup_connected,capabilities=("READ_ONLY",),stale_after_seconds=sumup_interval*2)
@@ -218,7 +222,13 @@ class InventoryApp:
             if not self.prestashop_client: raise PrestaShopError("PrestaShop credential is not configured")
             products=sum(1 for _ in self.prestashop_client.iter_resource("products")); combinations=sum(1 for _ in self.prestashop_client.iter_resource("combinations"))
             return {"rows_imported":products+combinations,"products_read":products,"combinations_read":combinations}
-        return {"SHOPCAISSE_SALES":lambda cursor:sales("SHOPCAISSE"),"PRESTASHOP_SALES":lambda cursor:sales("PRESTASHOP"),"PRESTASHOP_CATALOG":catalog,"BANK":lambda cursor:self.bank.sync("Qonto",self.bank_provider,cursor),"SUMUP_TRANSACTIONS":lambda cursor:self.sumup_transactions.sync(self.sumup_provider,cursor),"SUMUP_PAYOUTS":lambda cursor:{**self.sumup_settlements.sync(self.sumup_provider,cursor),"settlements":self.sumup_settlements.reconcile()},"PAYMENT_SETTLEMENTS":lambda cursor:{"rows_imported":self.settlements.recompute()["analysed"],"summary":self.settlements.summary()},"RECONCILE":lambda cursor:{"rows_imported":self.reconciliation.reconcile_sales_bank()["created"]},"FINANCE":lambda cursor:{"rows_imported":0,"projection":self.finance.snapshot()},"DASHBOARD":lambda cursor:{"rows_imported":0},"SALES_METRICS":lambda cursor:{"rows_imported":0,"metrics":self.sales.analytics()},"MARKETING":lambda cursor:{"rows_imported":0}}
+        def bank(cursor):
+            report=self.bank.sync("Qonto",self.bank_provider,cursor)
+            # Bank Ledger is durable before settlement recomputation; Qonto remains
+            # strictly read-only while SumUp payouts can immediately find credits.
+            report["settlements"]=self.settlements.recompute()
+            return report
+        return {"SHOPCAISSE_SALES":lambda cursor:sales("SHOPCAISSE"),"PRESTASHOP_SALES":lambda cursor:sales("PRESTASHOP"),"PRESTASHOP_CATALOG":catalog,"BANK":bank,"SUMUP_TRANSACTIONS":lambda cursor:self.sumup_transactions.sync(self.sumup_provider,cursor),"SUMUP_PAYOUTS":lambda cursor:{**self.sumup_settlements.sync(self.sumup_provider,cursor),"settlements":self.sumup_settlements.reconcile()},"PAYMENT_SETTLEMENTS":lambda cursor:{"rows_imported":self.settlements.recompute()["analysed"],"summary":self.settlements.summary()},"RECONCILE":lambda cursor:{"rows_imported":self.reconciliation.reconcile_sales_bank()["created"]},"FINANCE":lambda cursor:{"rows_imported":0,"projection":self.finance.snapshot()},"DASHBOARD":lambda cursor:{"rows_imported":0},"SALES_METRICS":lambda cursor:{"rows_imported":0,"metrics":self.sales.analytics()},"MARKETING":lambda cursor:{"rows_imported":0}}
 
     def __call__(self, env, start):
         request_id=env.get("HTTP_X_REQUEST_ID") or str(uuid.uuid4()); path=env.get("PATH_INFO", "/"); method=env.get("REQUEST_METHOD", "GET")

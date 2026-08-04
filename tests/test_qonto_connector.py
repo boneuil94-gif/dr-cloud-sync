@@ -1,7 +1,7 @@
 import io, json
 from urllib.error import HTTPError, URLError
 import pytest
-from dr_cloud_sync.qonto import QontoBankProvider,QontoError
+from dr_cloud_sync.qonto import EnvironmentSecretProvider,QontoBankProvider,QontoError
 
 class Response:
     def __init__(self,value):self.value=value
@@ -37,3 +37,15 @@ def test_errors_are_sanitized(code,retryable):
 def test_timeout_retries():
     p,_=provider([URLError("timeout")]*3)
     with pytest.raises(QontoError,match="network timeout"):p.health()
+
+def test_environment_secret_reference_is_resolved_without_exposure():
+    secrets=EnvironmentSecretProvider({"QONTO_CREDENTIAL":"login:highly-sensitive"})
+    assert secrets.resolve("env:QONTO_CREDENTIAL")=="login:highly-sensitive"
+    assert secrets.resolve("env:") is None
+
+def test_full_iban_is_not_persisted_as_account_name():
+    iban="FR7612345678901234567890123"
+    body={"organization":{"bank_accounts":[{"id":"a1","iban":iban,"currency":"EUR"}]}}
+    p,_=provider([Response(body)])
+    name=p.accounts()[0].name
+    assert iban not in name and name.endswith(iban[-4:])

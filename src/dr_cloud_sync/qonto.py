@@ -21,6 +21,9 @@ class EnvironmentSecretProvider:
     def __init__(self, environment, references=None): self.environment = environment; self.references=dict(references or {})
     def resolve(self, reference: str) -> str | None:
         if not reference: return None
+        if reference.startswith("env:"):
+            variable=reference.removeprefix("env:")
+            return self.environment.get(variable) if variable else None
         variable=self.references.get(reference) or "DRCLOUD_SECRET_"+reference.upper().replace(".","_").replace("-","_")
         return self.environment.get(variable)
     def get(self, reference: str) -> str | None: return self.resolve(reference)
@@ -60,7 +63,11 @@ class QontoBankProvider:
         if not self.configured:return {"status":"NOT_CONFIGURED"}
         self._organization();return {"status":"CONNECTED"}
     def accounts(self):
-        return tuple(BankAccount(str(x["id"]),str(x.get("name") or x.get("iban") or x["id"]),str(x.get("currency") or "EUR")) for x in self._organization().get("bank_accounts",[]))
+        def display_name(account):
+            if account.get("name"): return str(account["name"])
+            iban=str(account.get("iban") or "")
+            return f"Compte Qonto ····{iban[-4:]}" if iban else f"Compte Qonto {account['id']}"
+        return tuple(BankAccount(str(x["id"]),display_name(x),str(x.get("currency") or "EUR")) for x in self._organization().get("bank_accounts",[]))
     def balances(self):
         observed=datetime.now(timezone.utc).isoformat(); result=[]
         for x in self._organization().get("bank_accounts",[]):

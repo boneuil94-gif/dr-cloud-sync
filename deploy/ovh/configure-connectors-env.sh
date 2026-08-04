@@ -7,7 +7,7 @@ test -f "$env_file"
 umask 077
 python3 - "$env_file" "$qonto_credential" "$shopcaisse_inbox" <<'PY'
 import pathlib,sys
-path=pathlib.Path(sys.argv[1]); values={"QONTO_CREDENTIAL_REF":"QONTO_CREDENTIAL","QONTO_CREDENTIAL":sys.argv[2],"SHOPCAISSE_SALES_INBOX":sys.argv[3]}
+path=pathlib.Path(sys.argv[1]); values={"QONTO_CREDENTIAL_REF":"env:QONTO_CREDENTIAL","QONTO_CREDENTIAL":sys.argv[2],"SHOPCAISSE_SALES_INBOX":sys.argv[3]}
 lines=path.read_text().splitlines(); seen=set(); output=[]
 for line in lines:
     key=line.split("=",1)[0] if "=" in line else ""

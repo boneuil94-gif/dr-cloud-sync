@@ -67,6 +67,7 @@ jobs:
           test -n "$PRESTASHOP_API_KEY" || { echo "PRESTASHOP_API_KEY est absent" >&2; exit 1; }
           test -n "$PRESTASHOP_PAID_STATE_IDS" || { echo "PRESTASHOP_PAID_STATE_IDS est absent" >&2; exit 1; }
           test -n "$SHOPCAISSE_API_KEY" || { echo "SHOPCAISSE_API_KEY est absent" >&2; exit 1; }
+          test -n "$QONTO_CREDENTIAL" || { echo "QONTO_CREDENTIAL est absent" >&2; exit 1; }
           test -n "$SUMUP_API_KEY" || { echo "SUMUP_API_KEY est absent" >&2; exit 1; }
           test -n "$SUMUP_MERCHANT_CODE" || { echo "SUMUP_MERCHANT_CODE est absent" >&2; exit 1; }
           printf '%s\n%s\n%s\n' 'https://dr-cloudshop.com/api' "$PRESTASHOP_API_KEY" "$PRESTASHOP_PAID_STATE_IDS" |
@@ -84,11 +85,9 @@ jobs:
           printf '%s\n%s\n' "$SUMUP_API_KEY" "$SUMUP_MERCHANT_CODE" |
             ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" "$OVH_SSH_USER@$OVH_SSH_HOST" \
               "DRCLOUD_ENV_FILE=/opt/drcloud-os/deploy/ovh/drcloud.env /bin/bash /tmp/drcloud-sumup-$DEPLOY_SHA.sh; status=\$?; rm -f /tmp/drcloud-sumup-$DEPLOY_SHA.sh; exit \$status"
-          if test -n "$QONTO_CREDENTIAL"; then
-            printf '%s\n%s\n' "$QONTO_CREDENTIAL" '/data/shopcaisse-inbox' |
-              ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" "$OVH_SSH_USER@$OVH_SSH_HOST" \
-                "DRCLOUD_ENV_FILE=/opt/drcloud-os/deploy/ovh/drcloud.env /bin/bash /tmp/drcloud-connectors-$DEPLOY_SHA.sh"
-          fi
+          printf '%s\n%s\n' "$QONTO_CREDENTIAL" '/data/shopcaisse-inbox' |
+            ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" "$OVH_SSH_USER@$OVH_SSH_HOST" \
+              "DRCLOUD_ENV_FILE=/opt/drcloud-os/deploy/ovh/drcloud.env /bin/bash /tmp/drcloud-connectors-$DEPLOY_SHA.sh"
           ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" "$OVH_SSH_USER@$OVH_SSH_HOST" \
             "rm -f /tmp/drcloud-connectors-$DEPLOY_SHA.sh"
           ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" \

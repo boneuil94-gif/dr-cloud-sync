@@ -108,6 +108,29 @@ def test_production_connector_policy_and_shared_worker_database_check():
     assert compose.count('- drcloud-data:/data')==2
 
 
+def test_qonto_secret_is_propagated_to_both_production_runtimes(tmp_path):
+    root=Path(__file__).parents[1]
+    workflow=(root/'.github/workflows/drcloud-os-production.yml').read_text()
+    compose=(root/'deploy/ovh/docker-compose.yml').read_text()
+    installer=root/'deploy/ovh/configure-connectors-env.sh'
+    secret='login:production-qonto-secret'
+    env_file=tmp_path/'drcloud.env'
+    env_file.write_text('DRCLOUD_ENV=production\nQONTO_CREDENTIAL_REF=old\nQONTO_CREDENTIAL=old\n')
+    result=subprocess.run([installer],input=f'{secret}\n/data/shopcaisse-inbox\n',text=True,
+        capture_output=True,check=False,env={**os.environ,'DRCLOUD_ENV_FILE':str(env_file)})
+    content=env_file.read_text()
+    assert result.returncode==0,result.stderr
+    assert secret not in result.stdout+result.stderr
+    assert content.count('QONTO_CREDENTIAL_REF=')==1
+    assert content.count('QONTO_CREDENTIAL=')==1
+    assert 'QONTO_CREDENTIAL_REF=env:QONTO_CREDENTIAL' in content
+    assert f'QONTO_CREDENTIAL={secret}' in content
+    assert env_file.stat().st_mode & 0o777==0o600
+    assert 'QONTO_CREDENTIAL: ${{ secrets.QONTO_CREDENTIAL }}' in workflow
+    assert 'test -n "$QONTO_CREDENTIAL"' in workflow
+    assert compose.count('env_file:')==2 and compose.count('./drcloud.env')==2
+
+
 def test_success_marker_is_published_only_after_checks_and_rollback_validation():
     script = (Path(__file__).parents[1] / "deploy/ovh/update.sh").read_text()
     success_check = script.index('EXPECTED_COMMIT="$target"')
