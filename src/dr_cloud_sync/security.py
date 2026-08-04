@@ -21,7 +21,7 @@ PERMISSIONS = {
     "catalogue.read", "catalogue.write", "stock.read", "stock.write", "stock.validate",
     "sales.read", "sales.sync", "sales.map", "finance.read", "finance.write", "finance.settings", "bank.read", "bank.sync", "reconciliation.review",
     "purchasing.read", "purchasing.write", "purchasing.invoice.read", "purchasing.invoice.write", "purchasing.cost.read", "purchasing.cost.validate", "finance.profitability.read", "finance.stock_value.read", "marketing.read", "marketing.generate",
-    "marketing.approve", "marketing.schedule", "marketing.propose", "marketing.review", "marketing.analytics.read", "marketing.learning.read", "social.read", "social.sync", "admin.read", "admin.write",
+    "marketing.approve", "marketing.schedule", "marketing.propose", "marketing.review", "marketing.create", "marketing.calendar.read", "marketing.calendar.write", "marketing.campaigns.read", "marketing.analytics.read", "marketing.learning.read", "marketing.export", "social.read", "social.sync", "admin.read", "admin.write",
     "security.read", "security.manage_users", "security.manage_roles",
     "security.manage_secrets", "settings.read", "settings.write", "backup.manage",
     "settlements.read", "settlements.review", "settlements.notes", "settlements.export", "settlements.backfill", "sumup.read",
@@ -31,7 +31,7 @@ ROLE_PERMISSIONS = {
     "ADMIN": PERMISSIONS,
     "MANAGER": PERMISSIONS - {"security.manage_users", "security.manage_roles", "security.manage_secrets", "settings.write", "backup.manage", "bank.sync"},
     "STAFF": {"catalogue.read", "stock.read", "stock.write", "sales.read", "purchasing.read"},
-    "READ_ONLY": {"catalogue.read", "stock.read", "sales.read", "purchasing.read", "marketing.read", "marketing.analytics.read", "marketing.learning.read", "social.read"},
+    "READ_ONLY": {"catalogue.read", "stock.read", "sales.read", "purchasing.read", "marketing.read", "marketing.calendar.read", "marketing.campaigns.read", "marketing.analytics.read", "marketing.learning.read", "social.read"},
 }
 SENSITIVE = re.compile(r"(?i)(password|passwd|secret|token|api.?key|authorization|cookie|credential)")
 

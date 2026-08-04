@@ -146,7 +146,8 @@ def test_marketing_recognises_v1_without_claiming_production_future_done():
     assert by_id["09-marketing-m11"]["status"] == "DONE"  # purchase/margin
     assert by_id["09-marketing-m12"]["status"] == "DONE"  # measured learning loop
     assert by_id["09-marketing-m13"]["status"] == "DONE"  # provider-neutral analytics foundation
-    assert marketing["progress_percent"] == 76.92
+    assert by_id["09-marketing-m14"]["status"] == "DONE"  # operations cockpit
+    assert marketing["progress_percent"] == 78.57
 
 
 def test_sales_distinguishes_analytic_ledger_from_operational_sales():

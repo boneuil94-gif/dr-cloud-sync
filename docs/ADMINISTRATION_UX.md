@@ -29,3 +29,7 @@ couverture et limites. Synchroniser n'active aucun provider. Les permissions
 `marketing.analytics.read`, `marketing.learning.read`, `marketing.propose`,
 `marketing.review`, `social.read` et `social.sync` séparent lecture et action; STAFF
 ne reçoit aucune permission de validation ou publication sensible.
+
+## Marketing Operations
+
+Les permissions fines `marketing.calendar.read/write`, `marketing.campaigns.read`, `marketing.analytics.read`, `marketing.learning.read` et `marketing.export` suivent la matrice RBAC. STAFF ne peut ni approuver ni modifier une campagne sensible. Data Hub conserve les snapshots et jobs internes, tandis que les providers sociaux réels restent `NOT_CONFIGURED`.
