@@ -624,6 +624,12 @@
           "name": "Social Analytics foundation provider-neutral (snapshots persistants, métriques nullables)",
           "status": "DONE",
           "evidence": "sales.py (SocialAnalyticsService, SocialAnalyticsPort); tests/test_sales_ledger.py"
+        },
+        {
+          "id": "09-marketing-m14",
+          "name": "Marketing Operations Cockpit (calendrier, review, campagnes, recommandations expliquées)",
+          "status": "DONE",
+          "evidence": "marketing_operations.py; static/marketing*; docs/MARKETING_COCKPIT.md; tests/test_marketing_operations.py"
         }
       ]
     },

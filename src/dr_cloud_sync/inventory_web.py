@@ -30,6 +30,7 @@ from .prestashop import PrestaShopClient, PrestaShopError
 from .media_import import PrestaShopIntegrationUnavailable, PrestaShopMediaProvider
 from .marketing import MarketingAutopilot, MarketingRepository
 from .marketing_intelligence import MarketingIntelligenceService, SocialAnalyticsLiveService
+from .marketing_operations import MarketingOperationsService
 from .creative_ai import CreativeAIService, CreativeGenerationError
 from .creative_review import CreativeReviewError, CreativeReviewService
 from .sales import SalesLedger, SocialAnalyticsService
@@ -222,7 +223,8 @@ class InventoryApp:
         self.marketing=MarketingAutopilot(self.marketing_repository,self.os_repository,self.media.repository,sales=self.sales)
         self.social_live=SocialAnalyticsLiveService(self.marketing_repository.db)
         self.marketing_intelligence=MarketingIntelligenceService(self.marketing_repository,self.os_repository,self.stock,self.sales,self.purchase_costs)
-        for job in (JobDefinition("generate_stock_marketing_proposals","marketing_intelligence","STOCK_MARKETING",86400,("refresh_dashboard",)),JobDefinition("generate_margin_marketing_proposals","marketing_intelligence","MARGIN_MARKETING",86400,("refresh_finance",)),JobDefinition("measure_marketing_outcomes","marketing_intelligence","MEASURE_MARKETING",21600),JobDefinition("refresh_learning_loop","marketing_intelligence","LEARNING_LOOP",21600,("measure_marketing_outcomes",))): self.data_hub.register_job(job)
+        self.marketing_operations=MarketingOperationsService(self.marketing_repository,self.social_live,self.marketing_intelligence)
+        for job in (JobDefinition("generate_stock_marketing_proposals","marketing_intelligence","STOCK_MARKETING",86400,("refresh_dashboard",)),JobDefinition("generate_margin_marketing_proposals","marketing_intelligence","MARGIN_MARKETING",86400,("refresh_finance",)),JobDefinition("generate_marketing_recommendations","marketing_intelligence","STOCK_MARKETING",86400,("refresh_dashboard",)),JobDefinition("prepare_editorial_calendar","marketing_intelligence","MARKETING_CALENDAR",86400),JobDefinition("expire_old_proposals","marketing_intelligence","MARKETING_EXPIRE",86400),JobDefinition("measure_campaigns","marketing_intelligence","MEASURE_MARKETING",21600),JobDefinition("refresh_marketing_cockpit","marketing_intelligence","MARKETING_COCKPIT",3600),JobDefinition("notify_pending_reviews","marketing_intelligence","MARKETING_NOTIFY",3600),JobDefinition("measure_marketing_outcomes","marketing_intelligence","MEASURE_MARKETING",21600),JobDefinition("refresh_learning_loop","marketing_intelligence","LEARNING_LOOP",21600,("measure_marketing_outcomes",))): self.data_hub.register_job(job)
         self.creative_ai=CreativeAIService(self.marketing_repository,self.os_repository,self.media.repository)
         self.creative_review=CreativeReviewService(self.marketing_repository)
         self.social_connections=SocialConnectionService(self.marketing_repository)
@@ -259,7 +261,8 @@ class InventoryApp:
             report["settlements"]=self.settlements.recompute()
             return report
         intelligence=lambda cursor:{"rows_imported":self.marketing_intelligence.generate()["generated"]}
-        return {"SHOPCAISSE_SALES":lambda cursor:sales("SHOPCAISSE"),"PRESTASHOP_SALES":lambda cursor:sales("PRESTASHOP"),"PRESTASHOP_CATALOG":catalog,"BANK":bank,"SUMUP_TRANSACTIONS":lambda cursor:self.sumup_transactions.sync(self.sumup_provider,cursor),"SUMUP_PAYOUTS":lambda cursor:{**self.sumup_settlements.sync(self.sumup_provider,cursor),"settlements":self.sumup_settlements.reconcile()},"PAYMENT_SETTLEMENTS":lambda cursor:{"rows_imported":self.settlements.recompute()["analysed"],"summary":self.settlements.summary()},"RECONCILE":lambda cursor:{"rows_imported":self.reconciliation.reconcile_sales_bank()["created"]},"FINANCE":lambda cursor:{"rows_imported":0,"projection":self.finance.snapshot()},"DASHBOARD":lambda cursor:{"rows_imported":0},"SALES_METRICS":lambda cursor:{"rows_imported":0,"metrics":self.sales.analytics()},"MARKETING":lambda cursor:{"rows_imported":0},"STOCK_MARKETING":intelligence,"MARGIN_MARKETING":intelligence,"MEASURE_MARKETING":lambda cursor:{"rows_imported":0,"coverage":self.marketing_intelligence.learning()["coverage"]},"LEARNING_LOOP":lambda cursor:{"rows_imported":0,"learning":self.marketing_intelligence.learning()}}
+        internal=lambda payload:{"rows_imported":0,**payload}
+        return {"SHOPCAISSE_SALES":lambda cursor:sales("SHOPCAISSE"),"PRESTASHOP_SALES":lambda cursor:sales("PRESTASHOP"),"PRESTASHOP_CATALOG":catalog,"BANK":bank,"SUMUP_TRANSACTIONS":lambda cursor:self.sumup_transactions.sync(self.sumup_provider,cursor),"SUMUP_PAYOUTS":lambda cursor:{**self.sumup_settlements.sync(self.sumup_provider,cursor),"settlements":self.sumup_settlements.reconcile()},"PAYMENT_SETTLEMENTS":lambda cursor:{"rows_imported":self.settlements.recompute()["analysed"],"summary":self.settlements.summary()},"RECONCILE":lambda cursor:{"rows_imported":self.reconciliation.reconcile_sales_bank()["created"]},"FINANCE":lambda cursor:{"rows_imported":0,"projection":self.finance.snapshot()},"DASHBOARD":lambda cursor:{"rows_imported":0},"SALES_METRICS":lambda cursor:{"rows_imported":0,"metrics":self.sales.analytics()},"MARKETING":lambda cursor:{"rows_imported":0},"MARKETING_CALENDAR":lambda cursor:internal({"calendar":self.marketing_operations.calendar({})}),"MARKETING_EXPIRE":lambda cursor:{"rows_imported":self.marketing.expire()},"MARKETING_COCKPIT":lambda cursor:internal({"cockpit":self.marketing_operations.cockpit()}),"MARKETING_NOTIFY":lambda cursor:internal({"notifications":self.marketing_operations.cockpit()["notifications"]}),"STOCK_MARKETING":intelligence,"MARGIN_MARKETING":intelligence,"MEASURE_MARKETING":lambda cursor:{"rows_imported":0,"coverage":self.marketing_intelligence.learning()["coverage"]},"LEARNING_LOOP":lambda cursor:{"rows_imported":0,"learning":self.marketing_intelligence.learning()}}
 
     def __call__(self, env, start):
         request_id=env.get("HTTP_X_REQUEST_ID") or str(uuid.uuid4()); path=env.get("PATH_INFO", "/"); method=env.get("REQUEST_METHOD", "GET")
@@ -277,7 +280,7 @@ class InventoryApp:
                 "/inventory.css": ("inventory.css", "text/css; charset=utf-8"),
                 **{f"/{name}": (name, "text/javascript; charset=utf-8") for name in (
                     "app-shell.js", "inventory.js", "roadmap.js", "dashboard.js",
-                    "administration.js", "stock.js", "purchasing.js", "security.js", "marketing.js", "sales.js", "finance.js", "settlements.js", "settlement-explorer.js",
+                    "administration.js", "stock.js", "purchasing.js", "security.js", "marketing.js", "marketing-operations.js", "sales.js", "finance.js", "settlements.js", "settlement-explorer.js",
                 )},
             }
             if path in public_assets:
@@ -314,6 +317,7 @@ class InventoryApp:
             if path == "/stock": return self._html(start,"stock.html",session,request_id)
             if path == "/achats": return self._html(start,"purchasing.html",session,request_id)
             if path == "/marketing": return self._html(start,"marketing.html",session,request_id)
+            if path in {"/marketing/calendar","/marketing/publishing-queue","/marketing/review","/marketing/campaigns"}: return self._html(start,"marketing-operations.html",session,request_id)
             if path == "/marketing/social-analytics": return self._html(start,"social-analytics.html",session,request_id)
             if path == "/marketing/learning": return self._html(start,"marketing-learning.html",session,request_id)
             if path == "/sales": return self._html(start,"sales.html",session,request_id)
@@ -465,6 +469,11 @@ class InventoryApp:
             if path == "/api/marketing/social-analytics/live" and method == "GET": return self._json(start,self.social_live.cockpit(int(parse_qs(env.get("QUERY_STRING","")).get("days",[30])[0])))
             if path == "/api/marketing/intelligence/proposals" and method == "POST": return self._json(start,self.marketing_intelligence.generate(session.get("u","authenticated")))
             if path == "/api/marketing/learning" and method == "GET": return self._json(start,self.marketing_intelligence.learning())
+            if path == "/api/marketing/cockpit" and method == "GET":
+                return self._json(start,self.marketing_operations.cockpit(int(parse_qs(env.get("QUERY_STRING","")).get("days",[30])[0])))
+            if path in {"/api/marketing/calendar","/api/marketing/publishing-queue","/api/marketing/review","/api/marketing/campaigns"} and method == "GET":
+                query={k:v[0] for k,v in parse_qs(env.get("QUERY_STRING","")).items()}; name=path.rsplit("/",1)[-1].replace("publishing-queue","queue")
+                return self._json(start,getattr(self.marketing_operations,name)(query))
             if path == "/api/marketing/dashboard" and method == "GET":
                 return self._json(start,{"settings":self.marketing_repository.settings(),"preview":self.marketing.preview(),"analytics":self.sales.analytics(),"social_analytics":self.social_analytics.summary(),"proposals":self.marketing_repository.rows("marketing_proposals"),"opportunities":self.marketing_repository.rows("marketing_opportunities"),"schedules":self.marketing_repository.rows("marketing_schedules"),"connections":self.marketing_repository.rows("social_connections")})
             if path == "/api/marketing/social-connections" and method == "POST":
@@ -766,7 +775,7 @@ class InventoryApp:
     @staticmethod
     def _route_permission(path,method):
         """Return the explicit grant required by a route; unknown routes fail closed."""
-        pages={"/":"catalogue.read","/catalogue":"catalogue.read","/inventaire":"stock.read","/stock":"stock.read","/sales":"sales.read","/finance":"finance.read","/settlements":"settlements.read","/settlements/explorer":"settlements.read","/achats":"purchasing.read","/marketing":"marketing.read","/marketing/social-analytics":"marketing.analytics.read","/marketing/learning":"marketing.learning.read","/administration":"admin.read","/securite":"security.read","/roadmap":"admin.read"}
+        pages={"/":"catalogue.read","/catalogue":"catalogue.read","/inventaire":"stock.read","/stock":"stock.read","/sales":"sales.read","/finance":"finance.read","/settlements":"settlements.read","/settlements/explorer":"settlements.read","/achats":"purchasing.read","/marketing":"marketing.read","/marketing/calendar":"marketing.calendar.read","/marketing/publishing-queue":"marketing.calendar.read","/marketing/review":"marketing.review","/marketing/campaigns":"marketing.campaigns.read","/marketing/social-analytics":"marketing.analytics.read","/marketing/learning":"marketing.learning.read","/administration":"admin.read","/securite":"security.read","/roadmap":"admin.read"}
         if path in pages: return pages[path]
         if path.startswith("/achats/"): return "purchasing.read"
         if path.startswith("/media/"): return "catalogue.read"
@@ -796,10 +805,10 @@ class InventoryApp:
     def _html(self,start,name,session,request_id,status="200 OK"):
         content_name="inventory.html" if name == "catalogue.html" else name
         html=(ROOT/content_name).read_text(encoding="utf-8"); safe=self.settings.safe_mode if self.settings else True
-        shell_module=PAGES.get("settlements.html") if name=="settlement-explorer.html" else PAGES.get(name)
+        shell_module=PAGES.get("settlements.html") if name=="settlement-explorer.html" else PAGES.get("marketing.html") if name=="marketing-operations.html" else PAGES.get(name)
         if shell_module:
             module = shell_module
-            title, active, script = ("Settlement Explorer",module.id,"settlement-explorer.js") if name=="settlement-explorer.html" else (module.label,module.id,module.script)
+            title, active, script = ("Settlement Explorer",module.id,"settlement-explorer.js") if name=="settlement-explorer.html" else ("Opérations marketing",module.id,"marketing-operations.js") if name=="marketing-operations.html" else (module.label,module.id,module.script)
             shell=(ROOT/"app-shell.html").read_text(encoding="utf-8")
             html=shell.replace("{{PAGE_CONTENT}}",html).replace("{{PAGE_TITLE}}",title).replace("{{PAGE_SCRIPT}}",script)
             html=html.replace("{{NAVIGATION}}", render_navigation(active))

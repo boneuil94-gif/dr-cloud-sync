@@ -8,3 +8,7 @@ L'attribution est UNKNOWN, NO_SIGNAL, CORRELATED ou LIKELY. Une hausse temporell
 sans lien/code tracké reste CORRELATED; elle n'est jamais présentée comme causale.
 Les scores social, commercial, stock et marge restent séparés et `null` si leurs
 faits manquent. Trois observations sont requises avant toute recommandation.
+
+## Restitution opérations
+
+Les campagnes affichent avant/après, baseline, uplift, confiance, outcome et attribution tels que persistés. Une couverture insuffisante produit `Indisponible` ou « Données insuffisantes »; un créneau optimal n'est jamais inventé.
