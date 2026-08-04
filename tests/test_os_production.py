@@ -113,7 +113,7 @@ def test_qonto_secret_is_propagated_to_both_production_runtimes(tmp_path):
     workflow=(root/'.github/workflows/drcloud-os-production.yml').read_text()
     compose=(root/'deploy/ovh/docker-compose.yml').read_text()
     installer=root/'deploy/ovh/configure-connectors-env.sh'
-    secret='login:production-qonto-secret'
+    secret='login:production qonto:$pecial!#credential'
     env_file=tmp_path/'drcloud.env'
     env_file.write_text('DRCLOUD_ENV=production\nQONTO_CREDENTIAL_REF=old\nQONTO_CREDENTIAL=old\n')
     result=subprocess.run([installer],input=f'{secret}\n/data/shopcaisse-inbox\n',text=True,
@@ -125,10 +125,29 @@ def test_qonto_secret_is_propagated_to_both_production_runtimes(tmp_path):
     assert content.count('QONTO_CREDENTIAL=')==1
     assert 'QONTO_CREDENTIAL_REF=env:QONTO_CREDENTIAL' in content
     assert f'QONTO_CREDENTIAL={secret}' in content
+    assert 'QONTO_API_URL=https://thirdparty.qonto.com' in content
     assert env_file.stat().st_mode & 0o777==0o600
     assert 'QONTO_CREDENTIAL: ${{ secrets.QONTO_CREDENTIAL }}' in workflow
     assert 'test -n "$QONTO_CREDENTIAL"' in workflow
+    assert 'environment: production' in workflow
     assert compose.count('env_file:')==2 and compose.count('./drcloud.env')==2
+    check=(root/'deploy/ovh/check.sh').read_text()
+    assert 'check_qonto_runtime drcloud-os Web' in check
+    assert 'check_qonto_runtime automation-worker Worker' in check
+    assert 'EnvironmentSecretProvider(os.environ).resolve(reference)' in check.replace(' ','')
+
+
+def test_qonto_runtime_installer_fails_closed_without_secret(tmp_path):
+    root=Path(__file__).parents[1]
+    env_file=tmp_path/'drcloud.env'
+    original='DRCLOUD_ENV=production\nQONTO_CREDENTIAL=existing\n'
+    env_file.write_text(original)
+    result=subprocess.run([root/'deploy/ovh/configure-connectors-env.sh'],input='\n/data/shopcaisse-inbox\n',
+        text=True,capture_output=True,check=False,env={**os.environ,'DRCLOUD_ENV_FILE':str(env_file)})
+    assert result.returncode != 0
+    assert result.stderr.strip() == 'QONTO_CREDENTIAL est absent'
+    assert env_file.read_text() == original
+    assert 'existing' not in result.stdout+result.stderr
 
 
 def test_success_marker_is_published_only_after_checks_and_rollback_validation():
@@ -217,6 +236,8 @@ def test_deployment_state_is_canonical_and_independent_from_working_directory(tm
         "DRCLOUD_SAFE_MODE=true\nBARCODE_SYNC_MODE=dry-run\n"
         "DRCLOUD_SECRET_KEY=test\nDRCLOUD_ADMIN_USERNAME=test\nDRCLOUD_ADMIN_PASSWORD=test\n"
         "SHOPCAISSE_API_KEY=test-shopcaisse-key\n"
+        "QONTO_CREDENTIAL_REF=env:QONTO_CREDENTIAL\nQONTO_CREDENTIAL=test:qonto\n"
+        "QONTO_API_URL=https://thirdparty.qonto.com\n"
     )
     accidental = tmp_path / "elsewhere" / ".deployment-state"
     cwd = accidental.parent
@@ -275,6 +296,8 @@ def test_update_preserves_state_environment_through_checks_and_rollback(
         "DRCLOUD_SAFE_MODE=true\nBARCODE_SYNC_MODE=dry-run\nDRCLOUD_SECRET_KEY=test\n"
         "DRCLOUD_ADMIN_USERNAME=test\nDRCLOUD_ADMIN_PASSWORD=test\n"
         "SHOPCAISSE_API_KEY=test-shopcaisse-key\n"
+        "QONTO_CREDENTIAL_REF=env:QONTO_CREDENTIAL\nQONTO_CREDENTIAL=test:qonto\n"
+        "QONTO_API_URL=https://thirdparty.qonto.com\n"
     )
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
     subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=repo, check=True)

@@ -87,9 +87,7 @@ jobs:
               "DRCLOUD_ENV_FILE=/opt/drcloud-os/deploy/ovh/drcloud.env /bin/bash /tmp/drcloud-sumup-$DEPLOY_SHA.sh; status=\$?; rm -f /tmp/drcloud-sumup-$DEPLOY_SHA.sh; exit \$status"
           printf '%s\n%s\n' "$QONTO_CREDENTIAL" '/data/shopcaisse-inbox' |
             ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" "$OVH_SSH_USER@$OVH_SSH_HOST" \
-              "DRCLOUD_ENV_FILE=/opt/drcloud-os/deploy/ovh/drcloud.env /bin/bash /tmp/drcloud-connectors-$DEPLOY_SHA.sh"
-          ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" "$OVH_SSH_USER@$OVH_SSH_HOST" \
-            "rm -f /tmp/drcloud-connectors-$DEPLOY_SHA.sh"
+              "DRCLOUD_ENV_FILE=/opt/drcloud-os/deploy/ovh/drcloud.env /bin/bash /tmp/drcloud-connectors-$DEPLOY_SHA.sh; status=\$?; rm -f /tmp/drcloud-connectors-$DEPLOY_SHA.sh; exit \$status"
           ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" \
             "$OVH_SSH_USER@$OVH_SSH_HOST" \
             "test \"\$(id -un)\" = '$OVH_SSH_USER' && /opt/drcloud-os/deploy/ovh/update.sh '$DEPLOY_SHA'"

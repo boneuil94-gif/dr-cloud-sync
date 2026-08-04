@@ -13,8 +13,30 @@ Le client est strictement read-only : aucun virement, bénéficiaire, carte ou p
 La cadence est `DATA_HUB_BANK_INTERVAL_SECONDS` (1 800 secondes par défaut). Un backfill contrôlé est obtenu en réinitialisant le curseur du job puis en relançant le job ; l'upsert par identifiant Qonto rend cette opération idempotente.
 
 ## Activation production vérifiable
-Le workflow transmet `QONTO_CREDENTIAL` au script protégé, qui établit la référence opaque `qonto.production`. Le provider reste désactivé si la résolution échoue et CONNECTED exige le GET organisation réel. Le contrôle final doit conserver uniquement comptes/transactions/counts, dates et erreurs assainies; jamais l’en-tête Authorization. Voir `CONNECTOR_ACTIVATION_AUDIT.md` pour les limites de preuve de cette livraison.
+Le workflow `DrCloud OS Production` utilise le job `deploy` avec `environment: production`. Il lit directement `${{ secrets.QONTO_CREDENTIAL }}` : un Repository secret reste accessible à ce job et aucun déplacement vers les Environment secrets n'est nécessaire. Le workflow transmet la valeur par l'entrée standard au script protégé, qui établit `env:QONTO_CREDENTIAL`. Le provider reste désactivé si la résolution échoue et CONNECTED exige le GET organisation réel. Le contrôle final ne journalise que OUI/NON; jamais le credential, sa longueur, son préfixe ou l'en-tête Authorization.
+
+| Étape | Variable attendue | Source GitHub | Présente dans le code | Transmise |
+|---|---|---|---:|---:|
+| Job `deploy` (`environment: production`) | `QONTO_CREDENTIAL` | Repository secret `QONTO_CREDENTIAL` | oui | oui, via `env` puis stdin |
+| `configure-connectors-env.sh` distant | `QONTO_CREDENTIAL` | stdin du job | oui | oui, écrite dans `drcloud.env` |
+| `drcloud.env` | `QONTO_CREDENTIAL_REF`, `QONTO_CREDENTIAL`, `QONTO_API_URL` | installateur distant | oui | oui, mode `0600` |
+| service web | les trois variables runtime | `env_file: ./drcloud.env` | oui | oui, vérifié après redémarrage |
+| `automation-worker` | les trois variables runtime | `env_file: ./drcloud.env` | oui | oui, vérifié après redémarrage |
+| `EnvironmentSecretProvider` | `env:QONTO_CREDENTIAL` | environnement du conteneur | oui | oui, résolution contrôlée sans valeur |
+| `QontoBankProvider` | credential résolu | `EnvironmentSecretProvider` | oui | oui si non vide |
 
 ## Paramètres runtime confirmés
 
 Le code attend `QONTO_CREDENTIAL_REF` (référence vers `QONTO_CREDENTIAL`), `QONTO_API_URL`, `QONTO_TIMEOUT_SECONDS` et `QONTO_SYNC_INTERVAL_SECONDS`. L'organisation et les comptes sont découverts par le GET `/v2/organization`; aucun identifiant de compte ou d'organisation supplémentaire n'est requis par ce contrat. Le workflow production injecte la valeur via stdin dans `drcloud.env`, consommé par web et automation-worker; elle n'est jamais affichée.
+
+## Validation après merge (manuelle)
+
+1. Merger la PR sans lancer de déploiement manuel.
+2. Attendre le workflow **DrCloud OS Production** déclenché après le CI de `main`.
+3. Vérifier que le workflow est vert et que ses contrôles Web/Worker affichent seulement `OUI`.
+4. Ouvrir **Administration → Data Hub**.
+5. Cliquer **Tester maintenant** sur Qonto.
+6. Attendre un temps d'exécution réel supérieur à `0 ms`.
+7. Vérifier un état `CONNECTED` ou `ERROR AUTH`, jamais `NOT_CONFIGURED` lorsque le secret est présent.
+8. Lancer **Synchroniser maintenant**.
+9. Vérifier les écritures du Bank Ledger et l'état `CONNECTED · FRESH`.
