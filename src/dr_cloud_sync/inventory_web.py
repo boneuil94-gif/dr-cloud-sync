@@ -49,6 +49,7 @@ from .reconciliation import ReconciliationService
 from .finance import FinanceProjection
 from .settlements import PaymentSettlementService
 from .purchase_cost import PurchaseCostLedger
+from .crm import CRMService
 
 ROOT = Path(__file__).parent / "static"
 LOG = logging.getLogger("drcloud.os")
@@ -94,6 +95,7 @@ class InventoryApp:
         self.media=ProductMediaService(SQLiteProductMediaRepository(service.repo.path),LocalMediaStorage(media_root),self.os_repository,self.os_repository)
         self.marketing_repository=MarketingRepository(service.repo.path)
         self.sales=SalesLedger(service.repo.path,self.os_repository)
+        self.crm=CRMService(self.sales.db)
         self.purchase_costs=PurchaseCostLedger(service.repo.path,self.os_repository)
         self.data_hub=DataHub(service.repo.path)
         self.bank=BankLedger(service.repo.path)
@@ -280,7 +282,7 @@ class InventoryApp:
                 "/inventory.css": ("inventory.css", "text/css; charset=utf-8"),
                 **{f"/{name}": (name, "text/javascript; charset=utf-8") for name in (
                     "app-shell.js", "inventory.js", "roadmap.js", "dashboard.js",
-                    "administration.js", "stock.js", "purchasing.js", "security.js", "marketing.js", "marketing-operations.js", "sales.js", "finance.js", "settlements.js", "settlement-explorer.js",
+                    "administration.js", "stock.js", "purchasing.js", "security.js", "marketing.js", "marketing-operations.js", "sales.js", "finance.js", "settlements.js", "settlement-explorer.js", "crm.js",
                 )},
             }
             if path in public_assets:
@@ -324,6 +326,14 @@ class InventoryApp:
             if path == "/finance": return self._html(start,"finance.html",session,request_id)
             if path == "/settlements": return self._html(start,"settlements.html",session,request_id)
             if path == "/settlements/explorer": return self._html(start,"settlement-explorer.html",session,request_id)
+            if path in {"/crm","/crm/customers","/crm/loyalty"}: return self._html(start,"crm.html",session,request_id)
+            if path == "/api/crm/cockpit" and method == "GET": return self._json(start,self.crm.cockpit())
+            if path == "/api/crm/customers" and method == "GET":
+                q=parse_qs(env.get("QUERY_STRING","")); reveal="crm.customer.write" in self.security.permissions_for(session["uid"])
+                return self._json(start,self.crm.customers(q.get("q",[""])[0],q.get("page",[1])[0],q.get("per_page",[25])[0],reveal))
+            if path.startswith("/api/crm/customers/") and method == "GET":
+                cid=unquote(path.removeprefix("/api/crm/customers/")); reveal="crm.customer.write" in self.security.permissions_for(session["uid"])
+                return self._json(start,self.crm.customer(cid,reveal))
             if path == "/api/data-hub/diagnostics" and method == "GET":
                 query=parse_qs(env.get("QUERY_STRING", "")); return self._json(start,{"diagnostics":self.data_hub.diagnostics.recent(query.get("source_id",[None])[0],query.get("limit",[10])[0])})
             if path == "/api/admin/sumup-schema" and method == "GET":
@@ -775,7 +785,7 @@ class InventoryApp:
     @staticmethod
     def _route_permission(path,method):
         """Return the explicit grant required by a route; unknown routes fail closed."""
-        pages={"/":"catalogue.read","/catalogue":"catalogue.read","/inventaire":"stock.read","/stock":"stock.read","/sales":"sales.read","/finance":"finance.read","/settlements":"settlements.read","/settlements/explorer":"settlements.read","/achats":"purchasing.read","/marketing":"marketing.read","/marketing/calendar":"marketing.calendar.read","/marketing/publishing-queue":"marketing.calendar.read","/marketing/review":"marketing.review","/marketing/campaigns":"marketing.campaigns.read","/marketing/social-analytics":"marketing.analytics.read","/marketing/learning":"marketing.learning.read","/administration":"admin.read","/securite":"security.read","/roadmap":"admin.read"}
+        pages={"/":"catalogue.read","/crm":"crm.read","/crm/customers":"crm.customer.read","/crm/loyalty":"crm.loyalty.read","/catalogue":"catalogue.read","/inventaire":"stock.read","/stock":"stock.read","/sales":"sales.read","/finance":"finance.read","/settlements":"settlements.read","/settlements/explorer":"settlements.read","/achats":"purchasing.read","/marketing":"marketing.read","/marketing/calendar":"marketing.calendar.read","/marketing/publishing-queue":"marketing.calendar.read","/marketing/review":"marketing.review","/marketing/campaigns":"marketing.campaigns.read","/marketing/social-analytics":"marketing.analytics.read","/marketing/learning":"marketing.learning.read","/administration":"admin.read","/securite":"security.read","/roadmap":"admin.read"}
         if path in pages: return pages[path]
         if path.startswith("/achats/"): return "purchasing.read"
         if path.startswith("/media/"): return "catalogue.read"
@@ -789,6 +799,8 @@ class InventoryApp:
             if method == "GET": return "settlements.read"
             if path.endswith(("/note","/notes")): return "settlements.notes"
             return "settlements.backfill" if path.endswith(("/backfill","/recompute")) else "settlements.review"
+        if path.startswith("/api/crm/customers"): return "crm.customer.read" if method=="GET" else "crm.customer.write"
+        if path.startswith("/api/crm"): return "crm.read"
         domains=(("/api/purchasing","purchasing.cost.read" if method=="GET" else "purchasing.cost.validate"),("/api/finance","finance.read" if method=="GET" else "finance.write"),("/api/data-hub/sources/","admin.write"),("/api/data-hub/jobs/","bank.sync"),("/api/data-hub","admin.read"),("/api/sales","sales.read" if method=="GET" else "sales.sync"),("/api/marketing","marketing.read" if method=="GET" else "marketing.approve"),("/api/purchase-orders","purchasing.read" if method=="GET" else "purchasing.write"),("/api/goods-receipts","purchasing.read" if method=="GET" else "purchasing.write"),("/api/suppliers","purchasing.read" if method=="GET" else "purchasing.write"),("/api/admin","admin.read" if method=="GET" else "admin.write"),("/api/roadmap","admin.read"),("/api/stock","stock.read"),("/api/inventory","stock.read" if method=="GET" else "stock.validate"),("/api/count","stock.write"),("/api/complete","stock.validate"),("/api/barcodes","catalogue.write"),("/api/products","catalogue.read" if method=="GET" else "catalogue.write"),("/api/catalogue","catalogue.read"),("/api/search","catalogue.read"),("/api/scan","catalogue.read"),("/api/history","stock.read"),("/api/report","stock.read"),("/api/export.csv","stock.read"),("/api/state","stock.read"),("/api/dashboard","catalogue.read"))
         for prefix,permission in domains:
             if path.startswith(prefix): return permission

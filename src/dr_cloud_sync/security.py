@@ -25,13 +25,13 @@ PERMISSIONS = {
     "security.read", "security.manage_users", "security.manage_roles",
     "security.manage_secrets", "settings.read", "settings.write", "backup.manage",
     "settlements.read", "settlements.review", "settlements.notes", "settlements.export", "settlements.backfill", "sumup.read",
-    "finance.settlements.read", "qonto.read",
+    "finance.settlements.read", "qonto.read", "crm.read", "crm.customer.read", "crm.customer.write", "crm.notes.write", "crm.merge", "crm.anonymize", "crm.segment.read", "crm.segment.write", "crm.loyalty.read", "crm.loyalty.write", "crm.campaign.read", "crm.campaign.write", "crm.export",
 }
 ROLE_PERMISSIONS = {
     "ADMIN": PERMISSIONS,
     "MANAGER": PERMISSIONS - {"security.manage_users", "security.manage_roles", "security.manage_secrets", "settings.write", "backup.manage", "bank.sync"},
-    "STAFF": {"catalogue.read", "stock.read", "stock.write", "sales.read", "purchasing.read"},
-    "READ_ONLY": {"catalogue.read", "stock.read", "sales.read", "purchasing.read", "marketing.read", "marketing.calendar.read", "marketing.campaigns.read", "marketing.analytics.read", "marketing.learning.read", "social.read"},
+    "STAFF": {"catalogue.read", "stock.read", "stock.write", "sales.read", "purchasing.read", "crm.read", "crm.customer.read", "crm.notes.write", "crm.segment.read", "crm.loyalty.read", "crm.campaign.read"},
+    "READ_ONLY": {"catalogue.read", "crm.read", "crm.customer.read", "crm.segment.read", "crm.loyalty.read", "crm.campaign.read", "stock.read", "sales.read", "purchasing.read", "marketing.read", "marketing.calendar.read", "marketing.campaigns.read", "marketing.analytics.read", "marketing.learning.read", "social.read"},
 }
 SENSITIVE = re.compile(r"(?i)(password|passwd|secret|token|api.?key|authorization|cookie|credential)")
 

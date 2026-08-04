@@ -35,7 +35,7 @@ MODULES = (
     Module("sales", "Ventes", "Opérations", 50, "↑", "06-sales", "/sales", "sales.html", "sales.js"),
     Module("finance", "Finance", "Pilotage", 10, "◫", "07-finance", "/finance", "finance.html", "finance.js"),
     Module("settlements", "Settlements", "Pilotage", 15, "⇄", "07-finance", "/settlements", "settlements.html", "settlements.js"),
-    Module("customers", "Clients", "Pilotage", 20, "♙", "08-customers"),
+    Module("customers", "Clients", "Pilotage", 20, "♙", "08-customers", "/crm", "crm.html", "crm.js"),
     Module("marketing", "Marketing", "Pilotage", 30, "◎", "09-marketing", "/marketing", "marketing.html", "marketing.js"),
     Module("social-analytics", "Social Analytics", "Pilotage", 31, "↗", "09-marketing", "/marketing/social-analytics", "social-analytics.html", "social-analytics.js"),
     Module("marketing-learning", "Learning Loop", "Pilotage", 32, "∿", "09-marketing", "/marketing/learning", "marketing-learning.html", "marketing-learning.js"),
