@@ -17,7 +17,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 class ErrorCategory(StrEnum):
     AUTH="AUTH"; HTTP="HTTP"; TIMEOUT="TIMEOUT"; NETWORK="NETWORK"; PARSING="PARSING"
     RATE_LIMIT="RATE_LIMIT"; INVALID_RESPONSE="INVALID_RESPONSE"
-    VALIDATION="VALIDATION"; CONFIGURATION="CONFIGURATION"; PERSISTENCE="PERSISTENCE"; UNKNOWN="UNKNOWN"
+    VALIDATION="VALIDATION"; CONFIGURATION="CONFIGURATION"; PERSISTENCE="PERSISTENCE"; WAF="WAF"; UNKNOWN="UNKNOWN"
 
 
 SENSITIVE=re.compile(r"(?i)(authorization|proxy-authorization|cookie|set-cookie|api[-_]?key|(?:access[-_]?)?token|refresh[-_]?token|password|passwd|secret|credential)")
@@ -80,6 +80,10 @@ class DiagnosticRepository:
     def add(self,item: ConnectorDiagnostic) -> int:
         values=asdict(item); values["success"]=int(item.success)
         with closing(self.connect()) as db:
+            if item.category == "WAF" and not item.success:
+                previous=db.execute("SELECT diagnostic_id,category,http_status,request_id FROM connector_diagnostics WHERE source_id=? ORDER BY diagnostic_id DESC LIMIT 1",(item.source_id,)).fetchone()
+                if previous and previous["category"]=="WAF" and previous["http_status"]==item.http_status and previous["request_id"]==item.request_id:
+                    return int(previous["diagnostic_id"])
             cur=db.execute(f"INSERT INTO connector_diagnostics({','.join(values)}) VALUES({','.join('?' for _ in values)})",tuple(values.values()))
             db.commit()
             return int(cur.lastrowid)
@@ -123,6 +127,10 @@ def from_exception(*,source_id,provider,operation,stage,exc,job_id=None,run_id=N
     context=getattr(exc,"diagnostic",{}) or {}; cause=exc.__cause__ or exc
     status=context.get("http_status") or (cause.code if isinstance(cause,HTTPError) else None)
     response=context.get("response_excerpt")
+    if context.get("cloudflare_code"):
+        response=json.dumps({"protection":context.get("provider"),"code":context.get("cloudflare_code"),
+            "server":context.get("server"),"content_type":context.get("content_type"),
+            "user_agent":context.get("user_agent")},ensure_ascii=False,separators=(",",":"))
     if response is None and isinstance(cause,HTTPError):
         try: response=cause.read(4096).decode("utf-8",errors="replace")
         except Exception: response=None
@@ -132,4 +140,4 @@ def from_exception(*,source_id,provider,operation,stage,exc,job_id=None,run_id=N
     return ConnectorDiagnostic(source_id,provider,context.get("operation",operation),context.get("stage",stage),category,
         sanitize(exc,limit=500) or "Erreur connecteur",datetime.now(timezone.utc).isoformat(),job_id,run_id,
         safe_path(context.get("endpoint_path")),status,sanitize(response),type(cause).__name__,attempt,duration_ms,
-        sanitize(cursor,limit=300),sanitize(request_id,limit=200),next_retry_at,False)
+        sanitize(cursor,limit=300),sanitize(context.get("cf_ray") or request_id,limit=200),next_retry_at,False)

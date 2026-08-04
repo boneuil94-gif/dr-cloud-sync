@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal
-import json, time
+import json, re, time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -13,12 +13,57 @@ from .bank import BankAccount, BankBalance, BankTransaction, TransactionPage
 
 class QontoError(RuntimeError):
     def __init__(self, message: str, *, category="UNKNOWN", http_status=None, endpoint=None,
-                 retryable=False, response_excerpt=None, duration_ms=None, stage="organization"):
+                 retryable=False, response_excerpt=None, duration_ms=None, stage="organization",
+                 provider=None, cloudflare_code=None, cf_ray=None, server=None, content_type=None,
+                 user_agent=None):
         super().__init__(message); self.retryable=retryable; self.category=category
         self.http_status=http_status; self.endpoint=endpoint; self.sanitised_message=message
         self.response_excerpt=response_excerpt; self.duration_ms=duration_ms
         self.diagnostic={"category":category,"http_status":http_status,"endpoint_path":endpoint,
-                         "stage":stage,"operation":"QONTO_HEALTH"}
+                         "stage":stage,"operation":"QONTO_HEALTH","provider":provider,
+                         "cloudflare_code":cloudflare_code,"cf_ray":cf_ray,"server":server,
+                         "content_type":content_type,"user_agent":user_agent}
+
+
+QONTO_USER_AGENT = "DrCloud-OS/1.0 (+https://osdrcloud.fr)"
+_CF_1010 = re.compile(r"(?:error\s*(?:code|_code)?\s*[:=]?\s*1010|cloudflare[^\n]{0,100}1010|browser(?:'s)?\s+signature)", re.I)
+
+
+def cloudflare_1010(status, headers, body: bytes | str) -> dict | None:
+    """Recognise Cloudflare 1010 without retaining the response body."""
+    headers = headers or {}
+    get = getattr(headers, "get", lambda key, default=None: default)
+    server, ray = str(get("Server", "") or ""), str(get("cf-ray", "") or "")
+    content_type = str(get("Content-Type", "") or "")
+    text = body.decode("utf-8", errors="replace") if isinstance(body, bytes) else str(body or "")
+    json_code = None
+    if "json" in content_type.lower() or text.lstrip().startswith(("{", "[")):
+        try:
+            payload = json.loads(text)
+            if isinstance(payload, dict): json_code = payload.get("error_code") or payload.get("code")
+        except (ValueError, TypeError):
+            pass
+    is_cf = "cloudflare" in server.lower() or bool(ray) or "cloudflare" in text.lower()
+    if int(status or 0) != 403 or not is_cf or not (str(json_code) == "1010" or _CF_1010.search(text)):
+        return None
+    return {"provider":"CLOUDFLARE","cloudflare_code":1010,"cf_ray":ray or None,
+            "server":server or None,"content_type":content_type or None,
+            "cloudflare_region":ray.rsplit("-", 1)[-1].upper() if "-" in ray else None}
+
+
+def support_message(*, timestamp_utc, cf_ray=None, egress_ip=None, user_agent=QONTO_USER_AGENT) -> str:
+    """Build a support ticket from allow-listed, non-banking diagnostic values."""
+    def safe(value, fallback="non disponible"):
+        value = str(value or fallback).replace("\r", " ").replace("\n", " ")
+        return value[:200]
+    return ("Objet : Business API bloquée par Cloudflare 1010 depuis notre serveur OVH\n\n"
+        "Nous utilisons la Business API officielle Qonto en lecture seule depuis notre backend DrCloud OS "
+        "hébergé chez OVH en France. L’appel GET /v2/organization avec une clé API d’organisation est "
+        "bloqué avant d’atteindre l’API par Cloudflare, avec HTTP 403 / error 1010. Pouvez-vous analyser "
+        "ce blocage ou autoriser l’IP et la signature de notre client API ?\n\n"
+        f"Timestamp UTC : {safe(timestamp_utc)}\ncf-ray : {safe(cf_ray)}\n"
+        f"IP publique sortante : {safe(egress_ip)}\nUser-Agent : {safe(user_agent)}\n"
+        "Aucun credential, header Authorization ou donnée bancaire n’est joint.")
 
 
 class EnvironmentSecretProvider:
@@ -46,16 +91,23 @@ class QontoBankProvider:
     def _authorization(self):
         value=self._secrets.get(self._reference)
         if not value: raise QontoError("Configuration Qonto absente du runtime.",category="CONFIGURATION",stage="secret_resolution")
-        return value if ":" in value or value.lower().startswith("bearer ") else f"Bearer {value}"
+        return value
     def _get(self,path,params=None):
         url=f"{self.base_url}{path}"+("?"+urlencode(params,doseq=True) if params else "")
-        request=Request(url,headers={"Authorization":self._authorization(),"Accept":"application/json"})
+        request=Request(url,headers={"Authorization":self._authorization(),"Accept":"application/json",
+                                    "User-Agent":QONTO_USER_AGENT})
         started=time.monotonic()
         for attempt in range(self.retries):
             try:
                 with self.opener(request,timeout=self.timeout) as response: return json.loads(response.read())
             except HTTPError as exc:
                 duration=int((time.monotonic()-started)*1000)
+                body=exc.read(65536)
+                waf=cloudflare_1010(exc.code,exc.headers,body)
+                if waf:
+                    raise QontoError("L’accès à l’API Qonto est bloqué par une règle Cloudflare avant validation du credential.",
+                        category="WAF",http_status=403,endpoint=path,retryable=False,duration_ms=duration,
+                        stage="edge_protection",user_agent=QONTO_USER_AGENT,**{k:v for k,v in waf.items() if k != "cloudflare_region"}) from exc
                 if exc.code in (401,403): raise QontoError("Authentification Qonto refusée",category="AUTH",http_status=exc.code,endpoint=path,duration_ms=duration,stage="authentication") from exc
                 retryable=exc.code==429 or 500<=exc.code<600
                 category="TIMEOUT" if exc.code==408 else "RATE_LIMIT" if exc.code==429 else "HTTP"

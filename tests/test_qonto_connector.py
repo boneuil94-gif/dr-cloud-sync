@@ -1,7 +1,8 @@
 import io, json
 from urllib.error import HTTPError, URLError
 import pytest
-from dr_cloud_sync.qonto import EnvironmentSecretProvider,QontoBankProvider,QontoError
+from dr_cloud_sync.qonto import (EnvironmentSecretProvider,QONTO_USER_AGENT,QontoBankProvider,
+    QontoError,cloudflare_1010,support_message)
 
 class Response:
     def __init__(self,value):self.value=value
@@ -66,3 +67,40 @@ def test_full_iban_is_not_persisted_as_account_name():
     p,_=provider([Response(body)])
     name=p.accounts()[0].name
     assert iban not in name and name.endswith(iban[-4:])
+
+@pytest.mark.parametrize("body,content_type",[
+    (b'<html><title>Attention Required! | Cloudflare</title><span class="error-code">Error 1010</span><p>owner has blocked access based on your browser\'s signature</p></html>',"text/html"),
+    (b'{"error_code":1010,"provider":"cloudflare"}',"application/json"),
+])
+def test_cloudflare_1010_is_waf_and_never_retried(body,content_type):
+    headers={"Server":"cloudflare","cf-ray":"abc123-CDG","Content-Type":content_type}
+    error=HTTPError("https://thirdparty.qonto.com/v2/organization",403,"Forbidden",headers,io.BytesIO(body))
+    p,calls=provider([error])
+    with pytest.raises(QontoError) as caught:p.health()
+    assert caught.value.category=="WAF" and caught.value.retryable is False
+    assert caught.value.diagnostic["provider"]=="CLOUDFLARE"
+    assert caught.value.diagnostic["cloudflare_code"]==1010
+    assert caught.value.diagnostic["cf_ray"]=="abc123-CDG"
+    assert len(calls)==1 and "login:secret" not in str(caught.value.diagnostic)
+
+def test_qonto_json_403_is_auth_not_waf():
+    headers={"Content-Type":"application/json"}
+    error=HTTPError("https://thirdparty.qonto.com/v2/organization",403,"Forbidden",headers,io.BytesIO(b'{"message":"forbidden"}'))
+    p,_=provider([error])
+    with pytest.raises(QontoError) as caught:p.health()
+    assert caught.value.category=="AUTH"
+
+def test_api_headers_are_stable_and_not_browser_impersonation():
+    p,calls=provider([Response({"organization":{"bank_accounts":[]}})])
+    p.health(); headers={k.lower():v for k,v in calls[0].header_items()}
+    assert headers["user-agent"]==QONTO_USER_AGENT and headers["accept"]=="application/json"
+    assert headers["authorization"]=="login:secret"
+    assert not ({"cookie","referer","sec-ch-ua","sec-fetch-site"}&headers.keys())
+
+def test_support_message_is_sanitised():
+    message=support_message(timestamp_utc="2026-08-04T12:00:00Z",cf_ray="ray-CDG",egress_ip="192.0.2.10")
+    assert "GET /v2/organization" in message and "192.0.2.10" in message and QONTO_USER_AGENT in message
+    assert "login:secret" not in message and "Authorization:" not in message
+
+def test_cloudflare_classifier_requires_cloudflare_evidence():
+    assert cloudflare_1010(403,{"Server":"origin"},'{"error_code":1010}') is None
