@@ -21,3 +21,11 @@ Depuis le cockpit, **Synchroniser**, **Recalculer** et **Importer l'historique**
 ## Diagnostic Qonto
 
 La carte Qonto distingue désormais `NOT_CONFIGURED` (« Configuration Qonto absente du runtime ») d'un `ERROR` actif. Une authentification refusée affiche l'étape d'authentification et le code 401/403; une panne de transport affiche l'étape organization, la catégorie `NETWORK`/`TIMEOUT` et un message assaini. **Tester maintenant** reste disponible lorsqu'un provider configuré est en erreur et actualise l'état sans lancer d'import bancaire complet. Les erreurs résolues restent consultables dans l'historique replié.
+
+## Marketing Intelligence
+
+Les cockpits Social Analytics et Learning Loop présentent explicitement fraîcheur,
+couverture et limites. Synchroniser n'active aucun provider. Les permissions
+`marketing.analytics.read`, `marketing.learning.read`, `marketing.propose`,
+`marketing.review`, `social.read` et `social.sync` séparent lecture et action; STAFF
+ne reçoit aucune permission de validation ou publication sensible.

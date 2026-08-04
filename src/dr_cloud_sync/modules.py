@@ -37,6 +37,8 @@ MODULES = (
     Module("settlements", "Settlements", "Pilotage", 15, "⇄", "07-finance", "/settlements", "settlements.html", "settlements.js"),
     Module("customers", "Clients", "Pilotage", 20, "♙", "08-customers"),
     Module("marketing", "Marketing", "Pilotage", 30, "◎", "09-marketing", "/marketing", "marketing.html", "marketing.js"),
+    Module("social-analytics", "Social Analytics", "Pilotage", 31, "↗", "09-marketing", "/marketing/social-analytics", "social-analytics.html", "social-analytics.js"),
+    Module("marketing-learning", "Learning Loop", "Pilotage", 32, "∿", "09-marketing", "/marketing/learning", "marketing-learning.html", "marketing-learning.js"),
     Module("synchronizations", "Synchronisations", "Automatisation", 10, "↻", "04-stock"),
     Module("automation", "Automatisations + IA", "Automatisation", 20, "✦", "10-automation"),
     Module("administration", "Administration", "Système", 10, "⚙", route="/administration", page_template="administration.html", script="administration.js"),

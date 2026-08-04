@@ -592,8 +592,8 @@
         {
           "id": "09-marketing-m08",
           "name": "Social Analytics live",
-          "status": "TODO",
-          "evidence": "Quatre sources Data Hub inventoriées NOT_CONFIGURED; aucun provider analytics homologué ni métrique live"
+          "status": "DONE",
+          "evidence": "marketing_intelligence.py; static/social-analytics.*; static/marketing-learning.*; tests/test_marketing_intelligence.py"
         },
         {
           "id": "09-marketing-m09",
@@ -604,17 +604,20 @@
         {
           "id": "09-marketing-m10",
           "name": "Stock-driven Marketing",
-          "status": "TODO"
+          "status": "DONE",
+          "evidence": "marketing_intelligence.py; static/social-analytics.*; static/marketing-learning.*; tests/test_marketing_intelligence.py"
         },
         {
           "id": "09-marketing-m11",
           "name": "Purchase/margin intelligence",
-          "status": "TODO"
+          "status": "DONE",
+          "evidence": "marketing_intelligence.py; static/social-analytics.*; static/marketing-learning.*; tests/test_marketing_intelligence.py"
         },
         {
           "id": "09-marketing-m12",
           "name": "Learning Loop mesuré",
-          "status": "TODO"
+          "status": "DONE",
+          "evidence": "marketing_intelligence.py; static/social-analytics.*; static/marketing-learning.*; tests/test_marketing_intelligence.py"
         },
         {
           "id": "09-marketing-m13",

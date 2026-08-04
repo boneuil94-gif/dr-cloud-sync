@@ -140,13 +140,13 @@ def test_marketing_recognises_v1_without_claiming_production_future_done():
     assert by_id["09-marketing-m05"]["status"] == "BLOCKED"  # real providers
     assert by_id["09-marketing-m06"]["status"] == "BLOCKED"  # official compliance
     assert by_id["09-marketing-m07"]["status"] == "BLOCKED"  # real publishing
-    assert by_id["09-marketing-m08"]["status"] == "TODO"  # live analytics
+    assert by_id["09-marketing-m08"]["status"] == "DONE"  # provider-neutral live analytics
     assert by_id["09-marketing-m09"]["status"] == "DONE"  # sales-driven v1
-    assert by_id["09-marketing-m10"]["status"] == "TODO"  # stock-driven
-    assert by_id["09-marketing-m11"]["status"] == "TODO"  # purchase/margin
-    assert by_id["09-marketing-m12"]["status"] == "TODO"  # measured learning loop
+    assert by_id["09-marketing-m10"]["status"] == "DONE"  # stock-driven
+    assert by_id["09-marketing-m11"]["status"] == "DONE"  # purchase/margin
+    assert by_id["09-marketing-m12"]["status"] == "DONE"  # measured learning loop
     assert by_id["09-marketing-m13"]["status"] == "DONE"  # provider-neutral analytics foundation
-    assert marketing["progress_percent"] == 46.15
+    assert marketing["progress_percent"] == 76.92
 
 
 def test_sales_distinguishes_analytic_ledger_from_operational_sales():
