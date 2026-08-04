@@ -94,6 +94,7 @@ class CanonicalSale:
 class ProviderBatch:
     sales: tuple[CanonicalSale,...]
     cursor: str|None = None
+    diagnostics: Mapping[str, Any] = field(default_factory=dict)
 
 
 class SalesProvider(Protocol):
@@ -185,10 +186,12 @@ class ShopCaisseAPISalesProvider:
     def fetch(self,*,cursor=None,since=None)->ProviderBatch:
         # One millisecond overlap makes boundary records safe; ledger keys remove replays.
         from_ms=int(_utc(cursor).timestamp()*1000)-1 if cursor else (int(since.timestamp()*1000) if since else None)
-        sales=[]; newest=cursor
+        sales=[]; newest=cursor; tickets=0; tickets_with_payments_key=0; payment_objects=0
         for store in self.client.pull_stores():
             store_id=str(store["id"])
             for row in self.client.pull_store_sales(store_id,from_ms=from_ms):
+                tickets += 1
+                if "payments" in row: tickets_with_payments_key += 1
                 timestamp=int(row["timestamp"]); sold=datetime.fromtimestamp(timestamp/1000,timezone.utc).isoformat()
                 newest=max(newest or sold,sold)
                 lines=[]
@@ -201,6 +204,7 @@ class ShopCaisseAPISalesProvider:
                         _decimal(price.get("vatIncluded")),_decimal(price.get("vatExcluded")),_decimal(price.get("vatRate"))))
                 payments=[]
                 for i,p in enumerate(row.get("payments",[])):
+                    payment_objects += 1
                     raw_type=p.get("type")
                     canonical,rule,version=canonicalize_payment_type(raw_type,p.get("name"),p.get("description"))
                     payments.append(CanonicalPayment(str(p.get("id") or f"{row['id']}:{i}"),str(raw_type or ""),
@@ -214,7 +218,11 @@ class ShopCaisseAPISalesProvider:
                 for stock in stocks:
                     self.db.execute("INSERT INTO shopcaisse_stock_observations (store_id,item_id,stock,reserved_customers,reserved_suppliers,observed_at) VALUES(?,?,?,?,?,?) ON CONFLICT(store_id,item_id) DO UPDATE SET stock=excluded.stock,reserved_customers=excluded.reserved_customers,reserved_suppliers=excluded.reserved_suppliers,observed_at=excluded.observed_at",
                         (store_id,str(stock["item"]),str(stock["stock"]),str(stock.get("reservedForCustomers",0)),str(stock.get("reservedForSuppliers",0)),observed))
-        return ProviderBatch(tuple(sales),newest)
+        payment_status=("EXPOSED" if tickets_with_payments_key else "API_NOT_EXPOSED" if tickets else "NOT_OBSERVED")
+        return ProviderBatch(tuple(sales),newest,{"shopcaisse_payments":payment_status,
+            "sales_endpoint":"/stores/{store_id}/sales","tickets_observed":tickets,
+            "tickets_with_payments_key":tickets_with_payments_key,"payment_objects_observed":payment_objects,
+            "official_alternative":"SHOPCAISSE_CSV_EXPORT"})
 
 
 class PrestaShopSalesProvider:
@@ -298,6 +306,7 @@ class SalesSyncService:
             self.ledger._audit("SALES_SYNC_STARTED",actor,{"source":source})
         try:
             batch=provider.fetch(cursor=cursor,since=since)
+            report.update(dict(batch.diagnostics))
             with self.db:
                 for sale in batch.sales:
                     report["sales"]+=1

@@ -79,6 +79,19 @@ def test_empty_summary_never_returns_nan_and_marks_unknown_bank():
     assert "NaN" not in str(result)
 
 
+def test_payment_exclusions_and_api_not_exposed_evidence_are_aggregate_only():
+    db=database(); stamp=datetime.now(timezone.utc).isoformat()
+    db.execute("INSERT INTO sales VALUES(?,?,?,?,?,?,?,?,?,?,?)",("sale","SHOPCAISSE","sensitive-reference-123",stamp,"UTC","STORE",None,"EUR","PAID",stamp,stamp))
+    db.executemany("""INSERT INTO sale_payments(payment_id,sale_id,external_payment_id,payment_type,amount,canonical_payment_type,currency,occurred_at,source,quality_status)
+      VALUES(?,?,?,?,?,?,?,?,?,?)""",[("cash","sale","cash","CASH","20","CASH","EUR",stamp,"SHOPCAISSE","VALID"),("bad","sale","bad","CARD","0","CARD","EUR",stamp,"SHOPCAISSE","INVALID")])
+    db.execute("INSERT INTO sales_sync_states(source,status,last_report_json) VALUES('SHOPCAISSE','SUCCESS',?)",(
+        '{"shopcaisse_payments":"API_NOT_EXPOSED","sales_endpoint":"/stores/{store_id}/sales","tickets_observed":2,"official_alternative":"SHOPCAISSE_CSV_EXPORT"}',))
+    audit=PaymentSettlementService(db).shopcaisse_audit()
+    assert audit["exclusions"]["NON_CARD"] == 1 and audit["exclusions"]["INVALID_AMOUNT"] == 1
+    assert audit["api_evidence"]["shopcaisse_payments"] == "API_NOT_EXPOSED"
+    assert "sensitive-reference-123" not in str(audit["api_evidence"])
+
+
 def test_cash_cockpit_keeps_unconfigured_qonto_as_one_global_fact():
     db=database(); stamp="2026-08-03T10:00:00+00:00"
     db.execute("INSERT INTO sales VALUES(?,?,?,?,?,?,?,?,?,?,?)",("sale","SHOPCAISSE","ticket",stamp,"UTC","STORE","Paris","EUR","PAID",stamp,stamp))

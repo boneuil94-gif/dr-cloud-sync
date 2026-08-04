@@ -171,11 +171,37 @@ class PaymentSettlementService:
                 for r in self.db.execute(f"SELECT {field},count(*),sum(CAST(amount AS NUMERIC)) FROM sale_payments GROUP BY {field} ORDER BY count(*) DESC")]
         period=self.db.execute("SELECT min(coalesce(p.occurred_at,s.sold_at)),max(coalesce(p.occurred_at,s.sold_at)) FROM sale_payments p JOIN sales s USING(sale_id) WHERE s.source='SHOPCAISSE'").fetchone()
         categories={r[0]:{"count":r[1],"amount":str(r[2] or 0)} for r in self.db.execute("SELECT canonical_payment_type,count(*),sum(CAST(amount AS NUMERIC)) FROM sale_payments GROUP BY canonical_payment_type")}
+        state=self.db.execute("SELECT last_report_json FROM sales_sync_states WHERE source='SHOPCAISSE'").fetchone()
+        try: api_report=json.loads(state[0] or "{}") if state else {}
+        except json.JSONDecodeError: api_report={}
+        evidence_keys=("shopcaisse_payments","sales_endpoint","tickets_observed","tickets_with_payments_key","payment_objects_observed","official_alternative")
+        api_evidence={key:api_report[key] for key in evidence_keys if key in api_report}
         return {"total":self.db.execute("SELECT count(*) FROM sale_payments").fetchone()[0],"raw_values":grouped,
             "categories":categories,"without_type":self.db.execute("SELECT count(*) FROM sale_payments WHERE trim(coalesce(payment_type,''))='' ").fetchone()[0],
             "zero_amount":self.db.execute("SELECT count(*) FROM sale_payments WHERE CAST(amount AS NUMERIC)=0").fetchone()[0],
             "period":{"start":period[0],"end":period[1]},"mixed_tickets":self.db.execute("SELECT count(*) FROM (SELECT sale_id FROM sale_payments GROUP BY sale_id HAVING count(*)>1)").fetchone()[0],
-            "mapping_version":canonicalize_payment_type(None)[2]}
+            "mapping_version":canonicalize_payment_type(None)[2],"api_evidence":api_evidence,
+            "exclusions":self.payment_exclusions()}
+
+    def payment_exclusions(self):
+        """Return aggregate, mutually-exclusive settlement rejection reasons."""
+        rows=self.db.execute("""SELECT p.*,s.sale_id parent_id,s.source sale_source,s.status sale_status
+          FROM sale_payments p LEFT JOIN sales s ON s.sale_id=p.sale_id""").fetchall()
+        counts={key:0 for key in ("NON_CARD","INVALID_AMOUNT","MISSING_DATE","MISSING_CURRENCY","CANCELLED","ORPHAN","DUPLICATE","OTHER")}
+        seen=set()
+        for row in rows:
+            identity=(row["sale_id"],row["external_payment_id"])
+            if row["parent_id"] is None: reason="ORPHAN"
+            elif identity in seen: reason="DUPLICATE"
+            elif row["canonical_payment_type"]!="CARD": reason="NON_CARD"
+            elif Decimal(str(row["amount"] or 0))<=0: reason="INVALID_AMOUNT"
+            elif not row["occurred_at"]: reason="MISSING_DATE"
+            elif not row["currency"]: reason="MISSING_CURRENCY"
+            elif str(row["status"] or "").upper() in {"CANCELLED","CANCELED","REFUNDED","REVERSED"} or str(row["sale_status"] or "").upper() in {"CANCELLED","CANCELED","REFUNDED"}: reason="CANCELLED"
+            elif row["sale_source"]!="SHOPCAISSE" or row["quality_status"]!="VALID": reason="OTHER"
+            else: seen.add(identity); continue
+            counts[reason]+=1; seen.add(identity)
+        return counts
 
     @staticmethod
     def _key(source_type, source_id, target_type, target_id):
