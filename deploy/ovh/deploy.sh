@@ -13,6 +13,9 @@ value() { sed -n "s/^$1=//p" "$env_file" | tail -1; }
 for key in DRCLOUD_SECRET_KEY DRCLOUD_ADMIN_USERNAME DRCLOUD_ADMIN_PASSWORD SHOPCAISSE_API_KEY; do
   val="$(value "$key")"; [[ -n "$val" && "$val" != CHANGE_ME ]] || { echo "ERREUR: $key doit être renseigné." >&2; exit 1; }
 done
+[[ "$(value QONTO_CREDENTIAL_REF)" == env:QONTO_CREDENTIAL ]] || { echo "ERREUR: QONTO_CREDENTIAL_REF n'a pas été injecté dans le runtime." >&2; exit 1; }
+[[ -n "$(value QONTO_CREDENTIAL)" ]] || { echo "ERREUR: QONTO_CREDENTIAL n'a pas été injecté dans le runtime." >&2; exit 1; }
+[[ "$(value QONTO_API_URL)" == https://thirdparty.qonto.com ]] || { echo "ERREUR: QONTO_API_URL invalide." >&2; exit 1; }
 export DRCLOUD_BUILD_COMMIT="${DRCLOUD_BUILD_COMMIT:-$(git -C "$repo" rev-parse HEAD)}"
 export DRCLOUD_BUILD_DATE="${DRCLOUD_BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 # Only this small runtime directory is shared with the container.  The mount is
