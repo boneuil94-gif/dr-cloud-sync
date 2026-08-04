@@ -11,6 +11,7 @@ import re
 import sqlite3
 from typing import Any, Callable, Mapping
 from uuid import uuid4
+from .sqlite import connection
 
 
 class JobStatus(str, Enum):
@@ -61,10 +62,8 @@ class SqliteJobRepository:
         self.path = path
         self._migrate()
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path, timeout=10)
-        connection.row_factory = sqlite3.Row
-        return connection
+    def _connect(self):
+        return connection(self.path, timeout=10, row_factory=sqlite3.Row)
 
     def _migrate(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

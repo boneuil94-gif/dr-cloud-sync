@@ -11,6 +11,7 @@ import hashlib, json, sqlite3, time, uuid
 from pathlib import Path
 from typing import Callable, Mapping, Any
 from .connector_diagnostics import ConnectorDiagnostic, DiagnosticRepository, from_exception
+from .sqlite import connection
 
 class SourceStatus(StrEnum):
     CONNECTED="CONNECTED"; PARTIAL="PARTIAL"; NOT_CONFIGURED="NOT_CONFIGURED"; DISABLED="DISABLED"; ERROR="ERROR"; UNSUPPORTED="UNSUPPORTED"; UNAVAILABLE="UNAVAILABLE"
@@ -47,7 +48,13 @@ class DataHub:
         with self.connect() as db: db.executescript(SCHEMA)
         self.diagnostics=DiagnosticRepository(self.path)
     def connect(self):
-        db=sqlite3.connect(self.path,timeout=10);db.row_factory=sqlite3.Row;return db
+        """Yield a transactional connection and always release its file handle.
+
+        ``sqlite3.Connection.__exit__`` only commits or rolls back; it does not
+        close the connection.  DataHub performs many short operations, so relying
+        on that protocol used to leak one descriptor per operation.
+        """
+        return connection(self.path, timeout=10, row_factory=sqlite3.Row)
     def register_source(self,source_id,source_type,provider,*,configured=False,enabled=True,capabilities=(),stale_after_seconds=3600,status=None):
         """Register observable source state without equating a port with a connection.
 
