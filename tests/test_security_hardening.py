@@ -1,4 +1,3 @@
-import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -38,8 +37,10 @@ def test_recursive_redaction_and_append_only_audit(tmp_path):
     clean=sanitise(raw)
     assert clean=={"Authorization":"[REDACTED]","nested":{"api_key":"[REDACTED]","safe":"ok"},"message":"token=[REDACTED]"}
     store.audit("local-admin","SECRET_REF_CHANGED","SECRET","qonto",metadata=raw)
-    encoded=json.dumps(store.audits())
-    assert "abc" not in encoded and "[REDACTED]" in encoded
+    metadata=store.audits()[0]["metadata"]
+    assert metadata["Authorization"]=="[REDACTED]"
+    assert metadata["nested"]["api_key"]=="[REDACTED]"
+    assert metadata["message"]=="token=[REDACTED]"
     with pytest.raises(Exception): store.db.execute("UPDATE audit_logs SET action='ERASED'")
     with pytest.raises(Exception): store.db.execute("DELETE FROM audit_logs")
 
