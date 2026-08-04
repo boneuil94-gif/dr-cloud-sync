@@ -111,8 +111,9 @@ def _decimal(value: Any, *, required: bool=False) -> Decimal | None:
 
 class SalesLedger:
     """Transactional ledger, exact product matching, import and aggregation."""
-    def __init__(self,path: Path,catalogue: Any,*,stale_after_hours: int=48):
+    def __init__(self,path: Path,catalogue: Any,*,stale_after_hours: int=48,cost_ledger=None):
         self.path=Path(path); self.catalogue=catalogue; self.stale_after_hours=stale_after_hours
+        self.cost_ledger=cost_ledger
         self.db=sqlite3.connect(path,check_same_thread=False); self.db.row_factory=sqlite3.Row
         with self.db:self.db.executescript(SCHEMA)
 
@@ -153,7 +154,21 @@ class SalesLedger:
                event.kind,event.product_key,match_status,str(event.quantity),
                *[str(values[x]) if values[x] is not None else None for x in ("unit_price_ttc","unit_price_ht","line_total_ttc","line_total_ht","cost_basis")],
                event.currency,event.channel,event.location,event.raw_reference,_now(),event.source_updated_at,event.idempotency_key,batch_id))
-        return bool(cursor.rowcount)
+        inserted=bool(cursor.rowcount)
+        if inserted:
+            self.db.commit()
+            self._allocate_cost(event.idempotency_key)
+        return inserted
+
+    def _allocate_cost(self,idempotency_key: str) -> None:
+        """Attach confirmed FIFO evidence; partial coverage remains NULL."""
+        if not self.cost_ledger:return
+        row=self.db.execute("SELECT * FROM sale_events WHERE idempotency_key=?",(idempotency_key,)).fetchone()
+        if not row or row["event_kind"]!="SALE" or not row["product_key"]:return
+        result=self.cost_ledger.allocate_sale(row["sale_event_id"],row["product_key"],row["quantity"])
+        if result["uncovered_quantity"]=="0.00":
+            unit=Decimal(result["total_cost"])/Decimal(str(row["quantity"]))
+            with self.db:self.db.execute("UPDATE sale_events SET cost_basis=? WHERE sale_event_id=?",(str(unit),row["sale_event_id"]))
 
     def list_events(self,limit: int=200) -> list[dict[str,Any]]:
         return [dict(row) for row in self.db.execute("SELECT * FROM sale_events ORDER BY sold_at DESC LIMIT ?",(limit,))]
@@ -217,6 +232,7 @@ class SalesLedger:
             result={"batch_id":batch_id,"inserted":inserted,"duplicates":duplicates,"unmatched":sum(e.product_key is None for e in events)}
             self.db.execute("UPDATE sales_import_batches SET status='APPLIED',applied_at=?,report_json=? WHERE batch_id=?",(_now(),json.dumps(result),batch_id))
             self._audit("SALES_IMPORTED",actor,result)
+        for event in events:self._allocate_cost(event.idempotency_key)
         return result
 
     def _audit(self,event: str,actor: str,details: Mapping[str,Any]) -> None:

@@ -115,6 +115,21 @@ def test_goods_receipt_end_to_end_partial_complete_and_idempotent(app):
     assert request(app,f"/api/purchase-orders/{oid}/receipts","POST",{"idempotency_key":"too-late","lines":[{"purchase_order_line_id":lid,"received_quantity":1}]})[0]=="400 Bad Request"
     detail=request(app,f"/api/goods-receipts/{rid}")[1]
     assert detail["movements"][0]["origin"]=="Réception fournisseur"
+    events=app.purchase_costs._rows("SELECT * FROM purchase_cost_events ORDER BY received_at")
+    lots=app.purchase_costs._rows("SELECT * FROM inventory_cost_lots ORDER BY received_at")
+    assert [event["unit_cost_ht"] for event in events]==["2.50","2.50"]
+    assert [lot["remaining_quantity"] for lot in lots]==["4.00","6.00"]
+
+def test_receipt_without_price_records_missing_evidence_without_fifo_lot(app):
+    _,supplier=request(app,"/api/suppliers","POST",{"name":"Prix inconnu"})
+    _,created=request(app,"/api/purchase-orders","POST",{"supplier_id":supplier["supplier"]["supplier_id"]}); oid=created["purchase_order"]["purchase_order_id"]
+    _,added=request(app,f"/api/purchase-orders/{oid}/lines","POST",{"product_key":"drc:1","ordered_quantity":1}); lid=added["line"]["line_id"]
+    request(app,f"/api/purchase-orders/{oid}/status","POST",{"status":"ORDERED"})
+    _,draft=request(app,f"/api/purchase-orders/{oid}/receipts","POST",{"idempotency_key":"unknown-cost","lines":[{"purchase_order_line_id":lid,"received_quantity":1}]})
+    request(app,f"/api/goods-receipts/{draft['goods_receipt']['receipt_id']}/apply","POST")
+    event=app.purchase_costs._rows("SELECT * FROM purchase_cost_events")[0]
+    assert event["status"]=="INCOMPLETE" and event["availability"]=="UNAVAILABLE"
+    assert app.purchase_costs._rows("SELECT * FROM inventory_cost_lots")==[]
 
 def test_goods_receipt_rejects_invalid_and_over_receipt(app):
     _,supplier=request(app,"/api/suppliers","POST",{"name":"Contrôles"})

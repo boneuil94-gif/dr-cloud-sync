@@ -316,8 +316,8 @@ class SQLiteGoodsReceiptRepository:
 
 class GoodsReceiptService:
     """Explicit receipt workflow; archived suppliers/products remain receivable commitments."""
-    def __init__(self,repository,orders,stock_repository,audit):
-        self.repository=repository; self.orders=orders; self.stock=StockService(stock_repository); self.audit=audit
+    def __init__(self,repository,orders,stock_repository,audit,cost_ledger=None):
+        self.repository=repository; self.orders=orders; self.stock=StockService(stock_repository); self.audit=audit; self.cost_ledger=cost_ledger
     def receivable(self,oid):
         order=self.orders.get(oid)
         if not order: raise KeyError("purchase order not found")
@@ -373,6 +373,21 @@ class GoodsReceiptService:
         except Exception: db.rollback(); raise
         self.audit.add_activity(ActivityLog("GOODS_RECEIPT_APPLIED",rid,"PURCHASING",{"actor":actor,"purchase_order_id":order.purchase_order_id}))
         self.audit.add_activity(ActivityLog("PURCHASE_ORDER_RECEIVED" if status is PurchaseOrderStatus.RECEIVED else "PURCHASE_ORDER_PARTIALLY_RECEIVED",order.purchase_order_id,"PURCHASING",{"actor":actor,"receipt_id":rid}))
+        # Cost persistence deliberately happens after the stock transaction.  A
+        # missing order price is recorded as unavailable evidence and never
+        # replaced by a catalogue/current/estimated price.
+        if self.cost_ledger:
+            order_lines={line.line_id:line for line in self.orders.lines(order.purchase_order_id)}
+            for line in self.repository.lines(rid):
+                purchase_line=order_lines[line.purchase_order_line_id]
+                self.cost_ledger.record_receipt_cost(
+                    product_key=line.product_key,supplier_id=order.supplier_id,
+                    quantity=line.received_quantity,received_at=receipt.received_at,
+                    unit_cost_ht=purchase_line.unit_cost,receipt_line_id=line.receipt_line_id,
+                    receipt_id=rid,purchase_order_id=order.purchase_order_id,
+                    currency=order.currency,
+                    status="CONFIRMED" if purchase_line.unit_cost is not None else "INCOMPLETE",
+                    actor=actor)
         return self.repository.get(rid)
     def detail(self,rid):
         receipt=self.repository.get(rid)
