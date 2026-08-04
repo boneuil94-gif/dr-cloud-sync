@@ -52,3 +52,11 @@ Une référence absente, vide ou non résolue donne `NOT_CONFIGURED` sans requê
 ### Validation en production
 
 Après déploiement, ouvrir **Administration → Data Hub**, contrôler que Qonto indique soit `NOT_CONFIGURED` (credential réellement absent), soit `ERROR` avec sa catégorie, soit `CONNECTED`. Cliquer **Tester maintenant**; si le test passe, lancer **Synchroniser maintenant**, contrôler le Bank Ledger, puis l'état `FRESH`. Ne copier aucun payload ou credential dans un ticket d'exploitation.
+
+## Blocage Cloudflare 1010
+
+Le client s'identifie comme `DrCloud-OS/1.0 (+https://osdrcloud.fr)`, accepte du JSON et n'envoie aucun header de navigateur artificiel. Un `403` présentant les marqueurs Cloudflare et le code `1010` est classé `WAF / CLOUDFLARE`, jamais `AUTH`, et n'est pas rejoué automatiquement. Un `401/403` JSON émis par Qonto demeure une erreur d'authentification.
+
+Depuis le conteneur applicatif, `python -m dr_cloud_sync.qonto_diagnostic` exécute en lecture seule les contrôles DNS, TLS et HTTP sans imprimer de corps ni de secret. Si `QONTO_CREDENTIAL` est disponible dans l'environnement du processus, les variantes authentifiées utilisent exactement `Authorization: {sign-in}:{secret-key}`. La sortie est limitée aux statuts DNS/TLS, HTTP, `Server`, `cf-ray`, code Cloudflare, content type et durée.
+
+Administration affiche le Ray ID et permet de copier un ticket support assaini. L'IP sortante doit seulement être complétée depuis un panneau Administration protégé lorsque la politique d'exploitation l'autorise; elle n'est ni découverte ni publiée par l'interface générale.

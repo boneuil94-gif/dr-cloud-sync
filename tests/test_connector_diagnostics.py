@@ -4,7 +4,7 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
-from dr_cloud_sync.connector_diagnostics import DiagnosticRepository, from_exception, safe_path, sanitize
+from dr_cloud_sync.connector_diagnostics import ConnectorDiagnostic, DiagnosticRepository, from_exception, safe_path, sanitize
 from dr_cloud_sync.data_hub import DataHub
 from dr_cloud_sync.prestashop import PrestaShopClient, PrestaShopError
 from dr_cloud_sync.shopcaisse import ShopCaisseClient, ShopCaisseError
@@ -106,6 +106,14 @@ def test_repository_keeps_structured_limited_history(tmp_path):
     row=repo.recent("shopcaisse_sales",1)[0]
     assert identifier and row["run_id"]==7 and row["endpoint_path"]=="/authentication?token=%5BREDACTED%5D"
     assert "x" not in row["response_excerpt"]
+
+
+def test_repository_deduplicates_same_cloudflare_alert(tmp_path):
+    repo=DiagnosticRepository(tmp_path/"shared.sqlite")
+    item=ConnectorDiagnostic("bank","Qonto","QONTO_HEALTH","edge_protection","WAF","blocked",
+        "2026-08-04T12:00:00+00:00",http_status=403,request_id="ray-CDG")
+    assert repo.add(item)==repo.add(item)
+    assert len(repo.recent("bank",10))==1
 
 
 def test_repository_marks_failure_historical_after_later_successful_run(tmp_path):
