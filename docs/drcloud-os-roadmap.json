@@ -1,6 +1,6 @@
 {
   "version": "2.0.0",
-  "updated_at": "2026-08-01",
+  "updated_at": "2026-08-04",
   "modules": [
     {
       "id": "01-core",
@@ -487,27 +487,31 @@
       "id": "08-customers",
       "name": "Clients + fidélité",
       "weight": 6,
-      "next": "Frontière domaine",
+      "next": "Brancher les imports clients paginés aux contrats réels",
       "milestones": [
         {
           "id": "08-customers-m01",
           "name": "Frontière domaine",
-          "status": "TODO"
+          "status": "DONE",
+          "evidence": "Fondation CRM v1 interne, sans envoi externe"
         },
         {
           "id": "08-customers-m02",
           "name": "Customer",
-          "status": "TODO"
+          "status": "DONE",
+          "evidence": "Fondation CRM v1 interne, sans envoi externe"
         },
         {
           "id": "08-customers-m03",
           "name": "CustomerIdentity",
-          "status": "TODO"
+          "status": "DONE",
+          "evidence": "Fondation CRM v1 interne, sans envoi externe"
         },
         {
           "id": "08-customers-m04",
           "name": "CustomerConsent",
-          "status": "TODO"
+          "status": "DONE",
+          "evidence": "Fondation CRM v1 interne, sans envoi externe"
         },
         {
           "id": "08-customers-m05",
@@ -517,7 +521,8 @@
         {
           "id": "08-customers-m06",
           "name": "Rapprochement prudent",
-          "status": "TODO"
+          "status": "DONE",
+          "evidence": "Fondation CRM v1 interne, sans envoi externe"
         },
         {
           "id": "08-customers-m07",
@@ -532,12 +537,41 @@
         {
           "id": "08-customers-m09",
           "name": "Fidélité",
-          "status": "TODO"
+          "status": "DONE",
+          "evidence": "Fondation CRM v1 interne, sans envoi externe"
         },
         {
           "id": "08-customers-m10",
           "name": "Tests confidentialité",
+          "status": "DONE",
+          "evidence": "Fondation CRM v1 interne, sans envoi externe"
+        },
+        {
+          "id": "08-customers-m11",
+          "name": "Customer 360 complet",
           "status": "TODO"
+        },
+        {
+          "id": "08-customers-m12",
+          "name": "Segmentation/RFM administrable",
+          "status": "TODO"
+        },
+        {
+          "id": "08-customers-m13",
+          "name": "CRM Recommendations",
+          "status": "TODO"
+        },
+        {
+          "id": "08-customers-m14",
+          "name": "CRM Campaigns Internal",
+          "status": "DONE",
+          "evidence": "Brouillons et blocage consentement; aucun provider d’envoi"
+        },
+        {
+          "id": "08-customers-m15",
+          "name": "Consent & Privacy Foundation",
+          "status": "DONE",
+          "evidence": "UNKNOWN par défaut, preuve obligatoire et PII masquées"
         }
       ]
     },
