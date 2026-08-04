@@ -40,3 +40,15 @@ Le code attend `QONTO_CREDENTIAL_REF` (référence vers `QONTO_CREDENTIAL`), `QO
 7. Vérifier un état `CONNECTED` ou `ERROR AUTH`, jamais `NOT_CONFIGURED` lorsque le secret est présent.
 8. Lancer **Synchroniser maintenant**.
 9. Vérifier les écritures du Bank Ledger et l'état `CONNECTED · FRESH`.
+
+## Diagnostic runtime et reprise
+
+La résolution conserve la priorité existante `QONTO_SECRET_REF` → `QONTO_CREDENTIAL_REF` → `env:QONTO_CREDENTIAL`. La sélection, la présence de la clé d'environnement et la résolution sont exposées uniquement par des indicateurs OUI/NON : ni nom opaque, valeur, longueur, préfixe ou empreinte du credential n'est rendu.
+
+Une référence absente, vide ou non résolue donne `NOT_CONFIGURED` sans requête HTTP (`SECRET_REFERENCE_UNRESOLVED` si une référence explicite ne peut être résolue). Un credential résolu installe le vrai provider et exécute `GET /v2/organization` : le succès donne `CONNECTED`; tout échec donne `ERROR`/fraîcheur `ERROR`, avec les catégories `AUTH`, `RATE_LIMIT`, `TIMEOUT`, `NETWORK`, `HTTP`, `INVALID_RESPONSE` ou `UNKNOWN`. Les codes 401/403 sont `AUTH`, 429 `RATE_LIMIT`, 408/timeouts `TIMEOUT`, DNS/connexion/TLS `NETWORK`, les autres 4xx/5xx `HTTP`, et un JSON ou une structure invalide `INVALID_RESPONSE`.
+
+**Tester maintenant** relance ce health check même après une erreur. Un succès résout l'erreur active et autorise le job BANK; seule une synchronisation et son commit durable rendent ensuite la source `FRESH`. Le provider réel est conservé après un health en erreur afin de permettre cette reprise.
+
+### Validation en production
+
+Après déploiement, ouvrir **Administration → Data Hub**, contrôler que Qonto indique soit `NOT_CONFIGURED` (credential réellement absent), soit `ERROR` avec sa catégorie, soit `CONNECTED`. Cliquer **Tester maintenant**; si le test passe, lancer **Synchroniser maintenant**, contrôler le Bank Ledger, puis l'état `FRESH`. Ne copier aucun payload ou credential dans un ticket d'exploitation.

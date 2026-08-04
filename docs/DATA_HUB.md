@@ -44,3 +44,7 @@ Le job `sync_payment_settlements` dépend de `sync_shopcaisse_sales`, `sync_sumu
 La lisibilité historique est conservée lorsqu'une source est stale, mais les consommateurs doivent présenter la fraîcheur des trois sources sans annoncer de faux temps réel. Qonto reste hors de cette chaîne v1.
 
 Le rafraîchissement Settlement dépend aussi de `sync_bank_transactions` : la chaîne effective est ShopCaisse, transactions SumUp, payouts SumUp, Qonto, Settlement. Qonto ne passe à CONNECTED/FRESH qu'après appel réel valide et sync durable; l'absence de credential reste `NOT_CONFIGURED`.
+
+## Qonto : configuration et santé
+
+Pour BANK, `NOT_CONFIGURED` est strictement réservé à une référence absente/vide ou à une valeur non résolue; aucun HTTP n'est alors émis. Dès que le credential est résolu, un health en échec est `ERROR` avec une fraîcheur `ERROR`, jamais `NOT_CONFIGURED`. Le job BANK reste bloqué dans cet état. Un test manuel réussi le remet `CONNECTED` et autorise la synchronisation; `FRESH` exige ensuite un import durable réussi. Les diagnostics conservent l'historique résolu et seulement des métadonnées assainies (provider, opération, étape, catégorie, HTTP, durée, tentative et endpoint sans secrets).
