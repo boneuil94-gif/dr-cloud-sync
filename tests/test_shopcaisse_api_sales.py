@@ -87,3 +87,14 @@ def test_forced_historical_replay_recovers_payments_after_cursor_advanced(tmp_pa
     assert [tuple(r) for r in sync.db.execute("SELECT canonical_payment_type,amount FROM sale_payments ORDER BY canonical_payment_type")] == [("CARD","12"),("CASH","3")]
     replay=sync.sync("SHOPCAISSE",force=True)
     assert replay["payments"] == 0 and replay["payments_updated"] == 2
+
+
+def test_missing_payments_key_is_reported_honestly_without_raw_payload(tmp_path):
+    sync,api=service(tmp_path)
+    api.pull_store_sales=lambda store_id,from_ms=None: [{
+        "id":"ticket-1","timestamp":1785578400000,"status":"paid","type":"SALE","lines":[]}]
+    report=sync.sync("SHOPCAISSE")
+    assert report["shopcaisse_payments"] == "API_NOT_EXPOSED"
+    assert report["sales_endpoint"] == "/stores/{store_id}/sales"
+    assert report["tickets_observed"] == 1 and report["tickets_with_payments_key"] == 0
+    assert "ticket-1" not in str(report)
