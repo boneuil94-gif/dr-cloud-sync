@@ -7,7 +7,7 @@ Le client est strictement read-only : aucun virement, bénéficiaire, carte ou p
 ## Activation production
 
 1. Créer dans Qonto une API key en lecture seule adaptée à l'organisation, ou une application OAuth avec les scopes de lecture des comptes et transactions.
-2. Définir `QONTO_CREDENTIAL_REF=QONTO_CREDENTIAL` puis injecter **secrètement** `QONTO_CREDENTIAL`. Ne jamais placer sa valeur dans Git, l'UI ou SQLite.
+2. Définir `QONTO_CREDENTIAL_REF=env:QONTO_CREDENTIAL` puis injecter **secrètement** `QONTO_CREDENTIAL`. Le préfixe `env:` est résolu en mémoire par le `SecretProvider`; ne jamais placer la valeur dans Git, l'UI ou SQLite.
 3. Redémarrer les services. La source demeure `NOT_CONFIGURED` sans secret et ne devient `CONNECTED` qu'après le vrai `GET /v2/organization`.
 
 La cadence est `DATA_HUB_BANK_INTERVAL_SECONDS` (1 800 secondes par défaut). Un backfill contrôlé est obtenu en réinitialisant le curseur du job puis en relançant le job ; l'upsert par identifiant Qonto rend cette opération idempotente.
