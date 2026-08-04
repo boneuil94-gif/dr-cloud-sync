@@ -102,3 +102,11 @@ Cette livraison ne crédite aucun port comme une connexion live. Les statuts bin
 | Production | worker OVH et healthcheck | variables/cadences documentées; aucun déploiement effectué par cette PR |
 
 Le prochain progrès mesurable exige un endpoint tickets ShopCaisse officiellement vérifié, des lignes de paiement/remboursement PrestaShop réelles, ou un provider fournisseur/social homologué avec health check runtime.
+
+## Progression Marketing Intelligence (2026-08-04)
+
+La méthode pondérée existante fait progresser le module Marketing de **46,15 % à
+76,92 %** et la progression globale de **68,79 % à 72,20 %**. Social Analytics
+Live, Stock-driven Marketing, Purchase/Margin Intelligence et Learning Loop mesuré
+sont DONE. Providers sociaux réels homologués, conformité officielle et publication
+sociale réelle restent BLOCKED.

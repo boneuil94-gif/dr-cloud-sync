@@ -48,3 +48,10 @@ Le rafraîchissement Settlement dépend aussi de `sync_bank_transactions` : la c
 ## Qonto : configuration et santé
 
 Pour BANK, `NOT_CONFIGURED` est strictement réservé à une référence absente/vide ou à une valeur non résolue; aucun HTTP n'est alors émis. Dès que le credential est résolu, un health en échec est `ERROR` avec une fraîcheur `ERROR`, jamais `NOT_CONFIGURED`. Le job BANK reste bloqué dans cet état. Un test manuel réussi le remet `CONNECTED` et autorise la synchronisation; `FRESH` exige ensuite un import durable réussi. Les diagnostics conservent l'historique résolu et seulement des métadonnées assainies (provider, opération, étape, catégorie, HTTP, durée, tentative et endpoint sans secrets).
+
+## Jobs Marketing Intelligence
+
+Les jobs `sync_social_analytics_<provider>`, `generate_stock_marketing_proposals`,
+`generate_margin_marketing_proposals`, `measure_marketing_outcomes` et
+`refresh_learning_loop` déclarent leurs dépendances. Les quatre sources sociales
+restent NOT_CONFIGURED; les jobs locaux de proposition et mesure restent possibles.

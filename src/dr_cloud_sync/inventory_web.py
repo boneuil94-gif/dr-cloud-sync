@@ -29,6 +29,7 @@ from .backup_service import BackupService, configured_backup_dir
 from .prestashop import PrestaShopClient, PrestaShopError
 from .media_import import PrestaShopIntegrationUnavailable, PrestaShopMediaProvider
 from .marketing import MarketingAutopilot, MarketingRepository
+from .marketing_intelligence import MarketingIntelligenceService, SocialAnalyticsLiveService
 from .creative_ai import CreativeAIService, CreativeGenerationError
 from .creative_review import CreativeReviewError, CreativeReviewService
 from .sales import SalesLedger, SocialAnalyticsService
@@ -208,6 +209,8 @@ class InventoryApp:
         self.data_hub.register_source("supplier_documents","SUPPLIER_DOCUMENTS","NONE",status="NOT_CONFIGURED",capabilities=("READ_STRUCTURED","PREVIEW_UNSTRUCTURED"),stale_after_seconds=int(os.environ.get("SUPPLIER_SYNC_INTERVAL_SECONDS","3600")))
         for channel in ("instagram","facebook","snapchat","tiktok"):
             self.data_hub.register_source(f"social_{channel}","SOCIAL_ANALYTICS",channel.title(),status="NOT_CONFIGURED",capabilities=("READ_ANALYTICS",),stale_after_seconds=int(os.environ.get("SOCIAL_ANALYTICS_INTERVAL_SECONDS","21600")))
+            self.data_hub.register_job(JobDefinition(f"sync_social_analytics_{channel}",f"social_{channel}","SOCIAL_ANALYTICS",int(os.environ.get("SOCIAL_ANALYTICS_INTERVAL_SECONDS","21600"))))
+        self.data_hub.register_source("marketing_intelligence","MARKETING_INTELLIGENCE","LOCAL",configured=True,capabilities=("PROPOSE","MEASURE"),stale_after_seconds=86400)
         for job in (JobDefinition("sync_shopcaisse_sales","shopcaisse_sales","SHOPCAISSE_SALES",int(os.environ.get("SHOPCAISSE_SYNC_INTERVAL_SECONDS","600"))),JobDefinition("sync_prestashop_sales","prestashop_sales","PRESTASHOP_SALES",intervals["sales"]),JobDefinition("sync_prestashop_catalog","prestashop_catalog","PRESTASHOP_CATALOG",intervals["sales"]),JobDefinition("sync_bank_transactions","bank","BANK",intervals["bank"]),JobDefinition("refresh_sales_metrics","prestashop_sales","SALES_METRICS",intervals["projection"],("sync_prestashop_sales",)),JobDefinition("reconcile_bank_sales","bank","RECONCILE",intervals["projection"],("sync_bank_transactions",)),JobDefinition("refresh_finance","bank","FINANCE",intervals["projection"],("reconcile_bank_sales",)),JobDefinition("refresh_dashboard","purchases","DASHBOARD",intervals["projection"]),JobDefinition("refresh_marketing_signals","prestashop_sales","MARKETING",intervals["projection"],("refresh_sales_metrics",))): self.data_hub.register_job(job)
         self.data_hub.register_job(JobDefinition("sync_sumup_transactions","sumup_transactions","SUMUP_TRANSACTIONS",sumup_interval))
         self.data_hub.register_job(JobDefinition("sync_sumup_payouts","sumup_payouts","SUMUP_PAYOUTS",sumup_interval,("sync_sumup_transactions",)))
@@ -217,6 +220,9 @@ class InventoryApp:
         self.sales_import_preview=None
         self.social_analytics=SocialAnalyticsService(self.marketing_repository.db)
         self.marketing=MarketingAutopilot(self.marketing_repository,self.os_repository,self.media.repository,sales=self.sales)
+        self.social_live=SocialAnalyticsLiveService(self.marketing_repository.db)
+        self.marketing_intelligence=MarketingIntelligenceService(self.marketing_repository,self.os_repository,self.stock,self.sales,self.purchase_costs)
+        for job in (JobDefinition("generate_stock_marketing_proposals","marketing_intelligence","STOCK_MARKETING",86400,("refresh_dashboard",)),JobDefinition("generate_margin_marketing_proposals","marketing_intelligence","MARGIN_MARKETING",86400,("refresh_finance",)),JobDefinition("measure_marketing_outcomes","marketing_intelligence","MEASURE_MARKETING",21600),JobDefinition("refresh_learning_loop","marketing_intelligence","LEARNING_LOOP",21600,("measure_marketing_outcomes",))): self.data_hub.register_job(job)
         self.creative_ai=CreativeAIService(self.marketing_repository,self.os_repository,self.media.repository)
         self.creative_review=CreativeReviewService(self.marketing_repository)
         self.social_connections=SocialConnectionService(self.marketing_repository)
@@ -252,7 +258,8 @@ class InventoryApp:
             # strictly read-only while SumUp payouts can immediately find credits.
             report["settlements"]=self.settlements.recompute()
             return report
-        return {"SHOPCAISSE_SALES":lambda cursor:sales("SHOPCAISSE"),"PRESTASHOP_SALES":lambda cursor:sales("PRESTASHOP"),"PRESTASHOP_CATALOG":catalog,"BANK":bank,"SUMUP_TRANSACTIONS":lambda cursor:self.sumup_transactions.sync(self.sumup_provider,cursor),"SUMUP_PAYOUTS":lambda cursor:{**self.sumup_settlements.sync(self.sumup_provider,cursor),"settlements":self.sumup_settlements.reconcile()},"PAYMENT_SETTLEMENTS":lambda cursor:{"rows_imported":self.settlements.recompute()["analysed"],"summary":self.settlements.summary()},"RECONCILE":lambda cursor:{"rows_imported":self.reconciliation.reconcile_sales_bank()["created"]},"FINANCE":lambda cursor:{"rows_imported":0,"projection":self.finance.snapshot()},"DASHBOARD":lambda cursor:{"rows_imported":0},"SALES_METRICS":lambda cursor:{"rows_imported":0,"metrics":self.sales.analytics()},"MARKETING":lambda cursor:{"rows_imported":0}}
+        intelligence=lambda cursor:{"rows_imported":self.marketing_intelligence.generate()["generated"]}
+        return {"SHOPCAISSE_SALES":lambda cursor:sales("SHOPCAISSE"),"PRESTASHOP_SALES":lambda cursor:sales("PRESTASHOP"),"PRESTASHOP_CATALOG":catalog,"BANK":bank,"SUMUP_TRANSACTIONS":lambda cursor:self.sumup_transactions.sync(self.sumup_provider,cursor),"SUMUP_PAYOUTS":lambda cursor:{**self.sumup_settlements.sync(self.sumup_provider,cursor),"settlements":self.sumup_settlements.reconcile()},"PAYMENT_SETTLEMENTS":lambda cursor:{"rows_imported":self.settlements.recompute()["analysed"],"summary":self.settlements.summary()},"RECONCILE":lambda cursor:{"rows_imported":self.reconciliation.reconcile_sales_bank()["created"]},"FINANCE":lambda cursor:{"rows_imported":0,"projection":self.finance.snapshot()},"DASHBOARD":lambda cursor:{"rows_imported":0},"SALES_METRICS":lambda cursor:{"rows_imported":0,"metrics":self.sales.analytics()},"MARKETING":lambda cursor:{"rows_imported":0},"STOCK_MARKETING":intelligence,"MARGIN_MARKETING":intelligence,"MEASURE_MARKETING":lambda cursor:{"rows_imported":0,"coverage":self.marketing_intelligence.learning()["coverage"]},"LEARNING_LOOP":lambda cursor:{"rows_imported":0,"learning":self.marketing_intelligence.learning()}}
 
     def __call__(self, env, start):
         request_id=env.get("HTTP_X_REQUEST_ID") or str(uuid.uuid4()); path=env.get("PATH_INFO", "/"); method=env.get("REQUEST_METHOD", "GET")
@@ -307,6 +314,8 @@ class InventoryApp:
             if path == "/stock": return self._html(start,"stock.html",session,request_id)
             if path == "/achats": return self._html(start,"purchasing.html",session,request_id)
             if path == "/marketing": return self._html(start,"marketing.html",session,request_id)
+            if path == "/marketing/social-analytics": return self._html(start,"social-analytics.html",session,request_id)
+            if path == "/marketing/learning": return self._html(start,"marketing-learning.html",session,request_id)
             if path == "/sales": return self._html(start,"sales.html",session,request_id)
             if path == "/finance": return self._html(start,"finance.html",session,request_id)
             if path == "/settlements": return self._html(start,"settlements.html",session,request_id)
@@ -453,6 +462,9 @@ class InventoryApp:
             if path == "/api/marketing/analytics" and method == "GET": return self._json(start,self.sales.analytics())
             if path == "/api/marketing/analytics/products" and method == "GET": return self._json(start,{"products":self.sales.analytics()["products"]})
             if path == "/api/marketing/analytics/social" and method == "GET": return self._json(start,self.social_analytics.summary())
+            if path == "/api/marketing/social-analytics/live" and method == "GET": return self._json(start,self.social_live.cockpit(int(parse_qs(env.get("QUERY_STRING","")).get("days",[30])[0])))
+            if path == "/api/marketing/intelligence/proposals" and method == "POST": return self._json(start,self.marketing_intelligence.generate(session.get("u","authenticated")))
+            if path == "/api/marketing/learning" and method == "GET": return self._json(start,self.marketing_intelligence.learning())
             if path == "/api/marketing/dashboard" and method == "GET":
                 return self._json(start,{"settings":self.marketing_repository.settings(),"preview":self.marketing.preview(),"analytics":self.sales.analytics(),"social_analytics":self.social_analytics.summary(),"proposals":self.marketing_repository.rows("marketing_proposals"),"opportunities":self.marketing_repository.rows("marketing_opportunities"),"schedules":self.marketing_repository.rows("marketing_schedules"),"connections":self.marketing_repository.rows("social_connections")})
             if path == "/api/marketing/social-connections" and method == "POST":
@@ -754,7 +766,7 @@ class InventoryApp:
     @staticmethod
     def _route_permission(path,method):
         """Return the explicit grant required by a route; unknown routes fail closed."""
-        pages={"/":"catalogue.read","/catalogue":"catalogue.read","/inventaire":"stock.read","/stock":"stock.read","/sales":"sales.read","/finance":"finance.read","/settlements":"settlements.read","/settlements/explorer":"settlements.read","/achats":"purchasing.read","/marketing":"marketing.read","/administration":"admin.read","/securite":"security.read","/roadmap":"admin.read"}
+        pages={"/":"catalogue.read","/catalogue":"catalogue.read","/inventaire":"stock.read","/stock":"stock.read","/sales":"sales.read","/finance":"finance.read","/settlements":"settlements.read","/settlements/explorer":"settlements.read","/achats":"purchasing.read","/marketing":"marketing.read","/marketing/social-analytics":"marketing.analytics.read","/marketing/learning":"marketing.learning.read","/administration":"admin.read","/securite":"security.read","/roadmap":"admin.read"}
         if path in pages: return pages[path]
         if path.startswith("/achats/"): return "purchasing.read"
         if path.startswith("/media/"): return "catalogue.read"
