@@ -17,3 +17,7 @@ Settlement Explorer ne présente que les informations métier et les états de f
 ## Exploitation quotidienne Settlements
 
 Depuis le cockpit, **Synchroniser**, **Recalculer** et **Importer l'historique** désactivent l'action pendant son exécution et annoncent le résultat via une zone `aria-live`. Une absence Qonto renvoie vers la configuration et reste un état global gris, non une série d'erreurs rouges. L'exploitant commence par les cinq anomalies P0/P1 les plus anciennes, puis ouvre l'Explorer pour la preuve et la décision.
+
+## Diagnostic Qonto
+
+La carte Qonto distingue désormais `NOT_CONFIGURED` (« Configuration Qonto absente du runtime ») d'un `ERROR` actif. Une authentification refusée affiche l'étape d'authentification et le code 401/403; une panne de transport affiche l'étape organization, la catégorie `NETWORK`/`TIMEOUT` et un message assaini. **Tester maintenant** reste disponible lorsqu'un provider configuré est en erreur et actualise l'état sans lancer d'import bancaire complet. Les erreurs résolues restent consultables dans l'historique replié.

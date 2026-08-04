@@ -8,6 +8,8 @@ import pytest
 
 from dr_cloud_sync.inventory import InventoryError, InventoryRepository, InventoryService
 from dr_cloud_sync.inventory_web import InventoryApp
+from dr_cloud_sync.bank import DisabledQontoProvider
+from dr_cloud_sync.qonto import QontoBankProvider, QontoError
 from frontend_assets import assert_no_frontend_secrets
 
 
@@ -78,6 +80,32 @@ def request(app,path,method="GET",body=None):
         raw=json.dumps(body).encode();env["wsgi.input"]=io.BytesIO(raw);env["CONTENT_LENGTH"]=str(len(raw))
     status=[]; data=b"".join(app(env,lambda s,h:status.append(s)))
     return status[0],data
+
+
+def test_qonto_health_error_is_not_reclassified_as_not_configured(service,monkeypatch):
+    monkeypatch.setenv("QONTO_CREDENTIAL_REF","env:QONTO_CREDENTIAL")
+    monkeypatch.setenv("QONTO_CREDENTIAL","login:protected-value")
+    def refused(_provider):
+        raise QontoError("Authentification Qonto refusée",category="AUTH",http_status=401,
+                         endpoint="/v2/organization",stage="authentication")
+    monkeypatch.setattr(QontoBankProvider,"health",refused)
+    app=InventoryApp(service)
+    bank=next(source for source in app.data_hub.health()["sources"] if source["source_id"]=="bank")
+    assert bank["status"]=="ERROR" and bank["freshness"]=="ERROR"
+    assert isinstance(app.bank_provider,QontoBankProvider)
+    assert bank["last_diagnostic"]["category"]=="AUTH"
+    assert "protected-value" not in json.dumps(bank)
+
+
+def test_qonto_absent_stays_not_configured_without_real_provider(service,monkeypatch):
+    for name in ("QONTO_SECRET_REF","QONTO_CREDENTIAL_REF","QONTO_CREDENTIAL"):
+        monkeypatch.delenv(name,raising=False)
+    attempted=[]
+    monkeypatch.setattr(QontoBankProvider,"health",lambda _provider:attempted.append(True))
+    app=InventoryApp(service)
+    bank=next(source for source in app.data_hub.health()["sources"] if source["source_id"]=="bank")
+    assert bank["status"]=="NOT_CONFIGURED" and bank["freshness"]=="NOT_CONFIGURED"
+    assert isinstance(app.bank_provider,DisabledQontoProvider) and attempted==[]
 
 
 def test_web_api_and_no_secrets(service):

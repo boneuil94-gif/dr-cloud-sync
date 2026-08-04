@@ -33,10 +33,27 @@ def test_errors_are_sanitized(code,retryable):
     p,_=provider([error(),error(),error()])
     with pytest.raises(QontoError) as caught:p.health()
     assert "secret" not in str(caught.value) and caught.value.retryable is retryable
+    assert caught.value.category==("AUTH" if code in (401,403) else "RATE_LIMIT" if code==429 else "HTTP")
+    assert caught.value.http_status==code and caught.value.endpoint=="/v2/organization"
 
 def test_timeout_retries():
     p,_=provider([URLError("timeout")]*3)
     with pytest.raises(QontoError,match="network timeout"):p.health()
+
+def test_dns_failure_and_invalid_json_are_distinct_and_safe():
+    network,_=provider([URLError("name resolution failed")]*3)
+    with pytest.raises(QontoError) as caught: network.health()
+    assert caught.value.category=="NETWORK"
+    class Invalid(Response):
+        def read(self): return b"not-json"
+    invalid,_=provider([Invalid({})])
+    with pytest.raises(QontoError) as caught: invalid.health()
+    assert caught.value.category=="INVALID_RESPONSE"
+
+def test_unexpected_organization_shape_is_invalid_response():
+    p,_=provider([Response({"unexpected":True})])
+    with pytest.raises(QontoError) as caught:p.health()
+    assert caught.value.category=="INVALID_RESPONSE"
 
 def test_environment_secret_reference_is_resolved_without_exposure():
     secrets=EnvironmentSecretProvider({"QONTO_CREDENTIAL":"login:highly-sensitive"})

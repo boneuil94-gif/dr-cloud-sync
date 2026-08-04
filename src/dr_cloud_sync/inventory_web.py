@@ -36,6 +36,7 @@ from .sales_ingestion import PrestaShopSalesProvider, SalesSyncService, ShopCais
 from .shopcaisse import ShopCaisseClient, ShopCaisseError
 from .social import MarketingSchedulingService, SocialConnectionService, SocialPublishingService
 from .data_hub import DataHub, JobDefinition
+from .connector_diagnostics import ConnectorDiagnostic
 from .bank import BankLedger, DisabledQontoProvider
 from .qonto import EnvironmentSecretProvider, QontoBankProvider, QontoError
 from .sumup import SumUpProvider, SumUpError, SumUpTransactionLedger, PaymentSettlementLedger
@@ -106,14 +107,18 @@ class InventoryApp:
             "shopcaisse.production": "SHOPCAISSE_API_KEY",
             "sumup.production": "SUMUP_API_KEY",
         })
-        secret_ref=os.environ.get("QONTO_SECRET_REF") or os.environ.get("QONTO_CREDENTIAL_REF","env:QONTO_CREDENTIAL")
+        explicit_ref=os.environ.get("QONTO_SECRET_REF") or os.environ.get("QONTO_CREDENTIAL_REF")
+        secret_ref=explicit_ref if explicit_ref is not None else "env:QONTO_CREDENTIAL"
+        selected_reference_present=bool(secret_ref and secret_ref.strip())
+        environment_key_present=bool(secret_ref.startswith("env:") and secret_ref.removeprefix("env:") in os.environ) if selected_reference_present else False
+        resolved=(secrets_provider.resolve(secret_ref) or "").strip() if selected_reference_present else ""
+        self.qonto_configuration={"selected_reference_present":"OUI" if selected_reference_present else "NON",
+            "environment_key_present":"OUI" if environment_key_present else "NON",
+            "credential_resolved":"OUI" if resolved else "NON","health_attempted":"NON","health_status":"NOT_RUN",
+            "reference_selection":"EXPLICIT" if explicit_ref is not None else "DEFAULT"}
         candidate=QontoBankProvider(secret_ref,secrets_provider,timeout=float(os.environ.get("QONTO_TIMEOUT_SECONDS","8")),base_url=os.environ.get("QONTO_API_URL") or None)
-        qonto_connected=False
-        if candidate.configured:
-            try: qonto_connected=candidate.health()["status"]=="CONNECTED"
-            except QontoError: pass
-        self.bank_provider=candidate if candidate.configured else DisabledQontoProvider()
-        self.settlements.qonto_configured=qonto_connected
+        qonto_connected=False; qonto_configured=bool(resolved)
+        self.bank_provider=candidate if qonto_configured else DisabledQontoProvider()
         sumup_ref=os.environ.get("SUMUP_SECRET_REF") or ("sumup.production" if os.environ.get("SUMUP_API_KEY") else "")
         self.sumup_provider=SumUpProvider(os.environ.get("SUMUP_MERCHANT_CODE"),sumup_ref,secrets_provider,base_url=os.environ.get("SUMUP_API_URL","https://api.sumup.com"),timeout=float(os.environ.get("SUMUP_TIMEOUT_SECONDS","8")))
         sumup_connected=False
@@ -166,12 +171,26 @@ class InventoryApp:
             self.data_hub.register_source("shopcaisse_sales","SHOPCAISSE_SALES","ShopCaisse",
                 configured=True,capabilities=("READ_SALES",),stale_after_seconds=intervals["sales"]*2)
         self.sales_sync=SalesSyncService(self.sales,sales_providers)
-        for args in (("prestashop_sales","PRESTASHOP_SALES","PrestaShop",configured_ps),("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",prestashop_connected),("bank","BANK","Qonto",qonto_connected),("purchases","PURCHASES","LOCAL",True),("stock","STOCK","LOCAL",True)):
+        for args in (("prestashop_sales","PRESTASHOP_SALES","PrestaShop",configured_ps),("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",prestashop_connected),("purchases","PURCHASES","LOCAL",True),("stock","STOCK","LOCAL",True)):
             # An authenticated Qonto health check makes the source runnable, but it
             # remains unavailable (never CONNECTED/FRESH) until BANK has imported a
             # real page and DataHub.run records the successful synchronization.
             initial_status="UNAVAILABLE" if args[0]=="bank" and args[3] else None
             self.data_hub.register_source(*args[:3],configured=args[3],status=initial_status,capabilities=("READ",),stale_after_seconds=intervals["bank"]*2 if args[0]=="bank" else intervals["sales"]*2)
+        self.data_hub.register_source("bank","BANK","Qonto",configured=qonto_configured,
+            status="UNAVAILABLE" if qonto_configured else "NOT_CONFIGURED",capabilities=("READ",),stale_after_seconds=intervals["bank"]*2)
+        if qonto_configured:
+            self.qonto_configuration["health_attempted"]="OUI"
+            _, diagnostic=self.data_hub.connector_health_check("bank","Qonto",candidate.health,
+                operation="QONTO_HEALTH",stage="organization",endpoint_path="/v2/organization")
+            qonto_connected=diagnostic.success
+            self.qonto_configuration["health_status"]="CONNECTED" if qonto_connected else "ERROR"
+        else:
+            cause="SECRET_REFERENCE_UNRESOLVED" if selected_reference_present else "CONFIGURATION_ABSENT"
+            self.data_hub.diagnostics.add(ConnectorDiagnostic("bank","Qonto","QONTO_HEALTH","secret_resolution",
+                "CONFIGURATION",f"Configuration Qonto absente du runtime. {cause}",datetime.now(timezone.utc).isoformat(),
+                response_excerpt=json.dumps(self.qonto_configuration,ensure_ascii=False)))
+        self.settlements.qonto_configured=qonto_connected
         sumup_interval=int(os.environ.get("SUMUP_SYNC_INTERVAL_SECONDS","900"))
         for source_id,source_type in (("sumup_merchant","SUMUP_MERCHANT"),("sumup_transactions","SUMUP_TRANSACTIONS"),("sumup_payouts","SUMUP_PAYOUTS"),("sumup_fees","SUMUP_FEES"),("sumup_refunds","SUMUP_REFUNDS"),("sumup_chargebacks","SUMUP_CHARGEBACKS"),("sumup_readers","SUMUP_READERS")):
             self.data_hub.register_source(source_id,source_type,"SumUp",configured=sumup_connected,capabilities=("READ_ONLY",),stale_after_seconds=sumup_interval*2)
@@ -294,18 +313,21 @@ class InventoryApp:
                     "sqlite_consumers":runtime_diagnostics(self.bank.db)})
             if path == "/api/admin/sumup" and method == "GET":
                 return self._json(start,self.sumup_settlements.cockpit())
-            if path == "/api/data-hub" and method == "GET": return self._json(start,{**self.data_hub.health(),"sales_diagnostics":self.sales_sync.diagnostics(),"runtime":{**self.data_hub.runtime(self.automation_operations()),"configuration":{"prestashop_paid_state_ids":"CONFIGURED" if self.prestashop_paid_states_configured else "MISSING"}}})
+            if path == "/api/data-hub" and method == "GET": return self._json(start,{**self.data_hub.health(),"sales_diagnostics":self.sales_sync.diagnostics(),"runtime":{**self.data_hub.runtime(self.automation_operations()),"configuration":{"prestashop_paid_state_ids":"CONFIGURED" if self.prestashop_paid_states_configured else "MISSING","qonto":self.qonto_configuration}}})
             if path == "/api/admin/shopcaisse-sales/failures" and method == "GET":
                 return self._json(start,self.sales_sync.failed_sales("SHOPCAISSE"))
             if path.startswith("/api/data-hub/sources/") and path.endswith("/test") and method == "POST":
                 source_id=unquote(path.removeprefix("/api/data-hub/sources/").removesuffix("/test")); sources={s["source_id"]:s for s in self.data_hub.sources()}
-                source=sources.get(source_id); client=self.shopcaisse_client if source_id=="shopcaisse_sales" else self.prestashop_client if source_id in {"prestashop_sales","prestashop_catalog"} else self.sumup_provider if source_id.startswith("sumup_") else None
+                source=sources.get(source_id); client=self.shopcaisse_client if source_id=="shopcaisse_sales" else self.prestashop_client if source_id in {"prestashop_sales","prestashop_catalog"} else self.sumup_provider if source_id.startswith("sumup_") else self.bank_provider if source_id=="bank" and not isinstance(self.bank_provider,DisabledQontoProvider) else None
                 if not source or not client: return self._json(start,{"error":"Connecteur non configuré"},"409 Conflict")
-                operation="authentication" if source_id=="shopcaisse_sales" or source_id.startswith("sumup_") else "order_states"; path_value="/transactions/history" if source_id.startswith("sumup_") else "/authentication" if source_id=="shopcaisse_sales" else "/order_states"
-                check=client.health if source_id=="shopcaisse_sales" or source_id.startswith("sumup_") else lambda: next(client.iter_resource("order_states"),None)
+                operation="QONTO_HEALTH" if source_id=="bank" else "authentication" if source_id=="shopcaisse_sales" or source_id.startswith("sumup_") else "order_states"; path_value="/v2/organization" if source_id=="bank" else "/transactions/history" if source_id.startswith("sumup_") else "/authentication" if source_id=="shopcaisse_sales" else "/order_states"
+                check=client.health if source_id=="bank" or source_id=="shopcaisse_sales" or source_id.startswith("sumup_") else lambda: next(client.iter_resource("order_states"),None)
                 diagnostic_id, diagnostic=self.data_hub.connector_health_check(source_id,source["provider"],check,
                     operation=operation,stage="manual_health",endpoint_path=path_value,request_id=request_id)
                 status="OK" if diagnostic.success else "ERROR"
+                if source_id=="bank":
+                    self.settlements.qonto_configured=diagnostic.success
+                    self.qonto_configuration.update({"health_attempted":"OUI","health_status":"CONNECTED" if diagnostic.success else "ERROR"})
                 self.security and self.security.audit(session["uid"],"CONNECTOR_DIAGNOSTIC_TEST","DATA_SOURCE",source_id,request_id,"api",{"diagnostic_id":diagnostic_id,"result":status})
                 return self._json(start,{"status":status,"diagnostic_id":diagnostic_id,"diagnostic":self.data_hub.diagnostics.recent(source_id,1,failures_only=False)[0]})
             if path.startswith("/api/data-hub/jobs/") and path.endswith("/run") and method == "POST":

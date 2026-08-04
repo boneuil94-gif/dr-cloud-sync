@@ -12,8 +12,13 @@ from .bank import BankAccount, BankBalance, BankTransaction, TransactionPage
 
 
 class QontoError(RuntimeError):
-    def __init__(self, message: str, *, retryable: bool = False):
-        super().__init__(message); self.retryable = retryable
+    def __init__(self, message: str, *, category="UNKNOWN", http_status=None, endpoint=None,
+                 retryable=False, response_excerpt=None, duration_ms=None, stage="organization"):
+        super().__init__(message); self.retryable=retryable; self.category=category
+        self.http_status=http_status; self.endpoint=endpoint; self.sanitised_message=message
+        self.response_excerpt=response_excerpt; self.duration_ms=duration_ms
+        self.diagnostic={"category":category,"http_status":http_status,"endpoint_path":endpoint,
+                         "stage":stage,"operation":"QONTO_HEALTH"}
 
 
 class EnvironmentSecretProvider:
@@ -40,25 +45,33 @@ class QontoBankProvider:
     def configured(self): return bool(self._reference and self._secrets.get(self._reference))
     def _authorization(self):
         value=self._secrets.get(self._reference)
-        if not value: raise QontoError("Qonto credentials are not configured")
+        if not value: raise QontoError("Configuration Qonto absente du runtime.",category="CONFIGURATION",stage="secret_resolution")
         return value if ":" in value or value.lower().startswith("bearer ") else f"Bearer {value}"
     def _get(self,path,params=None):
         url=f"{self.base_url}{path}"+("?"+urlencode(params,doseq=True) if params else "")
         request=Request(url,headers={"Authorization":self._authorization(),"Accept":"application/json"})
+        started=time.monotonic()
         for attempt in range(self.retries):
             try:
                 with self.opener(request,timeout=self.timeout) as response: return json.loads(response.read())
             except HTTPError as exc:
-                if exc.code in (401,403): raise QontoError(f"Qonto authentication failed (HTTP {exc.code})") from exc
+                duration=int((time.monotonic()-started)*1000)
+                if exc.code in (401,403): raise QontoError("Authentification Qonto refusée",category="AUTH",http_status=exc.code,endpoint=path,duration_ms=duration,stage="authentication") from exc
                 retryable=exc.code==429 or 500<=exc.code<600
-                if not retryable or attempt+1==self.retries: raise QontoError(f"Qonto HTTP {exc.code}",retryable=retryable) from exc
+                category="TIMEOUT" if exc.code==408 else "RATE_LIMIT" if exc.code==429 else "HTTP"
+                if not retryable or attempt+1==self.retries: raise QontoError(f"Erreur HTTP Qonto ({exc.code})",category=category,http_status=exc.code,endpoint=path,retryable=retryable,duration_ms=duration) from exc
                 delay=float(exc.headers.get("Retry-After") or min(30,2**attempt)); self.sleep(delay)
             except (URLError,TimeoutError) as exc:
-                if attempt+1==self.retries: raise QontoError("Qonto network timeout",retryable=True) from exc
+                reason=getattr(exc,"reason",None); timeout=isinstance(exc,TimeoutError) or isinstance(reason,TimeoutError) or "timeout" in str(exc).lower() or "timed out" in str(exc).lower()
+                if attempt+1==self.retries: raise QontoError("Qonto network timeout" if timeout else "Connexion Qonto impossible",category="TIMEOUT" if timeout else "NETWORK",endpoint=path,retryable=True,duration_ms=int((time.monotonic()-started)*1000)) from exc
                 self.sleep(min(30,2**attempt))
-            except (UnicodeDecodeError,json.JSONDecodeError) as exc: raise QontoError("Qonto returned invalid JSON") from exc
+            except (UnicodeDecodeError,json.JSONDecodeError) as exc: raise QontoError("Réponse Qonto invalide",category="INVALID_RESPONSE",endpoint=path,duration_ms=int((time.monotonic()-started)*1000),stage="response_validation") from exc
         raise AssertionError("unreachable")
-    def _organization(self): return self._get("/v2/organization").get("organization",{})
+    def _organization(self):
+        payload=self._get("/v2/organization")
+        if not isinstance(payload,dict) or not isinstance(payload.get("organization"),dict):
+            raise QontoError("Structure de réponse Qonto inattendue",category="INVALID_RESPONSE",endpoint="/v2/organization",stage="response_validation")
+        return payload["organization"]
     def health(self):
         if not self.configured:return {"status":"NOT_CONFIGURED"}
         self._organization();return {"status":"CONNECTED"}
