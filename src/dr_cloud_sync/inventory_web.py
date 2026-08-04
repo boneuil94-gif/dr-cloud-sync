@@ -38,7 +38,8 @@ from .social import MarketingSchedulingService, SocialConnectionService, SocialP
 from .data_hub import DataHub, JobDefinition
 from .connector_diagnostics import ConnectorDiagnostic
 from .bank import BankLedger, DisabledQontoProvider
-from .qonto import EnvironmentSecretProvider, QontoBankProvider, QontoError
+from .qonto import (EnvironmentSecretProvider, QontoBankProvider, QontoError,
+                    credential_is_valid)
 from .sumup import SumUpProvider, SumUpError, SumUpTransactionLedger, PaymentSettlementLedger
 from .sumup_migrations import sumup_schema_diagnostic
 from .sqlite_diagnostics import register_runtime, runtime_diagnostics
@@ -111,10 +112,14 @@ class InventoryApp:
         secret_ref=explicit_ref if explicit_ref is not None else "env:QONTO_CREDENTIAL"
         selected_reference_present=bool(secret_ref and secret_ref.strip())
         environment_key_present=bool(secret_ref.startswith("env:") and secret_ref.removeprefix("env:") in os.environ) if selected_reference_present else False
-        resolved=(secrets_provider.resolve(secret_ref) or "").strip() if selected_reference_present else ""
+        resolved=secrets_provider.resolve(secret_ref) if selected_reference_present else None
         self.qonto_configuration={"selected_reference_present":"OUI" if selected_reference_present else "NON",
             "environment_key_present":"OUI" if environment_key_present else "NON",
-            "credential_resolved":"OUI" if resolved else "NON","health_attempted":"NON","health_status":"NOT_RUN",
+            "credential_resolved":"OUI" if resolved is not None else "NON",
+            "format_structurally_valid":"OUI" if credential_is_valid(resolved) else "NON",
+            "authorization_sent":"NON","authentication_method":"API key organisation",
+            "basic_base64_bearer":"NON","api_environment":"Production",
+            "health_attempted":"NON","health_status":"NOT_RUN",
             "reference_selection":"EXPLICIT" if explicit_ref is not None else "DEFAULT"}
         candidate=QontoBankProvider(secret_ref,secrets_provider,timeout=float(os.environ.get("QONTO_TIMEOUT_SECONDS","8")),base_url=os.environ.get("QONTO_API_URL") or None)
         qonto_connected=False; qonto_configured=bool(resolved)
@@ -180,7 +185,7 @@ class InventoryApp:
         self.data_hub.register_source("bank","BANK","Qonto",configured=qonto_configured,
             status="UNAVAILABLE" if qonto_configured else "NOT_CONFIGURED",capabilities=("READ",),stale_after_seconds=intervals["bank"]*2)
         if qonto_configured:
-            self.qonto_configuration["health_attempted"]="OUI"
+            self.qonto_configuration.update({"health_attempted":"OUI","authorization_sent":"OUI" if credential_is_valid(resolved) else "NON"})
             _, diagnostic=self.data_hub.connector_health_check("bank","Qonto",candidate.health,
                 operation="QONTO_HEALTH",stage="organization",endpoint_path="/v2/organization")
             qonto_connected=diagnostic.success

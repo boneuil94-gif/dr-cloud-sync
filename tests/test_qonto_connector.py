@@ -2,7 +2,8 @@ import io, json
 from urllib.error import HTTPError, URLError
 import pytest
 from dr_cloud_sync.qonto import (EnvironmentSecretProvider,QONTO_USER_AGENT,QontoBankProvider,
-    QontoError,cloudflare_1010,support_message)
+    QontoError,cloudflare_1010,credential_is_valid,credential_structure,support_message)
+from dr_cloud_sync.qonto_diagnostic import run as diagnostic_run
 
 class Response:
     def __init__(self,value):self.value=value
@@ -104,3 +105,80 @@ def test_support_message_is_sanitised():
 
 def test_cloudflare_classifier_requires_cloudflare_evidence():
     assert cloudflare_1010(403,{"Server":"origin"},'{"error_code":1010}') is None
+
+@pytest.mark.parametrize("credential,valid,failed_fact",[
+    ("sign-in:secret-key",True,None),
+    ("secret-key",False,"separator_present"),
+    ("sign-in",False,"separator_present"),
+    ("sign-in:",False,"two_non_empty_parts"),
+    (":secret-key",False,"two_non_empty_parts"),
+    (" sign-in:secret-key",False,"leading_space"),
+    ("sign-in:secret-key ",False,"trailing_space"),
+    ("sign-in:secret-key\n",False,"newline"),
+    ('"sign-in:secret-key"',False,"surrounding_quotes"),
+    ("Bearer sign-in:secret-key",False,"bearer_prefix"),
+    ("Basic sign-in:secret-key",False,"basic_prefix"),
+    ("sign-in:secret:key:with:colons",True,None),
+])
+def test_organization_credential_structure_is_checked_without_transforming(credential,valid,failed_fact):
+    facts=credential_structure(credential)
+    assert credential_is_valid(credential) is valid
+    if failed_fact is not None:
+        expected = failed_fact not in {"separator_present", "two_non_empty_parts"}
+        assert facts[failed_fact] is expected
+    assert set(facts)=={"credential_non_empty","separator_present","two_non_empty_parts",
+        "leading_space","trailing_space","newline","surrounding_quotes","bearer_prefix","basic_prefix"}
+
+def test_invalid_credential_is_rejected_before_any_http_request_without_leak():
+    sensitive="secret-without-sign-in"
+    p,calls=provider([],credential=sensitive)
+    with pytest.raises(QontoError) as caught: p.health()
+    assert caught.value.category=="VALIDATION" and caught.value.retryable is False and not calls
+    assert sensitive not in str(caught.value) and sensitive not in json.dumps(caught.value.diagnostic)
+
+def test_authorization_is_exact_raw_organization_key_without_basic_bearer_or_base64():
+    credential="sign-in:secret:key:with:colons"
+    p,calls=provider([Response({"organization":{"bank_accounts":[]}})],credential=credential)
+    p.health(); headers=dict(calls[0].header_items())
+    assert headers["Authorization"]==credential
+    assert not headers["Authorization"].startswith(("Basic ","Bearer "))
+
+def test_controlled_provider_and_minimal_requests_are_coherent_and_secret_safe():
+    credential="sign-in:secret-key"
+    calls=[]
+    class DiagnosticResponse(Response):
+        status=200
+        headers={"Content-Type":"application/json","x-request-id":"safe-request-id"}
+        def read(self,*_args): return super().read()
+    def opener(request,timeout):
+        calls.append(request); return DiagnosticResponse({"organization":{"bank_accounts":[]}})
+    result=diagnostic_run(credential,reference="env:QONTO_CREDENTIAL",opener=opener,network_checks=True)
+    assert [item["http"] for item in result["requests"]]==[200,200]
+    assert [item["category"] for item in result["requests"]]==["OK","OK"]
+    assert result["classification"]=="CONNECTED"
+    assert len(calls)==2
+    for request in calls:
+        headers=dict(request.header_items())
+        assert headers["Authorization"]==credential and headers["Accept"]=="application/json"
+    assert credential not in json.dumps(result)
+
+def test_401_diagnostic_is_auth_non_retryable_and_never_leaks_credential():
+    credential="sign-in:secret-key"
+    error=lambda:HTTPError("https://thirdparty.qonto.com/v2/organization",401,"Unauthorized",
+        {"Content-Type":"application/json","x-request-id":"safe-request-id"},io.BytesIO(b'{"error":"denied"}'))
+    p,_=provider([error()],credential=credential)
+    with pytest.raises(QontoError) as caught: p.health()
+    assert caught.value.category=="AUTH" and caught.value.retryable is False
+    assert caught.value.http_status==401 and caught.value.diagnostic["stage"]=="authentication"
+    assert credential not in str(caught.value) and credential not in json.dumps(caught.value.diagnostic)
+
+def test_controlled_clients_consistently_classify_two_401_responses_without_leak():
+    credential="sign-in:secret-key"
+    def opener(_request,timeout):
+        raise HTTPError("https://thirdparty.qonto.com/v2/organization",401,"Unauthorized",
+            {"Content-Type":"application/json"},io.BytesIO(b'{"error":"denied"}'))
+    result=diagnostic_run(credential,reference="env:QONTO_CREDENTIAL",opener=opener)
+    assert [item["http"] for item in result["requests"]]==[401,401]
+    assert [item["category"] for item in result["requests"]]==["AUTH","AUTH"]
+    assert result["classification"]=="CREDENTIAL_REJECTED"
+    assert credential not in json.dumps(result)
