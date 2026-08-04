@@ -26,7 +26,33 @@ class QontoError(RuntimeError):
 
 
 QONTO_USER_AGENT = "DrCloud-OS/1.0 (+https://osdrcloud.fr)"
+QONTO_AUTH_REJECTED = ("Les identifiants Qonto ont été transmis, mais l’API les a refusés. "
+                       "Vérifiez le sign-in, la clé secrète et l’environnement de création de la clé.")
 _CF_1010 = re.compile(r"(?:error\s*(?:code|_code)?\s*[:=]?\s*1010|cloudflare[^\n]{0,100}1010|browser(?:'s)?\s+signature)", re.I)
+
+
+def credential_structure(credential: str | None) -> dict[str, bool]:
+    """Return only non-sensitive, structural facts about an organisation key."""
+    value = credential or ""
+    sign_in, separator, secret_key = value.partition(":")
+    return {
+        "credential_non_empty": bool(value),
+        "separator_present": separator == ":",
+        "two_non_empty_parts": separator == ":" and bool(sign_in.strip()) and bool(secret_key.strip()),
+        "leading_space": bool(value[:1].isspace()),
+        "trailing_space": bool(value[-1:].isspace()),
+        "newline": "\n" in value or "\r" in value,
+        "surrounding_quotes": len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'",
+        "bearer_prefix": value.startswith("Bearer "),
+        "basic_prefix": value.startswith("Basic "),
+    }
+
+
+def credential_is_valid(credential: str | None) -> bool:
+    facts = credential_structure(credential)
+    return (facts["credential_non_empty"] and facts["separator_present"] and facts["two_non_empty_parts"]
+            and not any(facts[name] for name in ("leading_space", "trailing_space", "newline",
+                "surrounding_quotes", "bearer_prefix", "basic_prefix")))
 
 
 def cloudflare_1010(status, headers, body: bytes | str) -> dict | None:
@@ -91,6 +117,8 @@ class QontoBankProvider:
     def _authorization(self):
         value=self._secrets.get(self._reference)
         if not value: raise QontoError("Configuration Qonto absente du runtime.",category="CONFIGURATION",stage="secret_resolution")
+        if not credential_is_valid(value):
+            raise QontoError("Format structurel du credential Qonto invalide.",category="VALIDATION",stage="secret_validation")
         return value
     def _get(self,path,params=None):
         url=f"{self.base_url}{path}"+("?"+urlencode(params,doseq=True) if params else "")
@@ -108,7 +136,7 @@ class QontoBankProvider:
                     raise QontoError("L’accès à l’API Qonto est bloqué par une règle Cloudflare avant validation du credential.",
                         category="WAF",http_status=403,endpoint=path,retryable=False,duration_ms=duration,
                         stage="edge_protection",user_agent=QONTO_USER_AGENT,**{k:v for k,v in waf.items() if k != "cloudflare_region"}) from exc
-                if exc.code in (401,403): raise QontoError("Authentification Qonto refusée",category="AUTH",http_status=exc.code,endpoint=path,duration_ms=duration,stage="authentication") from exc
+                if exc.code in (401,403): raise QontoError(QONTO_AUTH_REJECTED,category="AUTH",http_status=exc.code,endpoint=path,duration_ms=duration,stage="authentication") from exc
                 retryable=exc.code==429 or 500<=exc.code<600
                 category="TIMEOUT" if exc.code==408 else "RATE_LIMIT" if exc.code==429 else "HTTP"
                 if not retryable or attempt+1==self.retries: raise QontoError(f"Erreur HTTP Qonto ({exc.code})",category=category,http_status=exc.code,endpoint=path,retryable=retryable,duration_ms=duration) from exc
