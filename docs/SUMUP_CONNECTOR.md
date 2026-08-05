@@ -104,3 +104,21 @@ bornées. Après : 5 endpoints GET, 11 tables indépendantes, événements/frais
 refunds/chargebacks/items typés, payload complet filtré, fenêtres et reprise.
 L'historique importé pendant cet audit est **0** (aucun credential de production,
 donc aucun appel au compte), et cette limite est explicitement observable.
+
+## Politique de migrations SQLite additives
+
+Les migrations du connecteur SumUp sont strictement additives et idempotentes : au démarrage, les tables déclarées sont créées si elles n’existent pas, puis chaque colonne attendue est ajoutée uniquement lorsqu’elle manque. Les lignes existantes sont conservées. Les colonnes historiques dont la valeur métier est inconnue, comme `sumup_transactions.simple_status`, restent `NULL` pour éviter un faux statut.
+
+Aucune migration de production ne doit utiliser `DROP TABLE`, recréer une table contenant des données, ou renommer destructivement une colonne. Les colonnes `NOT NULL` ajoutées à un historique doivent avoir un défaut neutre technique seulement lorsque SQLite l’exige et que les écritures applicatives fournissent ensuite explicitement la valeur métier.
+
+## Diagnostic central de schéma
+
+L’administration expose `/api/admin/sumup-schema`. Ce contrôle est en lecture seule et compare les schémas attendus aux tables de production sensibles : `sumup_transactions`, `sumup_payouts`, tables bancaires, sales ledger, settlements et `data_sources`. Le résultat inclut le statut global (`OK`, `DRIFT`, `UNAVAILABLE`, `ERROR`), les tables en dérive, les colonnes manquantes, les colonnes supplémentaires informatives, la date du contrôle et les empreintes attendue/observée.
+
+## Récupération en cas de `DRIFT`
+
+1. Ne supprimez et ne réinitialisez aucune donnée.
+2. Consultez Administration → Intégrité schéma SQLite pour identifier la table et les colonnes manquantes.
+3. Relancez l’application ou la commande de migration SumUp afin d’appliquer uniquement les migrations additives sûres.
+4. Relancez le diagnostic et vérifiez que le statut redevient `OK`.
+5. Si une dérive persiste sur un module secondaire, seul le job concerné doit rester bloqué avec `SCHEMA_DRIFT`; le reste de l’application reste disponible.
