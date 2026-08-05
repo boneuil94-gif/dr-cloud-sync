@@ -171,3 +171,9 @@ comme indisponible : ses exports actuels ne constituent pas un snapshot transact
 persistant, daté et relié à un `JobRun`. Les endpoints et la page Stock ne font aucun
 appel HTTP et ne créent aucun mouvement ; le rafraîchissement contrôlé reste la commande
 read-only existante `dr-cloud-sync pull`.
+
+### Intégrité du schéma SQLite
+
+La politique de migration SQLite est additive : les démarrages appliquent uniquement des `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS` et des `ALTER TABLE ... ADD COLUMN` sûrs. Les données existantes ne sont jamais supprimées ni réinitialisées. Le diagnostic global de schéma est disponible dans Administration et signale les colonnes manquantes, les tables en dérive, les colonnes supplémentaires informatives et les empreintes de schéma.
+
+En cas de `DRIFT`, corrigez par une migration additive ou relancez la migration sûre du module concerné. Un module secondaire en dérive ne doit pas bloquer toute l’application : le job associé échoue explicitement avec `SCHEMA_DRIFT`.

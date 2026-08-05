@@ -44,6 +44,7 @@ from .qonto import (EnvironmentSecretProvider, QontoBankProvider, QontoError,
                     credential_is_valid)
 from .sumup import SumUpProvider, SumUpError, SumUpTransactionLedger, PaymentSettlementLedger
 from .sumup_migrations import sumup_schema_diagnostic
+from .schema_diagnostics import ExpectedSchema, diagnose_schema
 from .sqlite_diagnostics import register_runtime, runtime_diagnostics
 from .reconciliation import ReconciliationService
 from .finance import FinanceProjection
@@ -247,6 +248,20 @@ class InventoryApp:
             environment=settings.environment if settings else "development",
             safe_mode=settings.safe_mode if settings else True)
 
+    def global_schema_diagnostic(self):
+        from .sumup import SCHEMA as SUMUP_SCHEMA
+        from .bank import SCHEMA as BANK_SCHEMA
+        from .sales_ingestion import OPERATIONAL_SCHEMA
+        from .settlements import SCHEMA as SETTLEMENT_SCHEMA
+        from .data_hub import SCHEMA as DATA_HUB_SCHEMA
+        return diagnose_schema(self.bank.db, (
+            ExpectedSchema("sumup", SUMUP_SCHEMA),
+            ExpectedSchema("bank", BANK_SCHEMA),
+            ExpectedSchema("sales", OPERATIONAL_SCHEMA),
+            ExpectedSchema("settlements", SETTLEMENT_SCHEMA),
+            ExpectedSchema("data_hub", DATA_HUB_SCHEMA),
+        ), scope="production-sensitive")
+
     def automation_operations(self):
         def sales(source):
             report=self.sales_sync.sync(source,actor="automation")
@@ -338,6 +353,7 @@ class InventoryApp:
                 query=parse_qs(env.get("QUERY_STRING", "")); return self._json(start,{"diagnostics":self.data_hub.diagnostics.recent(query.get("source_id",[None])[0],query.get("limit",[10])[0])})
             if path == "/api/admin/sumup-schema" and method == "GET":
                 return self._json(start,{**sumup_schema_diagnostic(self.bank.db),
+                    "global_schema": self.global_schema_diagnostic(),
                     "sqlite_consumers":runtime_diagnostics(self.bank.db)})
             if path == "/api/admin/sumup" and method == "GET":
                 return self._json(start,self.sumup_settlements.cockpit())

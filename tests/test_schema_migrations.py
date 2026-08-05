@@ -177,3 +177,61 @@ def test_deductions_json_has_database_and_writer_defaults(tmp_path):
     assert info["deductions_json"][3] == 1 and info["deductions_json"][4] == "'[]'"
     ledger.import_page(type("Page",(),{"rows":({"id":"p","date":"2026-08-03","amount":"1"},),"next_cursor":None})())
     assert ledger.db.execute("SELECT deductions_json FROM sumup_payouts").fetchone()[0] == "[]"
+
+
+def test_legacy_simple_status_is_added_nullable_and_idempotent(tmp_path):
+    path = tmp_path / "legacy-simple-status.sqlite"
+    db = sqlite3.connect(path)
+    db.executescript("""
+      CREATE TABLE sumup_transactions(
+        sumup_transaction_id TEXT PRIMARY KEY,transaction_code TEXT,amount TEXT NOT NULL,
+        currency TEXT NOT NULL,timestamp TEXT NOT NULL,status TEXT,fee TEXT NOT NULL,
+        events_json TEXT NOT NULL,raw_json TEXT NOT NULL,imported_at TEXT NOT NULL);
+      INSERT INTO sumup_transactions(sumup_transaction_id,amount,currency,timestamp,status,fee,events_json,raw_json,imported_at)
+      VALUES('old','9','EUR','2026-01-01','SUCCESSFUL','0','[]','{}','then');
+    """)
+    db.close()
+
+    ledger = SumUpTransactionLedger(path)
+    ledger.db.close()
+    replay = SumUpTransactionLedger(path)
+
+    row = replay.db.execute("SELECT amount,status,simple_status FROM sumup_transactions WHERE sumup_transaction_id='old'").fetchone()
+    assert tuple(row) == ("9", "SUCCESSFUL", None)
+    assert replay.schema_migration["global_status"] == "OK"
+    assert replay.schema_migration["added_columns_this_start"] == []
+    assert replay.db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+
+def test_sumup_import_does_not_fabricate_simple_status(tmp_path):
+    ledger = SumUpTransactionLedger(tmp_path / "fresh-status.sqlite")
+    ledger.import_page(type("Page", (), {"rows": ({"id": "tx", "amount": "3", "currency": "EUR", "timestamp": "2026-01-01", "status": "SUCCESSFUL"},), "next_cursor": None})())
+    assert ledger.db.execute("SELECT status,simple_status FROM sumup_transactions WHERE sumup_transaction_id='tx'").fetchone()[:] == ("SUCCESSFUL", None)
+
+
+def test_read_only_diagnostic_detects_missing_column(tmp_path):
+    from dr_cloud_sync.schema_diagnostics import ExpectedSchema, diagnose_schema
+    from dr_cloud_sync.sumup import SCHEMA
+    db = sqlite3.connect(tmp_path / "drift.sqlite")
+    db.executescript("CREATE TABLE sumup_transactions(sumup_transaction_id TEXT PRIMARY KEY);")
+    diagnostic = diagnose_schema(db, [ExpectedSchema("sumup", SCHEMA)], scope="sumup")
+    table = next(t for t in diagnostic["tables"] if t["table"] == "sumup_transactions")
+    assert diagnostic["status"] == "DRIFT"
+    assert "simple_status" in table["missing_columns"]
+
+
+def test_schema_drift_blocks_only_sumup_job_with_explicit_error(tmp_path):
+    from dr_cloud_sync.data_hub import DataHub, JobDefinition
+    from dr_cloud_sync.schema_diagnostics import SchemaDriftError
+    hub = DataHub(tmp_path / "hub.sqlite")
+    hub.register_source("sumup_transactions", "SUMUP_TRANSACTIONS", "SumUp", configured=True)
+    hub.register_job(JobDefinition("sync_sumup_transactions", "sumup_transactions", "SUMUP_TRANSACTIONS", 60, max_attempts=1))
+    try:
+        hub.run("sync_sumup_transactions", lambda cursor: (_ for _ in ()).throw(SchemaDriftError({"status": "DRIFT"})), manual=True)
+    except SchemaDriftError:
+        pass
+    job = hub.job("sync_sumup_transactions")
+    source = next(s for s in hub.sources() if s["source_id"] == "sumup_transactions")
+    assert job["status"] == "FAILED"
+    assert job["error"] == "SCHEMA_DRIFT"
+    assert source["last_error"] == "SCHEMA_DRIFT"

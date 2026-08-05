@@ -37,11 +37,11 @@ def test_administration_exposes_non_sensitive_sumup_schema_diagnostic(configured
     status, _, body = request(app, "/api/admin/sumup-schema", cookie=cookie)
     payload = json.loads(body)
     assert status == "200 OK"
-    assert payload["schema_version"] == payload["target_version"] == 3
+    assert payload["schema_version"] == payload["target_version"] == 4
     assert payload["pending_migrations"] == []
     assert payload["last_check"]["result"] == "OK"
     assert set(payload) == {"schema_version", "target_version", "applied_migrations",
-                            "pending_migrations", "last_check", "added_columns_this_start", "sqlite_consumers"}
+                            "pending_migrations", "last_check", "added_columns_this_start", "global_status", "checked_at", "expected_fingerprint", "observed_fingerprint", "tables", "drift", "global_schema", "sqlite_consumers"}
     assert "SUMUP_API_KEY" not in body.decode()
 
 

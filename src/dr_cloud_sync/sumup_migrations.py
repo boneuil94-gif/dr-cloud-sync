@@ -5,9 +5,11 @@ from datetime import datetime, timezone
 import json
 import sqlite3
 
+from .schema_diagnostics import ExpectedSchema, diagnose_schema
 
-SUMUP_SCHEMA_VERSION = 3
-MIGRATION_NAME = "sumup_reversals_and_settlement_coverage_20260803"
+
+SUMUP_SCHEMA_VERSION = 4
+MIGRATION_NAME = "sumup_simple_status_schema_drift_repair_20260805"
 
 
 class SumUpSchemaMigrationError(RuntimeError):
@@ -88,7 +90,8 @@ def migrate_sumup_schema(db: sqlite3.Connection, schema: str) -> dict:
             "INSERT OR IGNORE INTO sumup_schema_migrations(version,name,applied_at) VALUES(?,?,?)",
             (SUMUP_SCHEMA_VERSION, MIGRATION_NAME, now),
         )
-        details = json.dumps({"tables_checked": sorted(expected_tables), "missing_columns": 0})
+        diagnostic = diagnose_schema(db, [ExpectedSchema("sumup", schema)], scope="sumup")
+        details = json.dumps({"tables_checked": sorted(expected_tables), "missing_columns": sum(len(t["missing_columns"]) for t in diagnostic["tables"]), "status": diagnostic["status"]})
         db.execute("""INSERT INTO sumup_schema_checks(check_id,checked_at,result,details_json)
             VALUES(1,?,'OK',?) ON CONFLICT(check_id) DO UPDATE SET
             checked_at=excluded.checked_at,result=excluded.result,details_json=excluded.details_json""", (now, details))
@@ -102,11 +105,18 @@ def migrate_sumup_schema(db: sqlite3.Connection, schema: str) -> dict:
 
 
 def sumup_schema_diagnostic(db: sqlite3.Connection, *, added_columns=()) -> dict:
-    applied = [dict(zip(("version", "name", "applied_at"), row)) for row in db.execute(
-        "SELECT version,name,applied_at FROM sumup_schema_migrations ORDER BY version"
-    )]
-    check = db.execute("SELECT checked_at,result FROM sumup_schema_checks WHERE check_id=1").fetchone()
+    try:
+        applied = [dict(zip(("version", "name", "applied_at"), row)) for row in db.execute(
+            "SELECT version,name,applied_at FROM sumup_schema_migrations ORDER BY version"
+        )]
+    except sqlite3.OperationalError:
+        applied = []
+    try:
+        check = db.execute("SELECT checked_at,result FROM sumup_schema_checks WHERE check_id=1").fetchone()
+    except sqlite3.OperationalError:
+        check = None
     versions = {item["version"] for item in applied}
+    global_diagnostic = diagnose_schema(db, [ExpectedSchema("sumup", __import__("dr_cloud_sync.sumup", fromlist=["SCHEMA"]).SCHEMA)], scope="sumup")
     return {
         "schema_version": max(versions, default=0),
         "target_version": SUMUP_SCHEMA_VERSION,
@@ -114,4 +124,10 @@ def sumup_schema_diagnostic(db: sqlite3.Connection, *, added_columns=()) -> dict
         "pending_migrations": [] if SUMUP_SCHEMA_VERSION in versions else [MIGRATION_NAME],
         "last_check": {"checked_at": check[0], "result": check[1]} if check else None,
         "added_columns_this_start": list(added_columns),
+        "global_status": global_diagnostic["status"],
+        "checked_at": global_diagnostic["checked_at"],
+        "expected_fingerprint": global_diagnostic["expected_fingerprint"],
+        "observed_fingerprint": global_diagnostic["observed_fingerprint"],
+        "tables": global_diagnostic["tables"],
+        "drift": global_diagnostic["drift"],
     }

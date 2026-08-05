@@ -18,6 +18,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from .sumup_migrations import migrate_sumup_schema
+from .schema_diagnostics import SchemaDriftError
 
 
 class SumUpError(RuntimeError):
@@ -286,7 +287,7 @@ class SumUpTransactionLedger:
                 card = row.get("card") or {}; terminal = row.get("terminal") or {}
                 refunded = row.get("refunded_amount", sum(Decimal(str(e.get("amount", 0))) for e in events if str(e.get("type", "")).upper() == "REFUND"))
                 chargeback = row.get("chargeback_amount", sum(Decimal(str(e.get("amount", 0))) for e in events if "CHARGEBACK" in str(e.get("type", "")).upper()))
-                values = (tid, row.get("transaction_code"), _decimal(row.get("amount")), row.get("currency") or "EUR", str(row.get("timestamp") or row.get("date") or stamp), row.get("status"), row.get("simple_status") or row.get("status"), row.get("payment_type"), row.get("entry_mode"), row.get("card_type") or card.get("type") or card.get("scheme"), row.get("terminal_id") or terminal.get("id"), row.get("product_summary"), _decimal(row.get("vat_amount")), _decimal(row.get("tip_amount")), _decimal(refunded), _decimal(chargeback), row.get("foreign_transaction_id"), row.get("client_transaction_id"), row.get("reference") or row.get("description"), row.get("receipt_url"), _decimal(fee_value), json.dumps(_safe_raw(events)), json.dumps(_safe_raw(row)), stamp)
+                values = (tid, row.get("transaction_code"), _decimal(row.get("amount")), row.get("currency") or "EUR", str(row.get("timestamp") or row.get("date") or stamp), row.get("status"), row.get("simple_status"), row.get("payment_type"), row.get("entry_mode"), row.get("card_type") or card.get("type") or card.get("scheme"), row.get("terminal_id") or terminal.get("id"), row.get("product_summary"), _decimal(row.get("vat_amount")), _decimal(row.get("tip_amount")), _decimal(refunded), _decimal(chargeback), row.get("foreign_transaction_id"), row.get("client_transaction_id"), row.get("reference") or row.get("description"), row.get("receipt_url"), _decimal(fee_value), json.dumps(_safe_raw(events)), json.dumps(_safe_raw(row)), stamp)
                 self.db.execute("INSERT OR REPLACE INTO sumup_transactions (sumup_transaction_id,transaction_code,amount,currency,timestamp,status,simple_status,payment_type,entry_mode,card_type,terminal_id,product_summary,vat_amount,tip_amount,refunded_amount,chargeback_amount,foreign_transaction_id,client_transaction_id,reference,receipt_url,fee,events_json,raw_json,imported_at) VALUES(" + ",".join("?" * len(values)) + ")", values)
                 fees = row.get("fees") or ([{"amount": fee_value, "type": "TRANSACTION", "currency": row.get("currency")}] if Decimal(_decimal(fee_value)) else [])
                 for i, fee in enumerate(fees):
@@ -306,6 +307,8 @@ class SumUpTransactionLedger:
         return {"rows_imported": inserted, "duplicates": len(page.rows) - inserted, "cursor": page.next_cursor}
 
     def sync(self, provider, cursor=None, **bounds):
+        if self.schema_migration.get("global_status") != "OK":
+            raise SchemaDriftError(self.schema_migration)
         total = duplicates = 0
         while True:
             page = provider.transactions(cursor, **bounds); result = self.import_page(page)
@@ -343,6 +346,8 @@ class PaymentSettlementLedger:
         return {"rows_imported": inserted, "duplicates": len(page.rows) - inserted, "cursor": page.next_cursor}
 
     def sync(self, provider, cursor=None, **bounds):
+        if self.schema_migration.get("global_status") != "OK":
+            raise SchemaDriftError(self.schema_migration)
         total = duplicates = 0
         while True:
             page = provider.payouts(cursor, **bounds); result = self.import_page(page)
