@@ -12,11 +12,14 @@ from pathlib import Path
 from typing import Callable, Mapping, Any
 from .connector_diagnostics import ConnectorDiagnostic, DiagnosticRepository, from_exception
 from .sqlite import connection
+from .schema import ensure_schema
 
 class SourceStatus(StrEnum):
     CONNECTED="CONNECTED"; PARTIAL="PARTIAL"; NOT_CONFIGURED="NOT_CONFIGURED"; DISABLED="DISABLED"; ERROR="ERROR"; UNSUPPORTED="UNSUPPORTED"; UNAVAILABLE="UNAVAILABLE"
 class DataFreshness(StrEnum):
-    FRESH="FRESH"; STALE="STALE"; ERROR="ERROR"; UNAVAILABLE="UNAVAILABLE"; NOT_CONFIGURED="NOT_CONFIGURED"; DISABLED="DISABLED"
+    FRESH="FRESH"; STALE="STALE"; CONNECTED_NO_DATA="CONNECTED_NO_DATA"; ERROR="ERROR"; UNAVAILABLE="UNAVAILABLE"; NOT_CONFIGURED="NOT_CONFIGURED"; DISABLED="DISABLED"
+class WorkerState(StrEnum):
+    HEALTHY="HEALTHY"; STALE="STALE"; MISSING="MISSING"; DATABASE_MISMATCH="DATABASE_MISMATCH"
 class SyncStatus(StrEnum):
     PENDING="PENDING"; RUNNING="RUNNING"; SUCCEEDED="SUCCEEDED"; FAILED="FAILED"; BLOCKED="BLOCKED"; RETRY="RETRY"
 
@@ -32,7 +35,7 @@ DEFAULT_SOURCES=(
  ("bank","BANK","Qonto"), ("purchases","PURCHASES","LOCAL"), ("stock","STOCK","LOCAL"))
 
 SCHEMA="""
-CREATE TABLE IF NOT EXISTS data_sources(source_id TEXT PRIMARY KEY,source_type TEXT NOT NULL,provider TEXT NOT NULL,status TEXT NOT NULL,enabled INTEGER NOT NULL,last_attempt_at TEXT,last_success_at TEXT,last_error TEXT,cursor TEXT,capabilities_json TEXT NOT NULL,stale_after_seconds INTEGER NOT NULL,rows_imported INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS data_sources(source_id TEXT PRIMARY KEY,source_type TEXT NOT NULL,provider TEXT NOT NULL,status TEXT NOT NULL,enabled INTEGER NOT NULL,last_attempt_at TEXT,last_success_at TEXT,last_error TEXT,cursor TEXT,capabilities_json TEXT NOT NULL,stale_after_seconds INTEGER NOT NULL,rows_imported INTEGER NOT NULL DEFAULT 0,last_rows_imported INTEGER,last_run_id INTEGER,data_min_at TEXT,data_max_at TEXT,records_available INTEGER);
 CREATE TABLE IF NOT EXISTS sync_jobs(job_id TEXT PRIMARY KEY,source_id TEXT NOT NULL,job_type TEXT NOT NULL,interval_seconds INTEGER NOT NULL,dependencies_json TEXT NOT NULL,max_attempts INTEGER NOT NULL,next_run_at TEXT,last_run_at TEXT,status TEXT NOT NULL DEFAULT 'PENDING',attempts INTEGER NOT NULL DEFAULT 0,duration_ms INTEGER,error TEXT,lock_token TEXT,locked_at TEXT);
 CREATE TABLE IF NOT EXISTS data_hub_sync_runs(run_id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL,started_at TEXT NOT NULL,completed_at TEXT,status TEXT NOT NULL,attempt INTEGER NOT NULL,result_json TEXT,error TEXT);
 CREATE TABLE IF NOT EXISTS automation_worker_heartbeat(worker_id TEXT PRIMARY KEY,seen_at TEXT NOT NULL,database_fingerprint TEXT NOT NULL);
@@ -45,7 +48,7 @@ def iso(value: datetime): return value.astimezone(timezone.utc).isoformat()
 class DataHub:
     def __init__(self,path: Path,*,clock: Callable[[],datetime]=utcnow):
         self.path=Path(path); self.clock=clock
-        with self.connect() as db: db.executescript(SCHEMA)
+        with self.connect() as db: ensure_schema(db,SCHEMA,owner="data_hub")
         self.diagnostics=DiagnosticRepository(self.path)
     def connect(self):
         """Yield a transactional connection and always release its file handle.
@@ -64,7 +67,7 @@ class DataHub:
         green status.
         """
         status=SourceStatus(status) if status else SourceStatus.DISABLED if not enabled else SourceStatus.CONNECTED if configured else SourceStatus.NOT_CONFIGURED
-        with self.connect() as db: db.execute("""INSERT INTO data_sources VALUES(?,?,?,?,?,NULL,NULL,NULL,NULL,?,?,0)
+        with self.connect() as db: db.execute("""INSERT INTO data_sources(source_id,source_type,provider,status,enabled,last_attempt_at,last_success_at,last_error,cursor,capabilities_json,stale_after_seconds,rows_imported,last_rows_imported,last_run_id,data_min_at,data_max_at,records_available) VALUES(?,?,?,?,?,NULL,NULL,NULL,NULL,?,?,0,NULL,NULL,NULL,NULL,NULL)
           ON CONFLICT(source_id) DO UPDATE SET source_type=excluded.source_type,provider=excluded.provider,enabled=excluded.enabled,capabilities_json=excluded.capabilities_json,stale_after_seconds=excluded.stale_after_seconds,status=CASE WHEN data_sources.status='ERROR' AND excluded.status='CONNECTED' THEN data_sources.status WHEN data_sources.last_success_at IS NOT NULL AND excluded.status='UNAVAILABLE' THEN data_sources.status ELSE excluded.status END""",
           (source_id,source_type,provider,status.value,int(enabled),json.dumps(list(capabilities)),stale_after_seconds))
     def register_job(self,job: JobDefinition):
@@ -91,22 +94,22 @@ class DataHub:
         diagnostic_id=self.diagnostics.add(diagnostic)
         with self.connect() as db:
             db.execute("UPDATE data_sources SET status=?,last_attempt_at=?,last_success_at=CASE WHEN ? THEN ? ELSE last_success_at END,last_error=CASE WHEN ? THEN NULL ELSE ? END WHERE source_id=?",
-                (status.value,diagnostic.occurred_at,int(diagnostic.success),diagnostic.occurred_at,
-                 int(diagnostic.success),None if diagnostic.success else diagnostic.message,source_id))
+                (status.value,diagnostic.occurred_at,int(diagnostic.success),diagnostic.occurred_at,int(diagnostic.success),None if diagnostic.success else diagnostic.message,source_id))
         return diagnostic_id, diagnostic
     def sources(self):
         now=self.clock(); result=[]
-        with self.connect() as db: rows=db.execute("SELECT * FROM data_sources ORDER BY source_id").fetchall()
+        with self.connect() as db:
+            rows=db.execute("""SELECT ds.*,MIN(sj.next_run_at) AS next_run_at
+                FROM data_sources ds LEFT JOIN sync_jobs sj ON sj.source_id=ds.source_id
+                GROUP BY ds.source_id ORDER BY ds.source_id""").fetchall()
         for row in rows:
             item=dict(row); item["enabled"]=bool(item["enabled"]);item["capabilities"]=json.loads(item.pop("capabilities_json"))
             if item["status"]==SourceStatus.NOT_CONFIGURED: fresh=DataFreshness.NOT_CONFIGURED
             elif item["status"] in (SourceStatus.ERROR,): fresh=DataFreshness.ERROR
             elif item["status"]==SourceStatus.DISABLED: fresh=DataFreshness.DISABLED
-            elif item["status"] in (SourceStatus.UNSUPPORTED,SourceStatus.UNAVAILABLE) or not item["last_success_at"]: fresh=DataFreshness.UNAVAILABLE
+            elif item["status"] in (SourceStatus.UNSUPPORTED,SourceStatus.UNAVAILABLE): fresh=DataFreshness.UNAVAILABLE
+            elif not item["last_run_id"]: fresh=DataFreshness.CONNECTED_NO_DATA
             else: fresh=DataFreshness.FRESH if now-datetime.fromisoformat(item["last_success_at"])<=timedelta(seconds=item["stale_after_seconds"]) else DataFreshness.STALE
-            with self.connect() as db:
-                schedule=db.execute("SELECT MIN(next_run_at) FROM sync_jobs WHERE source_id=?",(item["source_id"],)).fetchone()[0]
-            item["next_run_at"]=schedule
             item["freshness"]=fresh.value;result.append(item)
         return result
     def jobs(self):
@@ -132,11 +135,13 @@ class DataHub:
             attempt=job["attempts"]+1; cur=db.execute("INSERT INTO data_hub_sync_runs(job_id,started_at,status,attempt) VALUES(?,?,'RUNNING',?)",(job_id,iso(now),attempt));run_id=cur.lastrowid
         started=self.clock()
         try:
-            result=dict(operation(source["cursor"])); end=self.clock(); rows=int(result.get("rows_imported",0)); cursor=result.get("cursor",source["cursor"])
+            result=dict(operation(source["cursor"])); end=self.clock(); rows_value=result.get("rows_imported")
+            rows_delta=0 if rows_value is None else int(rows_value); last_rows=None if rows_value is None else rows_delta; cursor=result.get("cursor",source["cursor"])
+            data_min_at=result.get("data_min_at"); data_max_at=result.get("data_max_at"); records_available=result.get("records_available")
             with self.connect() as db:
                 db.execute("UPDATE data_hub_sync_runs SET completed_at=?,status='SUCCEEDED',result_json=? WHERE run_id=?",(iso(end),json.dumps(result),run_id))
                 db.execute("UPDATE sync_jobs SET status='SUCCEEDED',next_run_at=?,duration_ms=?,error=NULL,lock_token=NULL WHERE job_id=?",(iso(end+timedelta(seconds=job["interval_seconds"])),int((end-started).total_seconds()*1000),job_id))
-                db.execute("UPDATE data_sources SET last_attempt_at=?,last_success_at=?,last_error=NULL,cursor=?,rows_imported=rows_imported+?,status='CONNECTED' WHERE source_id=?",(iso(end),iso(end),cursor,rows,job["source_id"]))
+                db.execute("UPDATE data_sources SET last_attempt_at=?,last_success_at=?,last_error=NULL,cursor=?,rows_imported=rows_imported+?,last_rows_imported=?,last_run_id=?,data_min_at=CASE WHEN ? IS NULL THEN data_min_at WHEN data_min_at IS NULL OR ? < data_min_at THEN ? ELSE data_min_at END,data_max_at=CASE WHEN ? IS NULL THEN data_max_at WHEN data_max_at IS NULL OR ? > data_max_at THEN ? ELSE data_max_at END,records_available=?,status='CONNECTED' WHERE source_id=?",(iso(end),iso(end),cursor,rows_delta,last_rows,run_id,data_min_at,data_min_at,data_min_at,data_max_at,data_max_at,data_max_at,records_available,job["source_id"]))
             return self.job(job_id)
         except Exception as exc:
             from .jobs import sanitize_error
@@ -165,10 +170,25 @@ class DataHub:
         return hashlib.sha256(str(self.path.resolve()).encode()).hexdigest()[:12]
     def heartbeat(self,worker_id="automation-worker"):
         with self.connect() as db: db.execute("INSERT INTO automation_worker_heartbeat VALUES(?,?,?) ON CONFLICT(worker_id) DO UPDATE SET seen_at=excluded.seen_at,database_fingerprint=excluded.database_fingerprint",(worker_id,iso(self.clock()),self.database_fingerprint()))
+    def worker_state(self,*,stale_after_seconds=120):
+        fingerprint=self.database_fingerprint(); now=self.clock()
+        with self.connect() as db: row=db.execute("SELECT * FROM automation_worker_heartbeat ORDER BY seen_at DESC LIMIT 1").fetchone()
+        if not row: return WorkerState.MISSING.value
+        if row["database_fingerprint"]!=fingerprint: return WorkerState.DATABASE_MISMATCH.value
+        if now-datetime.fromisoformat(row["seen_at"])>timedelta(seconds=stale_after_seconds): return WorkerState.STALE.value
+        return WorkerState.HEALTHY.value
     def runtime(self,operations=None):
         with self.connect() as db: heartbeats=[dict(row) for row in db.execute("SELECT * FROM automation_worker_heartbeat ORDER BY worker_id")]
         registered=set((operations or {}).keys())
-        return {"database_fingerprint":self.database_fingerprint(),"worker_heartbeats":heartbeats,"jobs":[{"job_id":j["job_id"],"handler_registered":j["job_type"] in registered} for j in self.jobs()]}
+        return {"database_fingerprint":self.database_fingerprint(),"worker_state":self.worker_state(),"worker_heartbeats":heartbeats,"jobs":[{"job_id":j["job_id"],"handler_registered":j["job_type"] in registered} for j in self.jobs()]}
+    def production_evidence(self):
+        keys=("provider","source_id","configuration","connectivity","freshness","last_attempt_at","last_success_at","last_rows_imported","rows_imported","data_min_at","data_max_at","records_available","last_error","next_run_at","last_run_id")
+        out=[]
+        for s in self.sources():
+            item={"provider":s["provider"],"source_id":s["source_id"],"configuration":"CONFIGURED" if s["enabled"] and s["status"]!=SourceStatus.NOT_CONFIGURED else "NOT_CONFIGURED","connectivity":s["status"],"freshness":s["freshness"]}
+            item.update({k:s.get(k) for k in keys if k not in item})
+            out.append(item)
+        return {"sources":out}
     def health(self):
         sources=self.sources()
         for source in sources:
