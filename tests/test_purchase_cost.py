@@ -50,3 +50,16 @@ def test_invoice_divergence_not_corrected(tmp_path):
 def test_stock_value_never_values_uncovered_quantity(tmp_path):
     x=ledger(tmp_path);add_lot(x,'drc:p','grl:1',5,3,'2026-01-01T00:00:00+00:00')
     value=x.stock_value({'drc:p':8}); assert value['value_ht']=='15.00'; assert value['uncovered_quantity']=='3.00'; assert value['products'][0]['coverage_percent']=='62.50'
+
+def test_sales_ledger_automatically_allocates_fifo_and_sets_cost_basis(tmp_path):
+    from dr_cloud_sync.domain import Product
+    from dr_cloud_sync.repositories import MemoryCatalogRepository
+    from dr_cloud_sync.sales import SaleEvent, SalesLedger
+    catalogue=MemoryCatalogRepository([Product('drc:p','1',1,None,'1','P','123')])
+    costs=PurchaseCostLedger(tmp_path/'chain.sqlite',catalogue)
+    add_lot(costs,'drc:p','grl:auto',2,3,'2026-01-01T00:00:00+00:00')
+    sales=SalesLedger(tmp_path/'chain.sqlite',catalogue,cost_ledger=costs)
+    event=SaleEvent('IMPORT','sale-1','line-1','2026-01-02T00:00:00+00:00','UTC','SALE','drc:p',Decimal('2'),'idem-1',line_total_ht=Decimal('10'),currency='EUR')
+    assert sales.append(event)
+    row=sales.list_events()[0]
+    assert row['cost_basis']=='3.00' and costs.profitability()['products'][0]['gross_margin']=='4.00'

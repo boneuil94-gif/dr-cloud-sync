@@ -134,7 +134,9 @@ class PurchaseCostLedger:
         q=dec(quantity,True);cost=dec(unit_cost_ht); tax=dec(tax_amount); landed=dec(landed_cost)
         if q<=0: raise ValueError("quantity must be positive")
         if status=="CONFIRMED" and cost is None: raise ValueError("confirmed cost requires evidence")
-        key=f"cost:{receipt_line_id}:{invoice_line_id or 'receipt'}:{status}";eid="pce:"+str(uuid.uuid4());stamp=now()
+        # One physical receipt line owns one cost event/lot.  Invoice validation
+        # must never duplicate the quantity already valued from the order.
+        key=f"cost:{receipt_line_id}";eid="pce:"+str(uuid.uuid4());stamp=now()
         values=(eid,product_key,supplier_id,purchase_order_id,receipt_id,receipt_line_id,invoice_id,invoice_line_id,received_at,money(q),money(cost) if cost is not None else None,money(tax) if tax is not None else None,money(unit_cost_ttc) if unit_cost_ttc is not None else None,money(landed) if landed is not None else None,currency,"SUPPLIER_INVOICE" if invoice_id else "GOODS_RECEIPT",status,"AVAILABLE" if cost is not None else "UNAVAILABLE",key,stamp,actor)
         try:
             with self.db:
