@@ -55,3 +55,13 @@ Les jobs `sync_social_analytics_<provider>`, `generate_stock_marketing_proposals
 `generate_margin_marketing_proposals`, `measure_marketing_outcomes` et
 `refresh_learning_loop` déclarent leurs dépendances. Les quatre sources sociales
 restent NOT_CONFIGURED; les jobs locaux de proposition et mesure restent possibles.
+
+## Production Evidence Cockpit
+
+Le Data Hub expose désormais une preuve de production en lecture seule via `GET /api/data-hub/evidence`. Cette vue ne crée pas de métrique synthétique : elle reprend les champs persistés par les runs et laisse `NULL` lorsque le connecteur ne fournit pas une valeur fiable.
+
+Champs exposés par source : `provider`, `source_id`, `configuration`, `connectivity`, `freshness`, `last_attempt_at`, `last_success_at`, `last_rows_imported`, `rows_imported`, `data_min_at`, `data_max_at`, `records_available`, `last_error`, `next_run_at`, `last_run_id`.
+
+`CONNECTED_NO_DATA` distingue un connecteur configuré ou un health check réussi d'un import métier réussi. Un import réussi persiste séparément les lignes du dernier run, le cumul, la période réellement couverte, l'identifiant du run et les disponibilités uniquement si elles sont connues.
+
+Le runtime publie aussi `worker_state` : `HEALTHY`, `STALE`, `MISSING` ou `DATABASE_MISMATCH`, calculé à partir du heartbeat et de l'empreinte SQLite observée.

@@ -115,3 +115,9 @@ sociale réelle restent BLOCKED.
 ## Marketing Operations Cockpit (2026-08-04)
 
 La livraison du poste de pilotage fait progresser Marketing de **76,92 % à 78,57 %** et la progression globale calculée de **72,20 % à 72,33 %**. Les trois jalons providers sociaux réels, conformité officielle et publication sociale réelle restent strictement `BLOCKED`.
+
+## Preuve production Data Hub
+
+- Fait : le Data Hub possède une API read-only de preuve production et une vue Administration qui affiche explicitement les états non configuré, aucune donnée, indisponible et inconnu.
+- Fait : la fraîcheur `CONNECTED_NO_DATA` empêche de présenter un health check réussi comme un import métier frais.
+- Fait : les colonnes de preuve sont migrées de manière additive et les valeurs inconnues restent `NULL`.

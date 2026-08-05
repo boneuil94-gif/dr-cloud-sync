@@ -341,6 +341,7 @@ class InventoryApp:
                     "sqlite_consumers":runtime_diagnostics(self.bank.db)})
             if path == "/api/admin/sumup" and method == "GET":
                 return self._json(start,self.sumup_settlements.cockpit())
+            if path == "/api/data-hub/evidence" and method == "GET": return self._json(start,self.data_hub.production_evidence())
             if path == "/api/data-hub" and method == "GET": return self._json(start,{**self.data_hub.health(),"sales_diagnostics":self.sales_sync.diagnostics(),"runtime":{**self.data_hub.runtime(self.automation_operations()),"configuration":{"prestashop_paid_state_ids":"CONFIGURED" if self.prestashop_paid_states_configured else "MISSING","qonto":self.qonto_configuration}}})
             if path == "/api/admin/shopcaisse-sales/failures" and method == "GET":
                 return self._json(start,self.sales_sync.failed_sales("SHOPCAISSE"))
