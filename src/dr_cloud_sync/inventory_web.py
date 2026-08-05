@@ -385,6 +385,7 @@ class InventoryApp:
                 return self._json(start,result)
             if path == "/api/finance" and method == "GET": return self._json(start,{"projection":self.finance.snapshot(),"transactions":self.bank.transactions(),"reconciliations":self.reconciliation.list()})
             if path == "/api/finance/summary" and method == "GET": return self._json(start,self.finance.summary())
+            if path == "/api/finance/cockpit" and method == "GET": return self._json(start,self.finance.finance_cockpit())
             if path == "/api/finance/cashflow" and method == "GET": return self._json(start,self.finance.cashflow())
             if path == "/api/finance/tax" and method == "GET": return self._json(start,self.finance.tax())
             if path == "/api/finance/profitability" and method == "GET": return self._json(start,self.finance.profitability())
