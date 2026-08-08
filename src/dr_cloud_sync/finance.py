@@ -6,7 +6,7 @@ remain authoritative.  Missing evidence is represented as unavailable, never 0.
 from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-import hashlib, json, sqlite3
+import hashlib, json, logging, sqlite3
 from .schema import ensure_schema
 
 SCHEMA="""
@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS finance_snapshots(fingerprint TEXT PRIMARY KEY,period
 """
 
 CATEGORIES=("SALES_SETTLEMENT","SUPPLIER_PAYMENT","BANK_FEE","RENT","TAX","PAYROLL","FINANCING","TRANSFER","REFUND","OTHER","UNKNOWN")
+log = logging.getLogger(__name__)
 
 def _d(value): return Decimal(str(value or 0))
 def _iso(value): return datetime.fromisoformat(value.replace("Z","+00:00"))
@@ -89,41 +90,92 @@ class FinanceProjection:
   else: row=self.db.execute("SELECT min(sold_at),max(sold_at),count(*) FROM sale_events").fetchone()
   return {"start":row[0],"end":row[1],"availability":"FRESH" if row[2] else "UNAVAILABLE"}
  def finance_cockpit(self,now=None):
+  """Build an independently recoverable read model for every finance block.
+
+  This deliberately does not call :meth:`summary`: a missing Qonto schema (or
+  any other optional ledger) must not prevent sales and SumUp from rendering.
+  """
   now=now or datetime.now(timezone.utc); today=now.replace(hour=0,minute=0,second=0,microsecond=0); yesterday=today-timedelta(days=1); week=today-timedelta(days=today.weekday()); month=today.replace(day=1)
-  latest_sales=self._latest('sale_events','imported_at'); sales_fresh=self._fresh_state(latest_sales,now,getattr(self.sales,'stale_after_hours',48))
+  warnings=[]
+  def section(name, build):
+   try:
+    value=build(); value.setdefault('status','UNKNOWN'); value.setdefault('freshness',value['status']); value.setdefault('coverage','UNKNOWN'); value.setdefault('warning',None); value.setdefault('error_code',None); return value
+   except Exception as exc:
+    # Do not log SQL, row contents, credentials, or exception text: all can
+    # contain production identifiers.  The exception class is enough to act.
+    code=f"{name.upper()}_{type(exc).__name__.upper()}"
+    log.exception("finance cockpit section failed section=%s error_code=%s",name,code)
+    warnings.append(f"{name}: données temporairement indisponibles ({code})")
+    return {'status':'ERROR','value':None,'data':None,'freshness':'UNKNOWN','coverage':'UNKNOWN','warning':'Calcul de section impossible','error_code':code}
+  def status_for(present, freshness='UNKNOWN', partial=False):
+   if not present:return 'UNAVAILABLE'
+   if partial:return 'PARTIAL'
+   return freshness if freshness in {'FRESH','STALE'} else 'UNKNOWN'
+  try:
+   sales_exist=self._has_table('sale_events') and bool(self.db.execute("SELECT 1 FROM sale_events LIMIT 1").fetchone());latest_sales=self._latest('sale_events','imported_at')
+  except Exception:
+   sales_exist=False;latest_sales=None;warnings.append('sales: métadonnées indisponibles (SALES_SCHEMA_ERROR)')
+  sales_fresh=self._fresh_state(latest_sales,now,getattr(self.sales,'stale_after_hours',48))
   periods={"today":(today,now),"yesterday":(yesterday,today),"week_to_date":(week,now),"month_to_date":(month,now),"previous_week":(week-timedelta(days=7),week),"previous_month":((month-timedelta(days=1)).replace(day=1),month)}
-  revenue={}
-  for k,(a,b) in periods.items():
-   rows=self._events_between(a,b); value=self._sale_amount(rows) if self._has_table('sale_events') else None; avail="FRESH" if rows else "ZERO_REEL" if self._has_table('sale_events') else "UNAVAILABLE"
-   revenue[k]=self._metric(value,'sale_events',{"start":a.isoformat(),"end":b.isoformat()},avail,sales_fresh,method='Somme TTC des SALE/ADJUSTMENT moins REFUND/RETURN/CANCELLATION; NULL si une ligne fiable manque')
-  def cmp(cur,prev):
-   if cur is None or prev is None or Decimal(str(prev))==0: return None
-   return str((Decimal(str(cur))-Decimal(str(prev)))/Decimal(str(prev))*100)
-  revenue['week_vs_previous_percent']=cmp(revenue['week_to_date']['value'],revenue['previous_week']['value']); revenue['month_vs_previous_percent']=cmp(revenue['month_to_date']['value'],revenue['previous_month']['value'])
-  all_month=self._events_between(month,now); sales_count=len({r['external_sale_id'] for r in all_month}) if self._has_table('sale_events') else None; total=revenue['month_to_date']['value']
-  revenue['sales_count']=self._metric(sales_count,'sale_events',period=revenue['month_to_date']['period'],coverage='FRESH' if sales_count is not None else 'UNAVAILABLE',freshness=sales_fresh,currency=None)
-  revenue['average_basket']=self._metric((Decimal(str(total))/Decimal(sales_count) if total is not None and sales_count else None),'sale_events',period=revenue['month_to_date']['period'],coverage='PARTIAL' if not sales_count else 'FRESH',freshness=sales_fresh,method='CA mois / ventes distinctes; NULL si division impossible')
-  channels=[]
-  for src,label in [('SHOPCAISSE','Magasin'),('PRESTASHOP','E-commerce')]:
-   rows=[r for r in all_month if r.get('source')==src]; val=self._sale_amount(rows); channels.append({"channel":label,"source":src,"revenue":self._metric(val,'sale_events',revenue['month_to_date']['period'],'FRESH' if rows else 'ZERO_REEL',sales_fresh),"sales_count":len({r['external_sale_id'] for r in rows})})
-  payments={"by_method":[],"sumup_collected":self._metric(None,'sumup_transactions',coverage='UNAVAILABLE',freshness='UNAVAILABLE'),"sumup_payouts":self._metric(None,'sumup_payouts',coverage='UNAVAILABLE',freshness='UNAVAILABLE'),"in_transit":self._metric(None,'payment_settlement_links',coverage='UNAVAILABLE',freshness='UNAVAILABLE'),"shopcaisse_sumup_gap":self._metric(None,'payment_settlement_links',coverage='UNAVAILABLE',freshness='UNAVAILABLE')}
-  if self._has_table('sale_payments') and self._has_table('sales'):
-   for r in self.db.execute("""SELECT p.canonical_payment_type,count(*) n,sum(CAST(p.amount AS NUMERIC)) amount FROM sale_payments p JOIN sales s USING(sale_id) WHERE p.quality_status='VALID' AND coalesce(p.occurred_at,s.sold_at)>=? AND coalesce(p.occurred_at,s.sold_at)<? GROUP BY p.canonical_payment_type ORDER BY amount DESC""",(month.isoformat().replace("+00:00","Z"),now.isoformat().replace("+00:00","Z"))):
-    payments['by_method'].append({"method":r[0],"count":r[1],"amount":self._metric(Decimal(str(r[2] or 0)),'sale_payments',revenue['month_to_date']['period'],'FRESH',sales_fresh)})
-  if self.sumup_transactions:
-   tx=[r for r in self.sumup_transactions.rows() if month<=_iso(r['timestamp'])<now]; gross=sum((_d(r['amount']) for r in tx if str(r.get('status')).upper() not in {'FAILED','CANCELLED','CANCELED'}),Decimal()) if tx else Decimal('0')
-   payments['sumup_collected']=self._metric(gross,'sumup_transactions',revenue['month_to_date']['period'],'FRESH' if tx else 'ZERO_REEL',self._fresh_state(self._latest('sumup_transactions','imported_at'),now))
-  if self.sumup_settlements:
-   pays=[r for r in self.sumup_settlements.rows() if r.get('payout_date') and month<=_iso(r['payout_date'])<now]; paid=sum((_d(r['amount']) for r in pays if str(r.get('status')).upper() in {'PAID','SUCCESSFUL','COMPLETED'}),Decimal()) if pays else Decimal('0'); payments['sumup_payouts']=self._metric(paid,'sumup_payouts',revenue['month_to_date']['period'],'FRESH' if pays else 'ZERO_REEL',self._fresh_state(self._latest('sumup_payouts','imported_at'),now))
-  margin_rows=[r for r in all_month if r.get('event_kind')=='SALE' and r.get('line_total_ttc') is not None]; covered=[r for r in margin_rows if r.get('cost_basis') is not None]; covered_rev=sum((_d(r['line_total_ttc']) for r in covered),Decimal()); costs=sum((_d(r['cost_basis'])*_d(r['quantity']) for r in covered),Decimal()); gross=(covered_rev-costs) if covered else None; total_margin=sum((_d(r['line_total_ttc']) for r in margin_rows),Decimal()) if margin_rows else Decimal('0')
-  margins={"gross_margin":self._metric(gross,'sale_events.cost_basis',revenue['month_to_date']['period'],'PARTIAL' if covered and len(covered)<len(margin_rows) else 'FRESH' if covered else 'UNKNOWN',sales_fresh,method='Calculé uniquement sur lignes avec cost_basis'),"cost_of_goods_sold":self._metric(costs if covered else None,'sale_events.cost_basis',revenue['month_to_date']['period'],'PARTIAL' if covered and len(covered)<len(margin_rows) else 'FRESH' if covered else 'UNKNOWN',sales_fresh),"margin_rate_percent":self._metric((gross/covered_rev*100 if gross is not None and covered_rev else None),'sale_events.cost_basis',revenue['month_to_date']['period'],'PARTIAL' if covered and len(covered)<len(margin_rows) else 'UNKNOWN',sales_fresh),"sales_without_known_cost":self._metric(total_margin-covered_rev,'sale_events',revenue['month_to_date']['period'],'FRESH' if margin_rows else 'ZERO_REEL',sales_fresh),"cost_basis_coverage_percent":str((covered_rev/total_margin*100) if total_margin else Decimal('0')),"excluded_sales_count":len(margin_rows)-len(covered)}
-  products=[]
-  by={}
-  for r in margin_rows:
-   key=r.get('product_key') or 'UNKNOWN'; by.setdefault(key,{"revenue":Decimal(),"cost":Decimal(),"covered":True}); by[key]['revenue']+=_d(r['line_total_ttc']); by[key]['covered'] &= r.get('cost_basis') is not None; by[key]['cost']+=_d(r.get('cost_basis'))*_d(r.get('quantity'))
-  products=[{"product_key":k,"revenue":str(v['revenue']),"gross_margin":str(v['revenue']-v['cost']) if v['covered'] else None,"coverage":"FRESH" if v['covered'] else "UNKNOWN"} for k,v in by.items()]
-  sett=self.sumup_settlements.cockpit() if self.sumup_settlements else None; bank_avail=bool(self._has_table('bank_accounts') and self.db.execute("SELECT 1 FROM bank_accounts WHERE provider='Qonto' LIMIT 1").fetchone())
-  return {"status":"PARTIAL" if any(x in {'UNKNOWN','UNAVAILABLE','STALE'} for x in [sales_fresh]) else "FRESH","checked_at":now.isoformat(),"coverage":{"shopcaisse_sales":self._source_range('SHOPCAISSE'),"prestashop_sales":self._source_range('PRESTASHOP'),"sumup_transactions":{"end":self._latest('sumup_transactions','timestamp'),"availability":"FRESH" if self._has_table('sumup_transactions') else 'UNAVAILABLE'},"sumup_payouts":{"end":self._latest('sumup_payouts','payout_date'),"availability":"FRESH" if self._has_table('sumup_payouts') else 'UNAVAILABLE'},"qonto":{"availability":"FRESH" if bank_avail else "UNAVAILABLE","limitation":"Credential invalide/non configuré: aucune estimation de solde"},"cost_basis":{"availability":"PARTIAL" if margins['excluded_sales_count'] else "FRESH" if covered else "UNKNOWN"}},"freshness":{"sales":sales_fresh,"sumup_transactions":payments['sumup_collected']['freshness'],"sumup_payouts":payments['sumup_payouts']['freshness'],"bank":"FRESH" if bank_avail else "UNAVAILABLE"},"revenue":revenue,"channels":channels,"payments":payments,"margins":margins,"settlements":sett or {"status":"UNAVAILABLE","sales_expected":None,"transactions_collected":payments['sumup_collected'],"payouts_received":payments['sumup_payouts'],"in_transit":payments['in_transit'],"unreconciled_gaps":None,"open_anomalies":None,"reconciliation_rate":None},"products":{"top_by_revenue":sorted(products,key=lambda x:Decimal(x['revenue']),reverse=True)[:10],"top_by_margin":sorted([p for p in products if p['gross_margin'] is not None],key=lambda x:Decimal(x['gross_margin']),reverse=True)[:10]},"bank":{"provider":"Qonto","treasury":"INDISPONIBLE" if not bank_avail else "CONFIGURED","balance":None if not bank_avail else self.summary(now=now)['current_balance']},"warnings":["Aucun faux zéro: les inconnues restent NULL/UNKNOWN/INDISPONIBLE.","Marge calculée seulement sur cost_basis couvert."]}
+  def revenue_build():
+   data={}
+   for key,(start,end) in periods.items():
+    rows=self._events_between(start,end); amount=self._sale_amount(rows) if sales_exist else None
+    data[key]=self._metric(amount,'sale_events',{'start':start.isoformat(),'end':end.isoformat()},'FRESH' if rows else 'ZERO_REEL' if sales_exist else 'UNAVAILABLE',sales_fresh)
+   def compare(a,b): return None if a is None or b is None or Decimal(str(b))==0 else str((Decimal(str(a))-Decimal(str(b)))/Decimal(str(b))*100)
+   data['week_vs_previous_percent']=compare(data['week_to_date']['value'],data['previous_week']['value']);data['month_vs_previous_percent']=compare(data['month_to_date']['value'],data['previous_month']['value'])
+   rows=self._events_between(month,now) if sales_exist else []; count=len({r['external_sale_id'] for r in rows}) if sales_exist else None; total=data['month_to_date']['value']; period=data['month_to_date']['period']
+   data['sales_count']=self._metric(count,'sale_events',period,'FRESH' if sales_exist else 'UNAVAILABLE',sales_fresh,currency=None)
+   data['average_basket']=self._metric(Decimal(str(total))/count if total is not None and count else None,'sale_events',period,'FRESH' if count else 'UNKNOWN',sales_fresh)
+   return {**data,'status':status_for(sales_exist,sales_fresh),'freshness':sales_fresh,'coverage':'FRESH' if sales_exist else 'UNAVAILABLE','warning':None}
+  revenue=section('revenue',revenue_build)
+  def channels_build():
+   rows=self._events_between(month,now) if sales_exist else []; data=[]
+   for source,label in [('SHOPCAISSE','Magasin'),('PRESTASHOP','E-commerce')]:
+    selected=[r for r in rows if r.get('source')==source]; known=bool(selected) or bool(self.db.execute('SELECT 1 FROM sale_events WHERE source=? LIMIT 1',(source,)).fetchone()) if sales_exist else False
+    data.append({'channel':label,'source':source,'revenue':self._metric(self._sale_amount(selected) if known else None,'sale_events',revenue.get('month_to_date',{}).get('period'),'FRESH' if selected else 'ZERO_REEL' if known else 'UNAVAILABLE',sales_fresh),'sales_count':len({r['external_sale_id'] for r in selected}) if known else None})
+   present=any(c['revenue']['value'] is not None for c in data); return {'status':status_for(present,sales_fresh,any(c['revenue']['value'] is None for c in data)),'data':data,'freshness':sales_fresh,'coverage':'PARTIAL' if any(c['revenue']['value'] is None for c in data) else 'FRESH','warning':None}
+  channels=section('channels',channels_build)
+  empty=lambda source:self._metric(None,source,coverage='UNAVAILABLE',freshness='UNAVAILABLE')
+  def payments_build():
+   result={'by_method':[],'sumup_collected':empty('sumup_transactions'),'sumup_payouts':empty('sumup_payouts'),'in_transit':empty('payment_settlements'),'shopcaisse_sumup_gap':empty('payment_settlements')}; present=[]
+   if self.sumup_transactions and self._has_table('sumup_transactions'):
+    rows=[r for r in self.sumup_transactions.rows() if r.get('timestamp') and month<=_iso(r['timestamp'])<now]; any_rows=bool(self.db.execute('SELECT 1 FROM sumup_transactions LIMIT 1').fetchone()); fresh=self._fresh_state(self._latest('sumup_transactions','imported_at'),now); amount=sum((_d(r['amount']) for r in rows if str(r.get('status')).upper() not in {'FAILED','CANCELLED','CANCELED'}),Decimal()) if any_rows else None; result['sumup_collected']=self._metric(amount,'sumup_transactions',coverage='FRESH' if any_rows else 'UNAVAILABLE',freshness=fresh);present.append(any_rows)
+   if self.sumup_settlements and self._has_table('sumup_payouts'):
+    rows=[r for r in self.sumup_settlements.rows() if r.get('payout_date') and month<=_iso(r['payout_date'])<now]; any_rows=bool(self.db.execute('SELECT 1 FROM sumup_payouts LIMIT 1').fetchone()); fresh=self._fresh_state(self._latest('sumup_payouts','imported_at'),now); paid=sum((_d(r['amount']) for r in rows if str(r.get('status')).upper() in {'PAID','SUCCESSFUL','COMPLETED'}),Decimal()) if any_rows else None; result['sumup_payouts']=self._metric(paid,'sumup_payouts',coverage='FRESH' if any_rows else 'UNAVAILABLE',freshness=fresh);present.append(any_rows)
+   fresh='FRESH' if any(present) else 'UNAVAILABLE';return {**result,'status':status_for(any(present),fresh,not all(present)),'freshness':fresh,'coverage':'PARTIAL' if any(present) and not all(present) else fresh,'warning':None}
+  payments=section('payments',payments_build)
+  def margins_build():
+   rows=[r for r in self._events_between(month,now) if r.get('event_kind')=='SALE' and r.get('line_total_ttc') is not None] if sales_exist else []; covered=[r for r in rows if r.get('cost_basis') is not None]; rev=sum((_d(r['line_total_ttc']) for r in covered),Decimal()); total=sum((_d(r['line_total_ttc']) for r in rows),Decimal()); costs=sum((_d(r['cost_basis'])*_d(r['quantity']) for r in covered),Decimal()); gross=rev-costs if covered else None; partial=bool(covered) and len(covered)<len(rows); cov=str(rev/total*100) if total else None
+   state=status_for(bool(covered),sales_fresh,partial); coverage='PARTIAL' if partial else 'FRESH' if covered else 'UNAVAILABLE'
+   return {'status':state,'freshness':sales_fresh,'coverage':coverage,'warning':'Marge limitée aux ventes avec cost_basis.' if partial else None,'gross_margin':self._metric(gross,'sale_events.cost_basis',coverage=coverage,freshness=sales_fresh),'cost_of_goods_sold':self._metric(costs if covered else None,'sale_events.cost_basis',coverage=coverage,freshness=sales_fresh),'margin_rate_percent':self._metric(gross/rev*100 if gross is not None and rev else None,'sale_events.cost_basis',coverage=coverage,freshness=sales_fresh),'sales_without_known_cost':self._metric(total-rev if rows else None,'sale_events',coverage='FRESH' if rows else 'UNAVAILABLE',freshness=sales_fresh),'cost_basis_coverage_percent':cov,'excluded_sales_count':len(rows)-len(covered),'_rows':rows}
+  margins=section('margins',margins_build)
+  def products_build():
+   grouped={}
+   for row in margins.get('_rows') or []:
+    key=row.get('product_key') or 'UNKNOWN'; item=grouped.setdefault(key,{'revenue':Decimal(),'cost':Decimal(),'covered':True});item['revenue']+=_d(row['line_total_ttc']);item['covered'] &= row.get('cost_basis') is not None;item['cost']+=_d(row.get('cost_basis'))*_d(row.get('quantity'))
+   data=[{'product_key':k,'revenue':str(v['revenue']),'gross_margin':str(v['revenue']-v['cost']) if v['covered'] else None,'coverage':'FRESH' if v['covered'] else 'UNKNOWN'} for k,v in grouped.items()];return {'status':status_for(bool(data),sales_fresh),'freshness':sales_fresh,'coverage':'FRESH' if data else 'UNAVAILABLE','warning':None,'top_by_revenue':sorted(data,key=lambda x:Decimal(x['revenue']),reverse=True)[:10],'top_by_margin':sorted([x for x in data if x['gross_margin'] is not None],key=lambda x:Decimal(x['gross_margin']),reverse=True)[:10]}
+  products=section('products',products_build)
+  def settlements_build():
+   tx=payments.get('sumup_collected',empty('sumup_transactions')); payouts=payments.get('sumup_payouts',empty('sumup_payouts')); present=tx.get('value') is not None or payouts.get('value') is not None
+   transit=empty('payment_settlements'); matched=None
+   if self._has_table('sumup_transactions') and self._has_table('payment_settlements'):
+    row=self.db.execute("SELECT coalesce(sum(CAST(t.amount AS NUMERIC)),0),count(*) FROM sumup_transactions t LEFT JOIN payment_settlements p ON p.sumup_transaction_id=t.sumup_transaction_id WHERE p.settlement_id IS NULL AND upper(coalesce(t.status,'')) NOT IN ('FAILED','CANCELLED','CANCELED')").fetchone();transit=self._metric(Decimal(str(row[0])) if row[1] else None,'sumup_transactions/payment_settlements',coverage='PARTIAL',freshness=payments.get('freshness'));matched=self.db.execute('SELECT count(*) FROM payment_settlements').fetchone()[0]
+   return {'status':status_for(present,payments.get('freshness','UNKNOWN'),True),'freshness':payments.get('freshness','UNKNOWN'),'coverage':'PARTIAL' if present else 'UNAVAILABLE','warning':'Rapprochement bancaire incomplet sans Qonto.' if present else None,'sales_expected':revenue.get('month_to_date'),'transactions_collected':tx,'payouts_received':payouts,'in_transit':transit,'unreconciled_gaps':None,'open_anomalies':None,'reconciliation_rate':matched}
+  settlements=section('settlements',settlements_build)
+  def bank_build():
+   configured=bool(getattr(self,'qonto_configured',False))
+   if not configured:return {'status':'NOT_CONFIGURED','freshness':'UNKNOWN','coverage':'UNAVAILABLE','warning':'Credential Qonto absent ou invalide.','provider':'Qonto','treasury':'NON CONFIGURÉ','balance':None,'error_code':'QONTO_NOT_CONFIGURED'}
+   balances=self.bank.balances(); value=sum((_d(x['current_balance']) for x in balances),Decimal()) if balances else None;fresh=self._fresh_state(max((x['imported_at'] for x in balances),default=None),now)
+   return {'status':status_for(bool(balances),fresh),'freshness':fresh,'coverage':'FRESH' if balances else 'UNAVAILABLE','warning':None,'provider':'Qonto','treasury':'CONFIGURED','balance':self._metric(value,'bank_accounts',coverage='FRESH',freshness=fresh) if value is not None else None}
+  bank=section('bank',bank_build);margins.pop('_rows',None)
+  blocks=[revenue,channels,payments,margins,settlements,products,bank];usable=any(x.get('status') in {'FRESH','PARTIAL','STALE'} for x in blocks);all_fresh=all(x.get('status')=='FRESH' for x in blocks)
+  warnings[:0]=['Aucun faux zéro: les inconnues restent NULL/UNKNOWN/INDISPONIBLE.']+[x['warning'] for x in blocks if x.get('warning')]
+  def safe_meta(call, fallback):
+   try:return call()
+   except Exception:return fallback
+  coverage={'shopcaisse_sales':safe_meta(lambda:self._source_range('SHOPCAISSE'),{'start':None,'end':None,'availability':'UNKNOWN'}),'prestashop_sales':safe_meta(lambda:self._source_range('PRESTASHOP'),{'start':None,'end':None,'availability':'UNKNOWN'}),'sumup_transactions':{'end':safe_meta(lambda:self._latest('sumup_transactions','timestamp'),None),'availability':payments.get('coverage')},'sumup_payouts':{'end':safe_meta(lambda:self._latest('sumup_payouts','payout_date'),None),'availability':payments.get('coverage')},'qonto':{'availability':bank['status']},'cost_basis':{'availability':margins['coverage']}}
+  return {'status':'FRESH' if all_fresh else 'PARTIAL' if usable else 'UNAVAILABLE','checked_at':now.isoformat(),'coverage':coverage,'freshness':{'sales':sales_fresh,'sumup_transactions':payments.get('freshness'),'sumup_payouts':payments.get('freshness'),'bank':bank['freshness']},'revenue':revenue,'channels':channels,'payments':payments,'margins':margins,'settlements':settlements,'products':products,'bank':bank,'warnings':list(dict.fromkeys(warnings))}
 
  def snapshot(self,now=None): return self.summary(30,now)
  def cashflow(self,days=30,now=None):

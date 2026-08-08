@@ -201,6 +201,9 @@ class InventoryApp:
                 "CONFIGURATION",f"Configuration Qonto absente du runtime. {cause}",datetime.now(timezone.utc).isoformat(),
                 response_excerpt=json.dumps(self.qonto_configuration,ensure_ascii=False)))
         self.settlements.qonto_configured=qonto_connected
+        # Finance must reflect the live authenticated capability, not merely
+        # stale bank rows left in SQLite by an older valid configuration.
+        self.finance.qonto_configured=qonto_connected
         sumup_interval=int(os.environ.get("SUMUP_SYNC_INTERVAL_SECONDS","900"))
         for source_id,source_type in (("sumup_merchant","SUMUP_MERCHANT"),("sumup_transactions","SUMUP_TRANSACTIONS"),("sumup_payouts","SUMUP_PAYOUTS"),("sumup_fees","SUMUP_FEES"),("sumup_refunds","SUMUP_REFUNDS"),("sumup_chargebacks","SUMUP_CHARGEBACKS"),("sumup_readers","SUMUP_READERS")):
             self.data_hub.register_source(source_id,source_type,"SumUp",configured=sumup_connected,capabilities=("READ_ONLY",),stale_after_seconds=sumup_interval*2)
