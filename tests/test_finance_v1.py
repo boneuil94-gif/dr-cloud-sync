@@ -34,8 +34,8 @@ def test_bank_classification_is_explicit(tmp_path):
 def test_finance_cockpit_no_data_and_qonto_unavailable(tmp_path):
  p=tmp_path/'db.sqlite';sales=SalesLedger(p,Catalogue());bank=BankLedger(p)
  c=FinanceProjection(bank,sales).finance_cockpit(now=datetime(2026,8,5,12,tzinfo=timezone.utc))
- assert c['revenue']['today']['value']=='0' and c['revenue']['today']['state']=='ZERO_REEL'
- assert c['bank']['treasury']=='INDISPONIBLE' and c['bank']['balance'] is None
+ assert c['status']=='UNAVAILABLE' and c['revenue']['today']['value'] is None
+ assert c['bank']['status']=='NOT_CONFIGURED' and c['bank']['treasury']=='NON CONFIGURÉ' and c['bank']['balance'] is None
  assert c['margins']['gross_margin']['value'] is None
 
 def test_finance_cockpit_partial_cost_basis_and_channels(tmp_path):
@@ -46,8 +46,8 @@ def test_finance_cockpit_partial_cost_basis_and_channels(tmp_path):
  sales.append(SaleEvent('PRESTASHOP','web','l1',now.isoformat(),'UTC','SALE',None,Decimal('1'),SalesLedger.key('PRESTASHOP','web','l1','SALE'),line_total_ttc=Decimal('50'),line_total_ht=Decimal('41.67'),currency='EUR',channel='ECOMMERCE'))
  sales.db.commit()
  c=FinanceProjection(bank,sales).finance_cockpit(now=now)
- assert c['channels'][0]['revenue']['value']=='100'
- assert c['channels'][1]['revenue']['value']=='50'
+ assert c['channels']['data'][0]['revenue']['value']=='100'
+ assert c['channels']['data'][1]['revenue']['value']=='50'
  assert c['margins']['gross_margin']['value']=='50'
  assert c['margins']['excluded_sales_count']==1
  assert c['margins']['sales_without_known_cost']['value']=='50'
@@ -62,6 +62,30 @@ def test_finance_cockpit_unknown_amount_stays_unknown(tmp_path):
  assert c['revenue']['today']['state']=='UNKNOWN'
  assert c['warnings'][0].startswith('Aucun faux zéro')
 
+def test_finance_true_zero_is_distinct_from_no_source(tmp_path):
+ p=tmp_path/'db.sqlite';sales=SalesLedger(p,Catalogue());bank=BankLedger(p)
+ old=event('SALE','10');sales.append(SaleEvent(**{**old.__dict__,'sold_at':'2025-01-01T00:00:00+00:00'}));sales.db.commit()
+ c=FinanceProjection(bank,sales).finance_cockpit(now=datetime(2026,8,5,12,tzinfo=timezone.utc))
+ assert c['revenue']['today']['value']=='0' and c['revenue']['today']['state']=='ZERO_REEL'
+
+def test_finance_section_exception_does_not_hide_sales(tmp_path):
+ p=tmp_path/'db.sqlite';sales=SalesLedger(p,Catalogue());bank=BankLedger(p);sales.append(event('SALE','100'));sales.db.commit()
+ from dr_cloud_sync.sumup import SumUpTransactionLedger
+ broken=SumUpTransactionLedger(bank.db)
+ bank.db.execute("INSERT INTO sumup_transactions(sumup_transaction_id,transaction_code,timestamp,amount,currency,status,fee,events_json,imported_at,raw_json) VALUES('x','x',?,'10','EUR','SUCCESSFUL','0','[]',?,'{}')",(datetime.now(timezone.utc).isoformat(),datetime.now(timezone.utc).isoformat()))
+ broken.rows=lambda: (_ for _ in ()).throw(RuntimeError('secret production detail'))
+ cockpit=FinanceProjection(bank,sales,sumup_transactions=broken).finance_cockpit()
+ assert cockpit['status']=='PARTIAL' and cockpit['revenue']['today']['value']=='100'
+ assert cockpit['payments']['status']=='ERROR' and cockpit['payments']['error_code']=='PAYMENTS_RUNTIMEERROR'
+ assert 'secret production detail' not in str(cockpit)
+
+def test_finance_contract_has_status_on_every_section(tmp_path):
+ p=tmp_path/'db.sqlite';sales=SalesLedger(p,Catalogue());bank=BankLedger(p);sales.append(event('SALE','0','0','0'));sales.db.commit()
+ cockpit=FinanceProjection(bank,sales).finance_cockpit()
+ for name in ('revenue','channels','payments','margins','settlements','products','bank'):
+  assert {'status','freshness','coverage','warning','error_code'} <= cockpit[name].keys()
+ assert cockpit['bank']['status']=='NOT_CONFIGURED'
+
 def test_finance_cockpit_api_and_administration_finance_render(configured):
  from test_os_production import login, request
  app,_=configured; _,cookie=login(app)
@@ -73,3 +97,16 @@ def test_finance_cockpit_api_and_administration_finance_render(configured):
  assert status=='200 OK'
  html=body.decode()
  assert 'Finance Cockpit' in html and 'Data Hub' in html and 'Aucun faux zéro' in html
+
+def test_finance_frontend_renders_known_cards_without_fake_zero():
+ from pathlib import Path
+ script=(Path(__file__).parents[1]/'src/dr_cloud_sync/static/finance.js').read_text()
+ assert "card('CA & activité',s.revenue" in script and "card('Paiements & SumUp',s.payments" in script
+ assert "s.bank" in script and "m.value!==null" in script and "productCard.hidden=!known.length" in script
+
+def test_finance_api_returns_http_200_for_partial_payload(configured):
+ from test_os_production import login, request
+ app,_=configured;_,cookie=login(app)
+ app.finance.finance_cockpit=lambda:{'status':'PARTIAL','checked_at':'2026-08-08T00:00:00+00:00','revenue':{'status':'FRESH'},'bank':{'status':'NOT_CONFIGURED'}}
+ status,_,body=request(app,'/api/finance/cockpit',cookie=cookie)
+ assert status=='200 OK' and __import__('json').loads(body)['status']=='PARTIAL'
