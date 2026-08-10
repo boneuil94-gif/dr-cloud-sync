@@ -113,6 +113,8 @@ class QontoBankProvider:
         self._reference=credential_reference; self._secrets=secrets; self.opener=opener
         self.timeout=timeout; self.page_size=page_size; self.retries=retries
         self.base_url=(base_url or self.BASE_URL).rstrip("/"); self.sleep=sleep
+        self._organization_cache=None
+        self.last_sync_diagnostic=None
     @property
     def configured(self): return bool(self._reference and self._secrets.get(self._reference))
     def _authorization(self):
@@ -144,6 +146,14 @@ class QontoBankProvider:
                     message=QONTO_AUTH_REJECTED if exc.code == 401 else "Credential Qonto reconnu mais accès insuffisant ou interdit. Vérifiez les scopes de lecture."
                     raise QontoError(message,category=category,http_status=exc.code,endpoint=path,
                         duration_ms=duration,stage="authentication",request_id=request_id) from exc
+                if exc.code == 422:
+                    # A validation response is operational evidence, not an empty
+                    # transaction page.  Keep only a small, redacted JSON shape so
+                    # the invalid query parameter remains actionable.
+                    excerpt=self._sanitise_error_body(body)
+                    raise QontoError("Requête Qonto invalide (HTTP 422)",category="INVALID_QUERY",
+                        http_status=422,endpoint=path,duration_ms=duration,stage="query_validation",
+                        request_id=request_id,response_excerpt=excerpt) from exc
                 retryable=exc.code==429 or 500<=exc.code<600
                 category="TIMEOUT" if exc.code==408 else "RATE_LIMIT" if exc.code==429 else "HTTP"
                 if not retryable or attempt+1==self.retries: raise QontoError(f"Erreur HTTP Qonto ({exc.code})",category=category,http_status=exc.code,endpoint=path,retryable=retryable,duration_ms=duration,request_id=request_id) from exc
@@ -154,11 +164,26 @@ class QontoBankProvider:
                 self.sleep(min(30,2**attempt))
             except (UnicodeDecodeError,json.JSONDecodeError) as exc: raise QontoError("Réponse Qonto invalide",category="INVALID_RESPONSE",endpoint=path,duration_ms=int((time.monotonic()-started)*1000),stage="response_validation") from exc
         raise AssertionError("unreachable")
+    @staticmethod
+    def _sanitise_error_body(body):
+        try: value=json.loads(body.decode("utf-8",errors="replace"))
+        except (ValueError,TypeError): return "Réponse HTTP 422 non JSON"
+        sensitive=re.compile(r"authorization|credential|secret|token|iban|account_number",re.I)
+        def clean(item,depth=0):
+            if depth>4:return "[TRUNCATED]"
+            if isinstance(item,dict):
+                return {str(k)[:80]:("[REDACTED]" if sensitive.search(str(k)) else clean(v,depth+1))
+                        for k,v in list(item.items())[:20]}
+            if isinstance(item,list):return [clean(v,depth+1) for v in item[:20]]
+            return str(item)[:300] if item is not None else None
+        return json.dumps(clean(value),ensure_ascii=False)
     def _organization(self):
+        if self._organization_cache is not None:return self._organization_cache
         payload=self._get("/v2/organization")
         if not isinstance(payload,dict) or not isinstance(payload.get("organization"),dict):
             raise QontoError("Structure de réponse Qonto inattendue",category="INVALID_RESPONSE",endpoint="/v2/organization",stage="response_validation")
-        return payload["organization"]
+        self._organization_cache=payload["organization"]
+        return self._organization_cache
     def health(self):
         if not self.configured:return {"status":"NOT_CONFIGURED"}
         self._organization();return {"status":"CONNECTED"}
@@ -176,10 +201,39 @@ class QontoBankProvider:
             if x.get("balance") is None or not x.get("currency"): continue
             result.append(BankBalance(str(x["id"]),Decimal(str(x["balance"])),str(x["currency"]),observed,Decimal(str(x["authorized_balance"])) if x.get("authorized_balance") is not None else None))
         return tuple(result)
+    def _eligible_accounts(self):
+        accounts=self._organization().get("bank_accounts",[])
+        if not isinstance(accounts,list):
+            raise QontoError("Structure des comptes Qonto inattendue",category="INVALID_RESPONSE",
+                endpoint="/v2/organization",stage="response_validation")
+        inactive={"closed","disabled","deleted","declined","inactive"}
+        return accounts,[x for x in accounts if isinstance(x,dict) and x.get("id")
+            and str(x.get("status") or "active").lower() not in inactive]
     def transactions(self,cursor=None):
-        # Qonto v2 uses page-based pagination. The opaque Data Hub cursor is the next page.
-        page=int(cursor or 1); payload=self._get("/v2/transactions",{"current_page":page,"per_page":self.page_size})
+        """Read every eligible organization account with an opaque account/page cursor."""
+        accounts,eligible=self._eligible_accounts()
+        if cursor:
+            try: account_index,page=(int(part) for part in str(cursor).split(":",1))
+            except (TypeError,ValueError) as exc:
+                raise QontoError("Curseur Qonto invalide",category="INVALID_QUERY",
+                    endpoint="/v2/transactions",stage="cursor_validation") from exc
+        else: account_index,page=0,1
+        if not eligible:
+            self.last_sync_diagnostic={"classification":"CONNECTED_NO_ACCOUNTS","accounts_found":len(accounts),
+                "accounts_eligible":0,"transaction_endpoint_called":False,"page_count":0,
+                "records_returned":0,"date_min_requested":None,"date_max_requested":None,
+                "cursor_before":cursor,"cursor_after":None}
+            return TransactionPage((),None)
+        if account_index>=len(eligible):
+            raise QontoError("Curseur Qonto hors limites",category="INVALID_QUERY",
+                endpoint="/v2/transactions",stage="cursor_validation")
+        account=eligible[account_index]
+        params={"bank_account_id":str(account["id"]),"current_page":page,"per_page":self.page_size}
+        payload=self._get("/v2/transactions",params)
         rows=payload.get("transactions",[]); meta=payload.get("meta",{})
+        if not isinstance(rows,list) or not isinstance(meta,dict):
+            raise QontoError("Structure de réponse Qonto inattendue",category="INVALID_RESPONSE",
+                endpoint="/v2/transactions",stage="response_validation")
         result=[]
         for x in rows:
             required=(x.get("transaction_id"),x.get("amount"),x.get("currency"),x.get("settled_at") or x.get("emitted_at") or x.get("updated_at"))
@@ -189,6 +243,18 @@ class QontoBankProvider:
             amount=Decimal(str(x["amount"])); side=str(x.get("side") or "").lower()
             if side == "debit": amount=-abs(amount)
             elif side == "credit": amount=abs(amount)
-            result.append(BankTransaction(str(x.get("bank_account_id") or x.get("bank_account",{}).get("id") or "unknown"),str(required[3]),amount,str(x["currency"]),str(x.get("label") or x.get("note") or "Transaction Qonto"),str(x["transaction_id"]),str(x.get("settled_at") or "") or None,str(x.get("counterparty_name") or "") or None,str(x.get("reference") or "") or None,str(x.get("status") or "pending").upper(),raw_metadata={"operation_type":x.get("operation_type"),"side":x.get("side"),"fee_amount":x.get("fee_amount")}))
-        total=int(meta.get("total_pages") or page); next_cursor=str(page+1) if page<total else None
+            returned_account=str(x.get("bank_account_id") or x.get("bank_account",{}).get("id") or account["id"])
+            result.append(BankTransaction(returned_account,str(required[3]),amount,str(x["currency"]),str(x.get("label") or x.get("note") or "Transaction Qonto"),str(x["transaction_id"]),str(x.get("settled_at") or "") or None,str(x.get("counterparty_name") or "") or None,str(x.get("reference") or "") or None,str(x.get("status") or "pending").upper(),raw_metadata={"operation_type":x.get("operation_type"),"side":x.get("side"),"fee_amount":x.get("fee_amount"),"provider":"Qonto"}))
+        total=int(meta.get("total_pages") or page)
+        next_cursor=(f"{account_index}:{page+1}" if page<total else
+                     f"{account_index+1}:1" if account_index+1<len(eligible) else None)
+        previous={} if cursor is None else (self.last_sync_diagnostic or {})
+        returned=int(previous.get("records_returned") or 0)+len(rows)
+        pages=int(previous.get("page_count") or 0)+1
+        self.last_sync_diagnostic={"classification":"TRANSACTIONS_IMPORTED" if returned else "CONNECTED_NO_TRANSACTIONS",
+            "accounts_found":len(accounts),"accounts_eligible":len(eligible),
+            "transaction_endpoint_called":"/v2/transactions?bank_account_id=<account_id>",
+            "page_count":pages,"records_returned":returned,"date_min_requested":None,
+            "date_max_requested":None,"cursor_before":previous.get("cursor_before",cursor),
+            "cursor_after":next_cursor}
         return TransactionPage(tuple(result),next_cursor)

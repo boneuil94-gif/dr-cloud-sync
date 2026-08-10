@@ -26,10 +26,12 @@ def test_accounts_balances_health_and_secret_header():
     assert calls[0].headers["Authorization"]=="login:secret"
 
 def test_transactions_real_shape_and_pagination():
+    organization={"organization":{"bank_accounts":[{"id":"a1","status":"active"}]}}
     rows={"transactions":[{"transaction_id":"tx1","bank_account_id":"a1","settled_at":"2026-01-01T00:00:00Z","amount":"42.5","currency":"EUR","label":"CB","status":"completed","operation_type":"card"}],"meta":{"total_pages":2}}
-    p,_=provider([Response(rows),Response({"transactions":[],"meta":{"total_pages":2}})])
-    first=p.transactions(); assert first.next_cursor=="2" and first.transactions[0].status=="COMPLETED"
+    p,calls=provider([Response(organization),Response(rows),Response({"transactions":[],"meta":{"total_pages":2}})])
+    first=p.transactions(); assert first.next_cursor=="0:2" and first.transactions[0].status=="COMPLETED"
     assert p.transactions(first.next_cursor).next_cursor is None
+    assert "bank_account_id=a1" in calls[1].full_url
 
 @pytest.mark.parametrize("code,retryable",[(401,False),(403,False),(429,True),(500,True)])
 def test_errors_are_sanitized(code,retryable):
@@ -103,13 +105,13 @@ def test_debit_side_is_persisted_as_negative_and_fee_is_allowlisted_metadata():
         "settled_at":"2026-01-01T00:00:00Z","amount":"42.5","currency":"EUR",
         "label":"Fournisseur","status":"completed","side":"debit","fee_amount":"0.50"}],
         "meta":{"total_pages":1}}
-    p,_=provider([Response(rows)])
+    p,_=provider([Response({"organization":{"bank_accounts":[{"id":"a1"}]}}),Response(rows)])
     transaction=p.transactions().transactions[0]
     assert transaction.amount == Decimal("-42.5")
     assert transaction.raw_metadata["fee_amount"] == "0.50"
 
 def test_incomplete_transaction_is_rejected_instead_of_inventing_amount_or_currency():
-    p,_=provider([Response({"transactions":[{"transaction_id":"tx1","emitted_at":"2026-01-01T00:00:00Z"}],"meta":{}})])
+    p,_=provider([Response({"organization":{"bank_accounts":[{"id":"a1"}]}}),Response({"transactions":[{"transaction_id":"tx1","emitted_at":"2026-01-01T00:00:00Z"}],"meta":{}})])
     with pytest.raises(QontoError) as caught: p.transactions()
     assert caught.value.category == "INVALID_RESPONSE"
 
@@ -117,13 +119,41 @@ def test_full_sync_is_idempotent_and_reports_data_hub_coverage(tmp_path):
     transaction={"transaction_id":"tx1","bank_account_id":"a1","settled_at":"2026-01-02T00:00:00Z",
         "amount":"12","currency":"EUR","label":"Payout","side":"credit"}
     organization={"organization":{"bank_accounts":[{"id":"a1","name":"Principal","currency":"EUR"}]}}
-    responses=[Response({"transactions":[transaction],"meta":{"total_pages":1}}),Response(organization),Response(organization),
-        Response({"transactions":[transaction],"meta":{"total_pages":1}}),Response(organization),Response(organization)]
+    responses=[Response(organization),Response({"transactions":[transaction],"meta":{"total_pages":1}}),
+        Response({"transactions":[transaction],"meta":{"total_pages":1}})]
     p,_=provider(responses); ledger=BankLedger(tmp_path/"db.sqlite")
     first=ledger.sync("Qonto",p); second=ledger.sync("Qonto",p)
     assert first["rows_imported"] == 1 and second["rows_imported"] == 0
     assert second["duplicates"] == 1 and second["records_available"] == 1
     assert first["data_min_at"] == first["data_max_at"] == "2026-01-02T00:00:00Z"
+
+def test_connected_without_accounts_does_not_call_transactions_endpoint():
+    p,calls=provider([Response({"organization":{"bank_accounts":[]}})])
+    page=p.transactions()
+    assert page.transactions == () and page.next_cursor is None and len(calls)==1
+    assert p.last_sync_diagnostic["classification"]=="CONNECTED_NO_ACCOUNTS"
+    assert p.last_sync_diagnostic["transaction_endpoint_called"] is False
+
+def test_multiple_accounts_and_empty_pages_are_all_queried_without_guessing_identifiers():
+    organization={"organization":{"bank_accounts":[{"id":"real-a","status":"active"},{"id":"closed","status":"closed"},{"id":"real-b"}]}}
+    p,calls=provider([Response(organization),Response({"transactions":[],"meta":{"total_pages":1}}),Response({"transactions":[],"meta":{"total_pages":1}})])
+    first=p.transactions(); second=p.transactions(first.next_cursor)
+    assert first.next_cursor=="1:1" and second.next_cursor is None
+    assert [request.full_url.split("bank_account_id=")[1].split("&")[0] for request in calls[1:]]==["real-a","real-b"]
+    assert p.last_sync_diagnostic == {"classification":"CONNECTED_NO_TRANSACTIONS","accounts_found":3,
+        "accounts_eligible":2,"transaction_endpoint_called":"/v2/transactions?bank_account_id=<account_id>",
+        "page_count":2,"records_returned":0,"date_min_requested":None,"date_max_requested":None,
+        "cursor_before":None,"cursor_after":None}
+
+def test_http_422_is_invalid_query_and_keeps_sanitized_parameter_error():
+    organization={"organization":{"bank_accounts":[{"id":"a1"}]}}
+    body=b'{"errors":[{"parameter":"bank_account_id","message":"is invalid"}],"iban":"FR-secret"}'
+    error=HTTPError("https://thirdparty.qonto.com/v2/transactions",422,"invalid",{},io.BytesIO(body))
+    p,_=provider([Response(organization),error])
+    with pytest.raises(QontoError) as caught:p.transactions()
+    assert caught.value.category=="INVALID_QUERY" and caught.value.http_status==422
+    assert "bank_account_id" in caught.value.response_excerpt
+    assert "FR-secret" not in caught.value.response_excerpt and "[REDACTED]" in caught.value.response_excerpt
 
 def test_api_headers_are_stable_and_not_browser_impersonation():
     p,calls=provider([Response({"organization":{"bank_accounts":[]}})])
