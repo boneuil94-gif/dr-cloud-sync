@@ -28,11 +28,13 @@ def _request(label, authorization=None, user_agent=QONTO_USER_AGENT, opener=urlo
                 "duration_ms":int((time.monotonic()-started)*1000),"category":"NETWORK",
                 "request_id":None,"response_sanitized":"Connexion impossible"}
     waf=cloudflare_1010(status,response_headers,body)
-    category="WAF" if waf else "AUTH" if status in (401,403) else "OK" if status == 200 else "HTTP"
+    category="WAF" if waf else "AUTH" if status == 401 else "SCOPE" if status == 403 else "OK" if status == 200 else "HTTP"
     return {"test":label,"http":status,
             "content_type":response_headers.get("Content-Type"),
             "duration_ms":int((time.monotonic()-started)*1000),"category":category,
             "request_id":response_headers.get("x-request-id") or response_headers.get("request-id"),
+            "cf_ray":response_headers.get("cf-ray"),
+            "provider_classification":"CLOUDFLARE" if waf else "QONTO",
             "response_sanitized":"Réponse reçue"}
 
 
@@ -54,14 +56,23 @@ def _provider_request(credential, opener=urlopen):
     return {"test":"A_client_applicatif","http":captured.get("status"),
         "content_type":headers.get("Content-Type"),"duration_ms":int((time.monotonic()-started)*1000),
         "category":category,"request_id":headers.get("x-request-id") or headers.get("request-id"),
+        "cf_ray":headers.get("cf-ray"),
+        "provider_classification":"CLOUDFLARE" if category == "WAF" else "QONTO",
         "response_sanitized":"Réponse reçue" if captured else "Aucune réponse HTTP"}
 
 
 def run(credential=None, *, reference=None, opener=urlopen, network_checks=True):
     facts=credential_structure(credential)
-    result={"credential_ref_present":bool(reference),"reference_resolved":credential is not None,
-            **facts,"format_structurally_valid":credential_is_valid(credential),
+    sign_in, separator, secret = (credential or "").partition(":")
+    result={"credential_present":bool(credential),"credential_ref_present":bool(reference),
+            "reference_resolved":credential is not None, **facts,
+            "credential_structure_valid":credential_is_valid(credential),
+            "format_structurally_valid":credential_is_valid(credential),
+            "sign_in_present":separator == ":" and bool(sign_in.strip()),
+            "secret_present":separator == ":" and bool(secret.strip()),
+            "organization_present":False,
             "authorization_sent":bool(credential and credential_is_valid(credential)),
+            "endpoint":URL,
             "method":"API key organisation","basic_base64_bearer":False,
             "api_environment":"Production"}
     if not network_checks:
@@ -73,9 +84,15 @@ def run(credential=None, *, reference=None, opener=urlopen, network_checks=True)
         result["classification"]=("CONNECTED" if statuses == [200,200] else
             "CLIENT_BUG" if statuses == [401,200] else
             "CREDENTIAL_REJECTED" if statuses == [401,401] else "OTHER")
+        result["health_status"]=("CONNECTED" if statuses == [200,200] else
+            "CREDENTIAL_REJECTED" if 401 in statuses else
+            "WAF" if any(item["category"] == "WAF" for item in result["requests"]) else
+            "SCOPE_MISSING" if 403 in statuses else "UNAVAILABLE" if None in statuses else "ERROR")
+        result["organization_present"]=result["health_status"] == "CONNECTED"
     else:
         result["requests"]=[{"test":"A/B","status":"NON_EXECUTEES_FORMAT_INVALID"}]
         result["classification"]="FORMAT_INVALID"
+        result["health_status"]="FORMAT_INVALID"
     return result
 
 

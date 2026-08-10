@@ -15,14 +15,15 @@ class QontoError(RuntimeError):
     def __init__(self, message: str, *, category="UNKNOWN", http_status=None, endpoint=None,
                  retryable=False, response_excerpt=None, duration_ms=None, stage="organization",
                  provider=None, cloudflare_code=None, cf_ray=None, server=None, content_type=None,
-                 user_agent=None):
+                 user_agent=None, request_id=None):
         super().__init__(message); self.retryable=retryable; self.category=category
         self.http_status=http_status; self.endpoint=endpoint; self.sanitised_message=message
         self.response_excerpt=response_excerpt; self.duration_ms=duration_ms
         self.diagnostic={"category":category,"http_status":http_status,"endpoint_path":endpoint,
                          "stage":stage,"operation":"QONTO_HEALTH","provider":provider,
                          "cloudflare_code":cloudflare_code,"cf_ray":cf_ray,"server":server,
-                         "content_type":content_type,"user_agent":user_agent}
+                         "content_type":content_type,"user_agent":user_agent,
+                         "request_id":request_id,"duration_ms":duration_ms}
 
 
 QONTO_USER_AGENT = "DrCloud-OS/1.0 (+https://osdrcloud.fr)"
@@ -132,14 +133,20 @@ class QontoBankProvider:
                 duration=int((time.monotonic()-started)*1000)
                 body=exc.read(65536)
                 waf=cloudflare_1010(exc.code,exc.headers,body)
+                request_id=exc.headers.get("x-request-id") or exc.headers.get("request-id")
                 if waf:
                     raise QontoError("L’accès à l’API Qonto est bloqué par une règle Cloudflare avant validation du credential.",
                         category="WAF",http_status=403,endpoint=path,retryable=False,duration_ms=duration,
-                        stage="edge_protection",user_agent=QONTO_USER_AGENT,**{k:v for k,v in waf.items() if k != "cloudflare_region"}) from exc
-                if exc.code in (401,403): raise QontoError(QONTO_AUTH_REJECTED,category="AUTH",http_status=exc.code,endpoint=path,duration_ms=duration,stage="authentication") from exc
+                        stage="edge_protection",user_agent=QONTO_USER_AGENT,request_id=request_id,
+                        **{k:v for k,v in waf.items() if k != "cloudflare_region"}) from exc
+                if exc.code in (401,403):
+                    category="AUTH" if exc.code == 401 else "SCOPE"
+                    message=QONTO_AUTH_REJECTED if exc.code == 401 else "Credential Qonto reconnu mais accès insuffisant ou interdit. Vérifiez les scopes de lecture."
+                    raise QontoError(message,category=category,http_status=exc.code,endpoint=path,
+                        duration_ms=duration,stage="authentication",request_id=request_id) from exc
                 retryable=exc.code==429 or 500<=exc.code<600
                 category="TIMEOUT" if exc.code==408 else "RATE_LIMIT" if exc.code==429 else "HTTP"
-                if not retryable or attempt+1==self.retries: raise QontoError(f"Erreur HTTP Qonto ({exc.code})",category=category,http_status=exc.code,endpoint=path,retryable=retryable,duration_ms=duration) from exc
+                if not retryable or attempt+1==self.retries: raise QontoError(f"Erreur HTTP Qonto ({exc.code})",category=category,http_status=exc.code,endpoint=path,retryable=retryable,duration_ms=duration,request_id=request_id) from exc
                 delay=float(exc.headers.get("Retry-After") or min(30,2**attempt)); self.sleep(delay)
             except (URLError,TimeoutError) as exc:
                 reason=getattr(exc,"reason",None); timeout=isinstance(exc,TimeoutError) or isinstance(reason,TimeoutError) or "timeout" in str(exc).lower() or "timed out" in str(exc).lower()
@@ -164,7 +171,10 @@ class QontoBankProvider:
     def balances(self):
         observed=datetime.now(timezone.utc).isoformat(); result=[]
         for x in self._organization().get("bank_accounts",[]):
-            result.append(BankBalance(str(x["id"]),Decimal(str(x.get("balance",0))),str(x.get("currency") or "EUR"),observed,Decimal(str(x["authorized_balance"])) if x.get("authorized_balance") is not None else None))
+            # Absence is unknown, never a fabricated zero. The ledger only accepts
+            # balance observations actually returned by Qonto.
+            if x.get("balance") is None or not x.get("currency"): continue
+            result.append(BankBalance(str(x["id"]),Decimal(str(x["balance"])),str(x["currency"]),observed,Decimal(str(x["authorized_balance"])) if x.get("authorized_balance") is not None else None))
         return tuple(result)
     def transactions(self,cursor=None):
         # Qonto v2 uses page-based pagination. The opaque Data Hub cursor is the next page.
@@ -172,6 +182,13 @@ class QontoBankProvider:
         rows=payload.get("transactions",[]); meta=payload.get("meta",{})
         result=[]
         for x in rows:
-            result.append(BankTransaction(str(x.get("bank_account_id") or x.get("bank_account",{}).get("id") or "unknown"),str(x.get("settled_at") or x.get("emitted_at") or x.get("updated_at")),Decimal(str(x.get("amount",0))),str(x.get("currency") or "EUR"),str(x.get("label") or x.get("note") or "Transaction Qonto"),str(x["transaction_id"]),str(x.get("emitted_at") or "") or None,str(x.get("counterparty_name") or "") or None,str(x.get("reference") or "") or None,str(x.get("status") or "pending").upper(),raw_metadata={"operation_type":x.get("operation_type"),"side":x.get("side")}))
+            required=(x.get("transaction_id"),x.get("amount"),x.get("currency"),x.get("settled_at") or x.get("emitted_at") or x.get("updated_at"))
+            if any(value is None for value in required):
+                raise QontoError("Transaction Qonto incomplète",category="INVALID_RESPONSE",
+                    endpoint="/v2/transactions",stage="response_validation")
+            amount=Decimal(str(x["amount"])); side=str(x.get("side") or "").lower()
+            if side == "debit": amount=-abs(amount)
+            elif side == "credit": amount=abs(amount)
+            result.append(BankTransaction(str(x.get("bank_account_id") or x.get("bank_account",{}).get("id") or "unknown"),str(required[3]),amount,str(x["currency"]),str(x.get("label") or x.get("note") or "Transaction Qonto"),str(x["transaction_id"]),str(x.get("settled_at") or "") or None,str(x.get("counterparty_name") or "") or None,str(x.get("reference") or "") or None,str(x.get("status") or "pending").upper(),raw_metadata={"operation_type":x.get("operation_type"),"side":x.get("side"),"fee_amount":x.get("fee_amount")}))
         total=int(meta.get("total_pages") or page); next_cursor=str(page+1) if page<total else None
         return TransactionPage(tuple(result),next_cursor)
