@@ -1,6 +1,6 @@
 # Roadmap V3 — fondée sur le Grand Audit V2
 
-Cette roadmap ne crédite une étape qu'avec code + wiring + tests + observabilité + preuve de données production + documentation/runbook. Effort relatif : S (≤ quelques jours), M (ordre de la semaine), L (plusieurs semaines), à recalibrer par l'équipe.
+La source structurée d’autorité consommée par l’UI et l’API est [`config/roadmap_v3.json`](../config/roadmap_v3.json). Cette roadmap ne crédite une étape qu'avec code + wiring + tests + observabilité + preuve de données production + documentation/runbook. Effort relatif : S (≤ quelques jours), M (ordre de la semaine), L (plusieurs semaines), à recalibrer par l'équipe.
 
 ## Priorités consolidées
 

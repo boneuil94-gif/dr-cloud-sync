@@ -107,8 +107,7 @@ L'inventaire est désormais un module de l'interface unique **DrCloud OS**, avec
 Le [plan directeur DrCloud OS](docs/DRCLOUD_OS_ARCHITECTURE.md), la
 [roadmap officielle](docs/DRCLOUD_OS_ROADMAP.md) et ses décisions dans `docs/adr/`
 définissent les frontières du monolithe modulaire. La page **Roadmap** de DrCloud OS
-lit `docs/drcloud-os-roadmap.json` par l'intermédiaire de `RoadmapService` : les
-pourcentages affichés sont recalculés depuis les jalons, et non inscrits dans la vue.
+lit `config/roadmap_v3.json` par l'intermédiaire de `RoadmapService` : les scores audités sont validés puis exposés tels quels ; aucune moyenne de jalons ou de cartes n’est recalculée.
 
 ## Stock movement ledger
 

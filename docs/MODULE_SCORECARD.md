@@ -1,12 +1,12 @@
 # Module Scorecard — Audit V2
 
-Notation stricte définie dans [AUDIT_V2.md](AUDIT_V2.md). Une absence de preuve est `UNKNOWN`, jamais assimilée à un succès ou à zéro donnée.
+La source structurée d’autorité est [`config/roadmap_v3.json`](../config/roadmap_v3.json). Cette table en est la vue documentaire. La notation stricte est définie dans [AUDIT_V2.md](AUDIT_V2.md). Une absence de preuve est `UNKNOWN`, jamais assimilée à un succès ou à zéro donnée.
 
 | Module | Score /100 | Justification / preuves | Blocages | Niveau suivant |
 |---|---:|---|---|---|
 | Architecture | 68 | domaines/repositories/adapters/jobs | composition WSGI 1 008 lignes, schémas dispersés | router/composition séparés, migration unique, graphe de dépendances |
 | Core | 72 | lifecycle, SQLite, idempotence, retry, health | concurrence/crash non éprouvés | tests multi-worker/fault injection + metrics |
-| Deployment | 66 | CI/CD exact SHA, Docker/Caddy, scripts DR | serveur/restore/rollback/monitoring non prouvés | exercice recovery et preuve publique datée |
+| Deployment | 68 | CI/CD exact SHA, Docker/Caddy, scripts DR, health/HTTPS publics | restore/rollback/monitoring non prouvés | exercice recovery et preuve publique datée |
 | Security | 74 | auth, sessions, RBAC, CSRF, headers, audit | PII ops, CVE/pentest/rate-limit prod | SBOM/scans/pentest/revue RGPD |
 | Data Hub | 65 | sources, batches, retry, freshness, schema health | freshness non égale exhaustivité | totaux autorité + alerting/SLO |
 | ShopCaisse | 58 | API/CSV ventes/paiements testés | prod coverage inconnue; catalog write simulé | validation payload live et totaux |
