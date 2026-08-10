@@ -65,3 +65,24 @@ Champs exposés par source : `provider`, `source_id`, `configuration`, `connecti
 `CONNECTED_NO_DATA` distingue un connecteur configuré ou un health check réussi d'un import métier réussi. Un import réussi persiste séparément les lignes du dernier run, le cumul, la période réellement couverte, l'identifiant du run et les disponibilités uniquement si elles sont connues.
 
 Le runtime publie aussi `worker_state` : `HEALTHY`, `STALE`, `MISSING` ou `DATABASE_MISMATCH`, calculé à partir du heartbeat et de l'empreinte SQLite observée.
+
+## Orchestrateur global (Sync All)
+
+`POST /api/data-hub/sync-all` crée un batch persistant et exécute, dans l'ordre des
+dépendances, tous les jobs dont la source est activée et configurée et dont le
+runtime possède un handler. Chaque erreur est contenue dans son job : les branches
+indépendantes continuent. `POST /api/data-hub/sync-all/retry` reprend uniquement les
+jobs `FAILED` ou `BLOCKED` du dernier batch. Le détail durable est consultable par
+`GET /api/data-hub/sync-batches/{batch_id}`.
+
+Les jobs ShopCaisse, PrestaShop, Qonto, SumUp et les projections locales sont inclus
+lorsque leur source et leur handler sont réellement disponibles. Les sources
+`NOT_CONFIGURED`/`DISABLED` et les jobs sans handler sont enregistrés `SKIPPED`, sans
+fabriquer de ligne importée : `rows_imported` reste `NULL` quand le handler ne fournit
+pas une valeur connue. Une dépendance échouée produit `BLOCKED`.
+
+Une contrainte SQLite n'autorise qu'un batch `RUNNING`; une deuxième demande reçoit
+`BATCH_ALREADY_RUNNING`. Les synchronisations unitaires restent autorisées : leurs
+verrous de job existants empêchent qu'un même job soit exécuté simultanément, tandis
+qu'un job manuel indépendant reste sûr. Les deux tables additives sont
+`data_hub_sync_batches` et `data_hub_sync_batch_jobs`.

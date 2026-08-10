@@ -22,6 +22,8 @@ class WorkerState(StrEnum):
     HEALTHY="HEALTHY"; STALE="STALE"; MISSING="MISSING"; DATABASE_MISMATCH="DATABASE_MISMATCH"
 class SyncStatus(StrEnum):
     PENDING="PENDING"; RUNNING="RUNNING"; SUCCEEDED="SUCCEEDED"; FAILED="FAILED"; BLOCKED="BLOCKED"; RETRY="RETRY"
+class BatchAlreadyRunning(RuntimeError):
+    """Raised when the database-wide global synchronization lease is held."""
 
 @dataclass(frozen=True)
 class JobDefinition:
@@ -39,7 +41,11 @@ CREATE TABLE IF NOT EXISTS data_sources(source_id TEXT PRIMARY KEY,source_type T
 CREATE TABLE IF NOT EXISTS sync_jobs(job_id TEXT PRIMARY KEY,source_id TEXT NOT NULL,job_type TEXT NOT NULL,interval_seconds INTEGER NOT NULL,dependencies_json TEXT NOT NULL,max_attempts INTEGER NOT NULL,next_run_at TEXT,last_run_at TEXT,status TEXT NOT NULL DEFAULT 'PENDING',attempts INTEGER NOT NULL DEFAULT 0,duration_ms INTEGER,error TEXT,lock_token TEXT,locked_at TEXT);
 CREATE TABLE IF NOT EXISTS data_hub_sync_runs(run_id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL,started_at TEXT NOT NULL,completed_at TEXT,status TEXT NOT NULL,attempt INTEGER NOT NULL,result_json TEXT,error TEXT);
 CREATE TABLE IF NOT EXISTS automation_worker_heartbeat(worker_id TEXT PRIMARY KEY,seen_at TEXT NOT NULL,database_fingerprint TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS data_hub_sync_batches(batch_id TEXT PRIMARY KEY,started_at TEXT NOT NULL,completed_at TEXT,status TEXT NOT NULL,triggered_by TEXT NOT NULL,jobs_total INTEGER NOT NULL DEFAULT 0,jobs_succeeded INTEGER NOT NULL DEFAULT 0,jobs_failed INTEGER NOT NULL DEFAULT 0,jobs_blocked INTEGER NOT NULL DEFAULT 0,jobs_skipped INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS data_hub_sync_batch_jobs(batch_id TEXT NOT NULL,job_id TEXT NOT NULL,source_id TEXT NOT NULL,provider TEXT NOT NULL,status TEXT NOT NULL,rows_imported INTEGER,duration_ms INTEGER,last_error TEXT,started_at TEXT,completed_at TEXT,PRIMARY KEY(batch_id,job_id));
 CREATE INDEX IF NOT EXISTS ix_sync_jobs_due ON sync_jobs(status,next_run_at);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_data_hub_running_batch ON data_hub_sync_batches(status) WHERE status='RUNNING';
+CREATE INDEX IF NOT EXISTS ix_data_hub_batch_jobs ON data_hub_sync_batch_jobs(batch_id,status);
 """
 
 def utcnow(): return datetime.now(timezone.utc)
@@ -121,7 +127,8 @@ class DataHub:
             job=db.execute("SELECT * FROM sync_jobs WHERE job_id=?",(job_id,)).fetchone()
             if not job: raise KeyError(job_id)
             source=db.execute("SELECT * FROM data_sources WHERE source_id=?",(job["source_id"],)).fetchone()
-            if not source or not source["enabled"] or source["status"] not in (SourceStatus.CONNECTED,SourceStatus.UNAVAILABLE): return self._blocked(job_id,"source unavailable")
+            runnable_statuses=(SourceStatus.CONNECTED,SourceStatus.UNAVAILABLE,SourceStatus.ERROR) if manual else (SourceStatus.CONNECTED,SourceStatus.UNAVAILABLE)
+            if not source or not source["enabled"] or source["status"] not in runnable_statuses: return self._blocked(job_id,"source unavailable")
             if not manual and job["next_run_at"] and datetime.fromisoformat(job["next_run_at"])>now: return dict(job)
             dependencies=json.loads(job["dependencies_json"])
             for dependency in dependencies:
@@ -166,6 +173,83 @@ class DataHub:
             if operation is None: results.append(self._blocked(job["job_id"],f"runtime handler missing: {job['job_type']}"))
             else: results.append(self.run(job["job_id"],operation))
         return results
+    def run_all(self, operations: Mapping[str, Callable], *, triggered_by="admin", retry_failed=False):
+        """Run one isolated, dependency-ordered global batch.
+
+        Every registered job is evidenced. Non-runnable jobs are SKIPPED and an
+        exception from one handler is contained so unrelated branches continue.
+        """
+        batch_id=str(uuid.uuid4()); started=iso(self.clock())
+        with self.connect() as db:
+            try:
+                db.execute("INSERT INTO data_hub_sync_batches(batch_id,started_at,status,triggered_by) VALUES(?,?,'RUNNING',?)",(batch_id,started,str(triggered_by)[:100]))
+            except sqlite3.IntegrityError as exc:
+                raise BatchAlreadyRunning("BATCH_ALREADY_RUNNING") from exc
+            jobs=[dict(row) for row in db.execute("""SELECT sj.*,ds.provider,ds.status AS source_status,ds.enabled
+                FROM sync_jobs sj LEFT JOIN data_sources ds ON ds.source_id=sj.source_id ORDER BY sj.job_id""")]
+            if retry_failed:
+                previous=db.execute("SELECT batch_id FROM data_hub_sync_batches WHERE status!='RUNNING' ORDER BY started_at DESC LIMIT 1").fetchone()
+                retry_ids=set() if not previous else {r[0] for r in db.execute("SELECT job_id FROM data_hub_sync_batch_jobs WHERE batch_id=? AND status IN ('FAILED','BLOCKED')",(previous[0],))}
+                jobs=[job for job in jobs if job["job_id"] in retry_ids]
+            db.execute("UPDATE data_hub_sync_batches SET jobs_total=? WHERE batch_id=?",(len(jobs),batch_id))
+        pending={job["job_id"]:job for job in jobs}; completed={}
+        while pending:
+            progressed=False
+            for job_id,job in list(pending.items()):
+                dependencies=json.loads(job["dependencies_json"])
+                if any(dep in pending for dep in dependencies): continue
+                if any(completed.get(dep) in {"FAILED","BLOCKED","SKIPPED"} for dep in dependencies):
+                    result=self._record_batch_job(batch_id,job,"BLOCKED",last_error="dependency failed or was skipped")
+                elif not job.get("enabled") or job.get("source_status") in {SourceStatus.NOT_CONFIGURED,SourceStatus.DISABLED}:
+                    result=self._record_batch_job(batch_id,job,"SKIPPED",last_error=None)
+                elif job["job_type"] not in operations:
+                    result=self._record_batch_job(batch_id,job,"SKIPPED",last_error="runtime handler missing")
+                else:
+                    job_started=iso(self.clock())
+                    try:
+                        state=self.run(job_id,operations[job["job_type"]],manual=True)
+                        result=self._record_batch_job(batch_id,job,state["status"],rows_imported=self._last_run_rows(job_id),duration_ms=state.get("duration_ms"),last_error=state.get("error"),started_at=job_started,completed_at=iso(self.clock()))
+                    except Exception as exc:
+                        from .jobs import sanitize_error
+                        state=self.job(job_id) or {}
+                        result=self._record_batch_job(batch_id,job,"FAILED",duration_ms=state.get("duration_ms"),last_error=sanitize_error(exc),started_at=job_started,completed_at=iso(self.clock()))
+                completed[job_id]=result["status"]; del pending[job_id]; progressed=True
+            if not progressed: # dependency cycle or missing dependency
+                for job_id,job in list(pending.items()):
+                    result=self._record_batch_job(batch_id,job,"BLOCKED",last_error="dependency graph is not satisfiable")
+                    completed[job_id]=result["status"]; del pending[job_id]
+        return self._complete_batch(batch_id)
+    def _last_run_rows(self,job_id):
+        with self.connect() as db:
+            row=db.execute("SELECT result_json FROM data_hub_sync_runs WHERE job_id=? AND status='SUCCEEDED' ORDER BY run_id DESC LIMIT 1",(job_id,)).fetchone()
+        if not row: return None
+        value=json.loads(row[0] or "{}").get("rows_imported")
+        return None if value is None else int(value)
+    def _record_batch_job(self,batch_id,job,status,*,rows_imported=None,duration_ms=None,last_error=None,started_at=None,completed_at=None):
+        from .jobs import sanitize_error
+        error=sanitize_error(RuntimeError(last_error)) if last_error else None
+        now=iso(self.clock()); started_at=started_at or now; completed_at=completed_at or now
+        with self.connect() as db:
+            db.execute("""INSERT INTO data_hub_sync_batch_jobs(batch_id,job_id,source_id,provider,status,rows_imported,duration_ms,last_error,started_at,completed_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?)""",(batch_id,job["job_id"],job["source_id"],job.get("provider") or "UNKNOWN",status,rows_imported,duration_ms,error,started_at,completed_at))
+        return {"job_id":job["job_id"],"source_id":job["source_id"],"provider":job.get("provider") or "UNKNOWN","status":status,"rows_imported":rows_imported,"duration_ms":duration_ms,"last_error":error,"started_at":started_at,"completed_at":completed_at}
+    def _complete_batch(self,batch_id):
+        with self.connect() as db:
+            counts={row[0]:row[1] for row in db.execute("SELECT status,COUNT(*) FROM data_hub_sync_batch_jobs WHERE batch_id=? GROUP BY status",(batch_id,))}
+            succeeded=counts.get("SUCCEEDED",0); failed=counts.get("FAILED",0); blocked=counts.get("BLOCKED",0); skipped=counts.get("SKIPPED",0)
+            status="SUCCEEDED" if not failed and not blocked else "FAILED" if not succeeded else "PARTIAL"
+            db.execute("""UPDATE data_hub_sync_batches SET completed_at=?,status=?,jobs_succeeded=?,jobs_failed=?,jobs_blocked=?,jobs_skipped=? WHERE batch_id=?""",(iso(self.clock()),status,succeeded,failed,blocked,skipped,batch_id))
+        return self.sync_batch(batch_id)
+    def sync_batch(self,batch_id):
+        with self.connect() as db:
+            batch=db.execute("SELECT * FROM data_hub_sync_batches WHERE batch_id=?",(batch_id,)).fetchone()
+            if not batch: return None
+            jobs=[dict(row) for row in db.execute("SELECT job_id,source_id,provider,status,rows_imported,duration_ms,last_error,started_at,completed_at FROM data_hub_sync_batch_jobs WHERE batch_id=? ORDER BY started_at,job_id",(batch_id,))]
+        data=dict(batch); data["jobs"]=jobs; data["summary"]={key:data[key] for key in ("jobs_total","jobs_succeeded","jobs_failed","jobs_blocked","jobs_skipped")}
+        return data
+    def latest_batch(self):
+        with self.connect() as db: row=db.execute("SELECT batch_id FROM data_hub_sync_batches ORDER BY started_at DESC LIMIT 1").fetchone()
+        return self.sync_batch(row[0]) if row else None
     def database_fingerprint(self):
         return hashlib.sha256(str(self.path.resolve()).encode()).hexdigest()[:12]
     def heartbeat(self,worker_id="automation-worker"):
