@@ -3,6 +3,7 @@ from decimal import Decimal
 from dr_cloud_sync.bank import BankLedger,BankTransaction,TransactionPage
 from dr_cloud_sync.finance import FinanceProjection
 from dr_cloud_sync.sales import SalesLedger,SaleEvent
+from dr_cloud_sync.sumup import PaymentSettlementLedger,SumUpPage,SumUpTransactionLedger
 from test_os_production import configured  # noqa: F401
 
 class Catalogue:
@@ -102,7 +103,8 @@ def test_finance_frontend_renders_known_cards_without_fake_zero():
  from pathlib import Path
  script=(Path(__file__).parents[1]/'src/dr_cloud_sync/static/finance.js').read_text()
  assert "card('CA & activité',s.revenue" in script and "card('Paiements & SumUp',s.payments" in script
- assert "s.bank" in script and "m.value!==null" in script and "productCard.hidden=!known.length" in script
+ assert "s.bank" in script and "m.value!==null" in script and "productCard.hidden=!revenue.length&&!margin.length" in script
+ assert "s.payments.by_method" in script and "s.products.top_by_margin" in script
 
 def test_finance_api_returns_http_200_for_partial_payload(configured):
  from test_os_production import login, request
@@ -110,3 +112,39 @@ def test_finance_api_returns_http_200_for_partial_payload(configured):
  app.finance.finance_cockpit=lambda:{'status':'PARTIAL','checked_at':'2026-08-08T00:00:00+00:00','revenue':{'status':'FRESH'},'bank':{'status':'NOT_CONFIGURED'}}
  status,_,body=request(app,'/api/finance/cockpit',cookie=cookie)
  assert status=='200 OK' and __import__('json').loads(body)['status']=='PARTIAL'
+
+def test_finance_cockpit_production_like_partial_sources(tmp_path):
+ p=tmp_path/'db.sqlite';sales=SalesLedger(p,Catalogue());bank=BankLedger(p)
+ now=datetime.now(timezone.utc).replace(hour=12,minute=0,second=0,microsecond=0)
+ def add(source,sale,line,amount,product,cost=None):
+  sales.append(SaleEvent(source,sale,line,now.isoformat(),'UTC','SALE',product,Decimal('1'),SalesLedger.key(source,sale,line,'SALE'),line_total_ttc=Decimal(amount),cost_basis=Decimal(cost) if cost is not None else None,currency='EUR',channel='STORE' if source=='SHOPCAISSE' else 'ECOMMERCE'))
+ add('SHOPCAISSE','shared','shop-1','100','shop-product','40')
+ add('PRESTASHOP','shared','web-1','50','web-product')
+ sales.db.executescript("CREATE TABLE sale_payments(payment_id TEXT PRIMARY KEY,sale_id TEXT,external_payment_id TEXT,payment_type TEXT,amount TEXT,name TEXT,description TEXT,canonical_payment_type TEXT,currency TEXT,occurred_at TEXT,status TEXT,source TEXT,store_id TEXT,imported_at TEXT,quality_status TEXT,quality_reason TEXT);")
+ sales.db.execute("INSERT INTO sale_payments(payment_id,amount,canonical_payment_type,occurred_at,source,quality_status) VALUES('card','80','CARD',?,'SHOPCAISSE','VALID'),('cash','20','CASH',?,'SHOPCAISSE','VALID')",(now.isoformat(),now.isoformat()));sales.db.commit()
+ transactions=SumUpTransactionLedger(bank.db);payouts=PaymentSettlementLedger(bank.db)
+ transactions.import_page(SumUpPage(({'id':'tx-settled','transaction_code':'A','timestamp':now.isoformat(),'amount':'60','currency':'EUR','status':'SUCCESSFUL'},{'id':'tx-transit','transaction_code':'B','timestamp':now.isoformat(),'amount':'20','currency':'EUR','status':'SUCCESSFUL'}),None))
+ payouts.import_page(SumUpPage(({'id':'payout-1','payout_date':now.isoformat(),'amount':'60','currency':'EUR','fee':'0','status':'PAID','items':[{'transaction_code':'A','amount':'60','currency':'EUR'}]},),None))
+ cockpit=FinanceProjection(bank,sales,sumup_transactions=transactions,sumup_settlements=payouts).finance_cockpit(now=now+__import__('datetime').timedelta(hours=1))
+ assert cockpit['status']=='PARTIAL' and cockpit['bank']['status']=='NOT_CONFIGURED'
+ assert cockpit['revenue']['month_to_date']['value']=='150' and cockpit['revenue']['sales_count']['value']=='2'
+ assert cockpit['revenue']['average_basket']['value']=='75'
+ assert [x['revenue']['value'] for x in cockpit['channels']['data']]==['100','50']
+ assert {x['method']:x['amount']['value'] for x in cockpit['payments']['by_method']}=={'CARD':'80','CASH':'20'}
+ assert cockpit['payments']['sumup_collected']['value']=='80' and cockpit['payments']['sumup_payouts']['value']=='60'
+ assert cockpit['payments']['in_transit']['value']=='20'
+ assert cockpit['margins']['gross_margin']['value']=='60' and cockpit['margins']['sales_without_known_cost']['value']=='50'
+ assert cockpit['products']['status']=='PARTIAL' and cockpit['products']['top_by_margin'][0]['product_key']=='shop-product'
+ assert cockpit['settlements']['sales_expected']['value']=='150'  # SumUp is evidence, never revenue.
+ for section in ('revenue','channels','payments','margins','settlements','products','bank'):
+  assert cockpit[section]['status']
+ for metric in (cockpit['revenue']['today'],cockpit['payments']['sumup_collected'],cockpit['payments']['sumup_payouts']):
+  assert metric['source'] and metric['freshness'] and metric['period']
+
+def test_finance_sales_count_ignores_refund_events(tmp_path):
+ p=tmp_path/'db.sqlite';sales=SalesLedger(p,Catalogue());bank=BankLedger(p);now=datetime.now(timezone.utc)
+ for kind,amount,line in (('SALE','100','sale'),('REFUND','20','refund')):
+  sales.append(SaleEvent('SHOPCAISSE','ticket',line,now.isoformat(),'UTC',kind,None,Decimal('1'),SalesLedger.key('SHOPCAISSE','ticket',line,kind),line_total_ttc=Decimal(amount),currency='EUR'))
+ sales.db.commit();cockpit=FinanceProjection(bank,sales).finance_cockpit(now=now+__import__('datetime').timedelta(seconds=1))
+ assert cockpit['revenue']['month_to_date']['value']=='80'
+ assert cockpit['revenue']['sales_count']['value']=='1' and cockpit['revenue']['average_basket']['value']=='80'
