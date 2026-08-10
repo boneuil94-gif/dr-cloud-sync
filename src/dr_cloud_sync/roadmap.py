@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -21,8 +22,18 @@ class RoadmapService:
         {"CODE", "WIRED", "TESTED", "PRODUCTION_PROVEN", "PARTIAL", "BLOCKED", "NOT_CONFIGURED"}
     )
 
-    def __init__(self, path: Path | str):
-        self.path = Path(path)
+    LEGACY_PATH = Path("/app/docs/drcloud-os-roadmap.json")
+
+    def __init__(self, path: Path | str | None = None):
+        configured = path if path is not None else os.environ.get("DRCLOUD_ROADMAP")
+        self.configured_path = Path(configured) if configured else None
+        self.path = self.configured_path or DEFAULT_ROADMAP
+        if self.path == self.LEGACY_PATH and DEFAULT_ROADMAP.exists():
+            logging.getLogger("drcloud.roadmap").warning(
+                "ROADMAP_LEGACY_PATH configured_path=%s effective_path=%s",
+                self.path, DEFAULT_ROADMAP,
+            )
+            self.path = DEFAULT_ROADMAP
 
     def load(self) -> dict[str, Any]:
         try:
@@ -35,6 +46,27 @@ class RoadmapService:
         result["global_progress_percent"] = roadmap["global_score"]
         result["remaining_percent"] = 100 - roadmap["global_score"]
         return result
+
+    def diagnostic(self) -> dict[str, Any]:
+        """Return an operator-safe view of roadmap path resolution and validity."""
+        diagnostic = {
+            "configured_path": str(self.configured_path) if self.configured_path else None,
+            "effective_path": str(self.path),
+            "file_exists": self.path.is_file(),
+            "version": None,
+            "status": "MISSING",
+        }
+        if not diagnostic["file_exists"]:
+            return diagnostic
+        try:
+            roadmap = json.loads(self.path.read_text(encoding="utf-8"))
+            diagnostic["version"] = roadmap.get("version") if isinstance(roadmap, dict) else None
+            self.validate(roadmap)
+        except (OSError, json.JSONDecodeError, RoadmapError, AttributeError, TypeError):
+            diagnostic["status"] = "INVALID"
+            return diagnostic
+        diagnostic["status"] = "OK"
+        return diagnostic
 
     def validate(self, roadmap: dict[str, Any]) -> None:
         if roadmap.get("version") != 3:
@@ -64,7 +96,4 @@ class RoadmapService:
             raise RoadmapError("evidence_date, priorities et blockers sont requis")
 
 
-DEFAULT_ROADMAP = Path(os.environ.get(
-    "DRCLOUD_ROADMAP",
-    Path(__file__).resolve().parents[2] / "config" / "roadmap_v3.json",
-))
+DEFAULT_ROADMAP = Path(__file__).resolve().parents[2] / "config" / "roadmap_v3.json"

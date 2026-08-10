@@ -10,7 +10,7 @@ from .domain import Product, ProductStatus, PurchaseOrderStatus, SupplierStatus
 from .inventory import InventoryError, InventoryRepository, InventoryService
 from .os_config import OSSettings, parse_prestashop_state_ids
 from .repositories import SQLiteOSRepository
-from .roadmap import DEFAULT_ROADMAP, RoadmapService
+from .roadmap import RoadmapService
 from .services import AssignBarcodeService, BarcodeError, StockProjectionService
 from .admin_status import AdminStatusService, application_metadata
 from .modules import available_pages, render_navigation
@@ -79,7 +79,7 @@ class InventoryApp:
         products=[Product(i["drcloud_product_key"],i["prestashop_key"],i.get("product_id"),i.get("combination_id"),i["shopcaisse_item_id"],service._name(i),service._ean(i),None,i.get("stock_prestashop"),i.get("stock_shopcaisse"),str(i.get("reference") or i.get("référence") or ""),base_name=str(i.get("base_name") or service._name(i)),variant_name=str(i.get("variant_name") or i.get("variation_name") or i.get("declinaison") or ""),attributes=_commercial_attributes(i.get("attributes") or i.get("attributs")),name_source=str(i.get("name_source") or "PRESTASHOP"),variant_source="PRESTASHOP" if i.get("combination_id") and (i.get("attributes") or i.get("attributs") or i.get("variant_name")) else "",reference_source="PRESTASHOP" if i.get("reference") else "",ean_source=str(i.get("ean_source") or ("PRESTASHOP" if service._ean(i) else ""))) for i in service.items]
         self.os_repository=os_repository or SQLiteOSRepository(service.repo.path,products)
         self.barcodes=AssignBarcodeService(self.os_repository,self.os_repository,DisabledConnector(),DisabledConnector())
-        self.roadmap_service=roadmap_service or RoadmapService(DEFAULT_ROADMAP); self.failures={}
+        self.roadmap_service=roadmap_service or RoadmapService(); self.failures={}
         data_dir = settings.data_dir if settings else service.repo.path.parent
         self.backup_service = BackupService(configured_backup_dir(data_dir))
         # Startup only prepares/tests infrastructure; it never mutates business data.
@@ -661,6 +661,7 @@ class InventoryApp:
                 road=self.roadmap_service.load(); return self._json(start,{"progress_percent":road["global_progress_percent"],"next":next((m["next"] for m in road["modules"] if m.get("next")),None),"catalogue":len(self.service.items),"inventory":{"session":self.service.session(),"progress":self.service.progress()},"systems":self.admin_status.collect(),"sales":{"last_7_days":self.sales.metrics(None,7),"last_30_days":self.sales.metrics(None,30),"freshness":self.sales.status()["freshness"]},"purchase_costs":{"stock_value":self.purchase_costs.stock_value(),"profitability":self.purchase_costs.profitability(),"invoices_to_review":self.purchase_costs.db.execute("SELECT count(*) FROM supplier_invoices WHERE status!=\'VALIDATED\'").fetchone()[0]}},headers=[("X-Request-ID",request_id)])
             if path == "/api/state": return self._json(start,{"session":self.service.session(),"progress":self.service.progress(),"proposal":self.service.proposal()})
             if path == "/api/roadmap": return self._json(start,self.roadmap_service.load())
+            if path == "/api/roadmap/health": return self._json(start,self.roadmap_service.diagnostic())
             if path == "/api/admin/status": return self._json(start,self.admin_status.collect(),headers=[("X-Request-ID",request_id)])
             if path == "/api/admin/product-media-import/preview" and method == "POST":
                 try:
