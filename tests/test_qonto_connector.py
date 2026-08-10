@@ -1,9 +1,11 @@
 import io, json
+from decimal import Decimal
 from urllib.error import HTTPError, URLError
 import pytest
 from dr_cloud_sync.qonto import (EnvironmentSecretProvider,QONTO_USER_AGENT,QontoBankProvider,
     QontoError,cloudflare_1010,credential_is_valid,credential_structure,support_message)
 from dr_cloud_sync.qonto_diagnostic import run as diagnostic_run
+from dr_cloud_sync.bank import BankLedger
 
 class Response:
     def __init__(self,value):self.value=value
@@ -35,7 +37,7 @@ def test_errors_are_sanitized(code,retryable):
     p,_=provider([error(),error(),error()])
     with pytest.raises(QontoError) as caught:p.health()
     assert "secret" not in str(caught.value) and caught.value.retryable is retryable
-    assert caught.value.category==("AUTH" if code in (401,403) else "RATE_LIMIT" if code==429 else "HTTP")
+    assert caught.value.category==("AUTH" if code==401 else "SCOPE" if code==403 else "RATE_LIMIT" if code==429 else "HTTP")
     assert caught.value.http_status==code and caught.value.endpoint=="/v2/organization"
 
 def test_timeout_retries():
@@ -84,12 +86,44 @@ def test_cloudflare_1010_is_waf_and_never_retried(body,content_type):
     assert caught.value.diagnostic["cf_ray"]=="abc123-CDG"
     assert len(calls)==1 and "login:secret" not in str(caught.value.diagnostic)
 
-def test_qonto_json_403_is_auth_not_waf():
+def test_qonto_json_403_is_scope_not_waf():
     headers={"Content-Type":"application/json"}
     error=HTTPError("https://thirdparty.qonto.com/v2/organization",403,"Forbidden",headers,io.BytesIO(b'{"message":"forbidden"}'))
     p,_=provider([error])
     with pytest.raises(QontoError) as caught:p.health()
-    assert caught.value.category=="AUTH"
+    assert caught.value.category=="SCOPE"
+
+def test_unknown_balance_is_not_fabricated_as_zero():
+    body={"organization":{"bank_accounts":[{"id":"a1","currency":"EUR"}]}}
+    p,_=provider([Response(body)])
+    assert p.balances() == ()
+
+def test_debit_side_is_persisted_as_negative_and_fee_is_allowlisted_metadata():
+    rows={"transactions":[{"transaction_id":"tx-debit","bank_account_id":"a1",
+        "settled_at":"2026-01-01T00:00:00Z","amount":"42.5","currency":"EUR",
+        "label":"Fournisseur","status":"completed","side":"debit","fee_amount":"0.50"}],
+        "meta":{"total_pages":1}}
+    p,_=provider([Response(rows)])
+    transaction=p.transactions().transactions[0]
+    assert transaction.amount == Decimal("-42.5")
+    assert transaction.raw_metadata["fee_amount"] == "0.50"
+
+def test_incomplete_transaction_is_rejected_instead_of_inventing_amount_or_currency():
+    p,_=provider([Response({"transactions":[{"transaction_id":"tx1","emitted_at":"2026-01-01T00:00:00Z"}],"meta":{}})])
+    with pytest.raises(QontoError) as caught: p.transactions()
+    assert caught.value.category == "INVALID_RESPONSE"
+
+def test_full_sync_is_idempotent_and_reports_data_hub_coverage(tmp_path):
+    transaction={"transaction_id":"tx1","bank_account_id":"a1","settled_at":"2026-01-02T00:00:00Z",
+        "amount":"12","currency":"EUR","label":"Payout","side":"credit"}
+    organization={"organization":{"bank_accounts":[{"id":"a1","name":"Principal","currency":"EUR"}]}}
+    responses=[Response({"transactions":[transaction],"meta":{"total_pages":1}}),Response(organization),Response(organization),
+        Response({"transactions":[transaction],"meta":{"total_pages":1}}),Response(organization),Response(organization)]
+    p,_=provider(responses); ledger=BankLedger(tmp_path/"db.sqlite")
+    first=ledger.sync("Qonto",p); second=ledger.sync("Qonto",p)
+    assert first["rows_imported"] == 1 and second["rows_imported"] == 0
+    assert second["duplicates"] == 1 and second["records_available"] == 1
+    assert first["data_min_at"] == first["data_max_at"] == "2026-01-02T00:00:00Z"
 
 def test_api_headers_are_stable_and_not_browser_impersonation():
     p,calls=provider([Response({"organization":{"bank_accounts":[]}})])
@@ -156,6 +190,8 @@ def test_controlled_provider_and_minimal_requests_are_coherent_and_secret_safe()
     assert [item["http"] for item in result["requests"]]==[200,200]
     assert [item["category"] for item in result["requests"]]==["OK","OK"]
     assert result["classification"]=="CONNECTED"
+    assert result["health_status"]=="CONNECTED" and result["organization_present"] is True
+    assert result["credential_present"] and result["sign_in_present"] and result["secret_present"]
     assert len(calls)==2
     for request in calls:
         headers=dict(request.header_items())

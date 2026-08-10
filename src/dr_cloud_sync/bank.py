@@ -80,8 +80,14 @@ class BankLedger:
         return dict(self.db.execute("SELECT * FROM bank_transactions WHERE transaction_id=?",(transaction_id,)).fetchone())
     def sync(self,provider_name,provider,cursor=None):
         if not provider.configured: raise ValueError("bank provider is not configured")
-        total=duplicates=0
+        total=duplicates=0; observed_dates=[]
         while True:
-            page=provider.transactions(cursor);result=self.import_page(provider_name,page);total+=result["rows_imported"];duplicates+=result["duplicates"];cursor=page.next_cursor
+            page=provider.transactions(cursor); observed_dates.extend(t.booked_at for t in page.transactions)
+            result=self.import_page(provider_name,page);total+=result["rows_imported"];duplicates+=result["duplicates"];cursor=page.next_cursor
             if cursor is None: break
-        self.store_accounts(provider_name,provider.accounts());self.store_balances(provider_name,provider.balances());return {"rows_imported":total,"duplicates":duplicates,"cursor":cursor}
+        self.store_accounts(provider_name,provider.accounts());self.store_balances(provider_name,provider.balances())
+        available=self.db.execute("SELECT count(*) FROM bank_transactions WHERE provider=?",(provider_name,)).fetchone()[0]
+        return {"rows_imported":total,"duplicates":duplicates,"cursor":cursor,
+            "data_min_at":min(observed_dates) if observed_dates else None,
+            "data_max_at":max(observed_dates) if observed_dates else None,
+            "records_available":available}

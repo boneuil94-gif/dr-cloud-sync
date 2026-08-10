@@ -1,16 +1,16 @@
 # Connecteur Qonto réel — lecture seule
 
-Contrat vérifié le 31 juillet 2026 dans la documentation officielle Qonto Business API. L'adapter utilise exclusivement `GET https://thirdparty.qonto.com/v2/organization` (organisation, comptes, solde et solde autorisé) et `GET https://thirdparty.qonto.com/v2/transactions` (transactions). L'authentification accepte le couple API key `login:secret` documenté par Qonto ou un jeton OAuth sous la forme `Bearer …`. La liste utilise `current_page` et `per_page`, puis `meta.total_pages`. Les statuts reçus sont conservés ; une même `transaction_id` met à jour la ligne existante, notamment lors du passage pending vers completed.
+Contrat audité le 10 août 2026 contre la documentation officielle Qonto Business API. L'adapter utilise exclusivement `GET https://thirdparty.qonto.com/v2/organization` et `GET https://thirdparty.qonto.com/v2/transactions`. Cette implémentation attend une **clé API d'organisation** exactement sous la forme `sign-in:secret-key` dans le header `Authorization`, sans `Basic`, `Bearer`, base64, guillemets, espaces périphériques ni retour ligne. Le premier `:` sépare le sign-in du secret; les suivants appartiennent au secret. L'organisation et les IBAN sont découverts par l'appel authentifié : aucun slug, organization id ou IBAN n'est requis en configuration. La pagination utilise `current_page`, `per_page` et `meta.total_pages`; une même `transaction_id` met à jour la ligne existante.
 
-Le client est strictement read-only : aucun virement, bénéficiaire, carte ou paiement n'est exposé. Il impose un timeout de 8 secondes par défaut, traite 401/403 comme erreurs d'authentification, respecte `Retry-After` sur 429 et applique un backoff borné sur 429/5xx/réseau. Les métadonnées persistées sont limitées à `operation_type` et `side`.
+Le client est strictement read-only : aucun virement, bénéficiaire, carte ou paiement n'est exposé. Il impose un timeout de 8 secondes par défaut, ne rejoue jamais 401, 403 ou WAF, respecte `Retry-After` sur 429 et applique un backoff borné sur 429/5xx/réseau. Les métadonnées persistées sont limitées à `operation_type`, `side` et `fee_amount`; aucun payload brut n'est conservé. Le signe est dérivé de `side` (`debit` négatif, `credit` positif). Une devise, un montant ou un solde absent reste inconnu au lieu de devenir artificiellement EUR ou zéro.
 
 ## Activation production
 
-1. Créer dans Qonto une API key en lecture seule adaptée à l'organisation, ou une application OAuth avec les scopes de lecture des comptes et transactions.
+1. Créer dans Qonto une API key d'organisation autorisée à lire l'organisation, les comptes et les transactions.
 2. Définir `QONTO_CREDENTIAL_REF=env:QONTO_CREDENTIAL` puis injecter **secrètement** `QONTO_CREDENTIAL`. Le préfixe `env:` est résolu en mémoire par le `SecretProvider`; ne jamais placer la valeur dans Git, l'UI ou SQLite.
 3. Redémarrer les services. La source demeure `NOT_CONFIGURED` sans secret et ne devient `CONNECTED` qu'après le vrai `GET /v2/organization`.
 
-La cadence est `DATA_HUB_BANK_INTERVAL_SECONDS` (1 800 secondes par défaut). Un backfill contrôlé est obtenu en réinitialisant le curseur du job puis en relançant le job ; l'upsert par identifiant Qonto rend cette opération idempotente.
+La cadence est `QONTO_SYNC_INTERVAL_SECONDS`, puis `DATA_HUB_BANK_INTERVAL_SECONDS` en repli (10 800 secondes par défaut). Un backfill contrôlé est obtenu en réinitialisant le curseur du job puis en relançant le job ; l'upsert par identifiant Qonto rend cette opération idempotente.
 
 ## Activation production vérifiable
 Le workflow `DrCloud OS Production` utilise le job `deploy` avec `environment: production`. Il lit directement `${{ secrets.QONTO_CREDENTIAL }}` : un Repository secret reste accessible à ce job et aucun déplacement vers les Environment secrets n'est nécessaire. Le workflow transmet la valeur par l'entrée standard au script protégé, qui établit `env:QONTO_CREDENTIAL`. Le provider reste désactivé si la résolution échoue et CONNECTED exige le GET organisation réel. Le contrôle final ne journalise que OUI/NON; jamais le credential, sa longueur, son préfixe ou l'en-tête Authorization.
@@ -45,7 +45,7 @@ Le code attend `QONTO_CREDENTIAL_REF` (référence vers `QONTO_CREDENTIAL`), `QO
 
 La résolution conserve la priorité existante `QONTO_SECRET_REF` → `QONTO_CREDENTIAL_REF` → `env:QONTO_CREDENTIAL`. La sélection, la présence de la clé d'environnement et la résolution sont exposées uniquement par des indicateurs OUI/NON : ni nom opaque, valeur, longueur, préfixe ou empreinte du credential n'est rendu.
 
-Une référence absente, vide ou non résolue donne `NOT_CONFIGURED` sans requête HTTP (`SECRET_REFERENCE_UNRESOLVED` si une référence explicite ne peut être résolue). Un credential résolu installe le vrai provider et exécute `GET /v2/organization` : le succès donne `CONNECTED`; tout échec donne `ERROR`/fraîcheur `ERROR`, avec les catégories `AUTH`, `RATE_LIMIT`, `TIMEOUT`, `NETWORK`, `HTTP`, `INVALID_RESPONSE` ou `UNKNOWN`. Les codes 401/403 sont `AUTH`, 429 `RATE_LIMIT`, 408/timeouts `TIMEOUT`, DNS/connexion/TLS `NETWORK`, les autres 4xx/5xx `HTTP`, et un JSON ou une structure invalide `INVALID_RESPONSE`.
+Une référence absente, vide ou non résolue donne `NOT_CONFIGURED` sans requête HTTP (`SECRET_REFERENCE_UNRESOLVED` si une référence explicite ne peut être résolue). Un credential résolu installe le vrai provider et exécute `GET /v2/organization` : le succès donne `CONNECTED`; tout échec donne `ERROR`/fraîcheur `ERROR`, avec les catégories `AUTH`, `SCOPE`, `WAF`, `RATE_LIMIT`, `TIMEOUT`, `NETWORK`, `HTTP`, `INVALID_RESPONSE` ou `UNKNOWN`. Le code 401 est `AUTH`, un 403 Qonto est `SCOPE`, 429 est `RATE_LIMIT`, 408/timeouts `TIMEOUT`, DNS/connexion/TLS `NETWORK`, les autres 4xx/5xx `HTTP`, et un JSON ou une structure invalide `INVALID_RESPONSE`.
 
 **Tester maintenant** relance ce health check même après une erreur. Un succès résout l'erreur active et autorise le job BANK; seule une synchronisation et son commit durable rendent ensuite la source `FRESH`. Le provider réel est conservé après un health en erreur afin de permettre cette reprise.
 
@@ -55,8 +55,14 @@ Après déploiement, ouvrir **Administration → Data Hub**, contrôler que Qont
 
 ## Blocage Cloudflare 1010
 
-Le client s'identifie comme `DrCloud-OS/1.0 (+https://osdrcloud.fr)`, accepte du JSON et n'envoie aucun header de navigateur artificiel. Un `403` présentant les marqueurs Cloudflare et le code `1010` est classé `WAF / CLOUDFLARE`, jamais `AUTH`, et n'est pas rejoué automatiquement. Un `401/403` JSON émis par Qonto demeure une erreur d'authentification.
+Le client s'identifie comme `DrCloud-OS/1.0 (+https://osdrcloud.fr)`, accepte du JSON et n'envoie aucun header de navigateur artificiel. Un `403` présentant les marqueurs Cloudflare et le code `1010` est classé `WAF / CLOUDFLARE`, jamais `AUTH`, et n'est pas rejoué automatiquement. Un 401 JSON émis par Qonto demeure `AUTH`; un 403 Qonto sans preuve Cloudflare est `SCOPE`.
 
 Depuis le conteneur applicatif, `python -m dr_cloud_sync.qonto_diagnostic` exécute en lecture seule les contrôles DNS, TLS et HTTP sans imprimer de corps ni de secret. Si `QONTO_CREDENTIAL` est disponible dans l'environnement du processus, les variantes authentifiées utilisent exactement `Authorization: {sign-in}:{secret-key}`. La sortie est limitée aux statuts DNS/TLS, HTTP, `Server`, `cf-ray`, code Cloudflare, content type et durée.
 
 Administration affiche le Ray ID et permet de copier un ticket support assaini. L'IP sortante doit seulement être complétée depuis un panneau Administration protégé lorsque la politique d'exploitation l'autorise; elle n'est ni découverte ni publiée par l'interface générale.
+
+## Rotation et états opérateur
+
+Créer la nouvelle clé dans Qonto, remplacer atomiquement le secret GitHub `QONTO_CREDENTIAL`, redéployer puis exécuter le health authentifié avant de révoquer l'ancienne clé. Ne jamais tester une clé en la collant dans un terminal partagé. Un 401 stable est `CREDENTIAL_REJECTED` et exige une nouvelle valeur; un 403 Qonto est `SCOPE_MISSING`; un 403 Cloudflare 1010 est `WAF`; réseau/timeout est `UNAVAILABLE`; toute réponse incohérente est `ERROR`. `CONNECTED` prouve un vrai GET organisation authentifié. `FORMAT_INVALID` n'émet aucune requête.
+
+Le diagnostic n'expose que les booléens de présence/structure, `authorization_sent`, l'endpoint, le statut HTTP, la classification provider, `cf-ray`, `request-id` et la durée. Il ne sérialise jamais la valeur, sa longueur, les headers ni le corps. Le connecteur ne fournit pas de temps réel, ne crée aucune transaction et ne peut pas corriger une clé révoquée, un scope manquant ou une règle WAF : ces cas demandent respectivement une rotation Qonto, l'autorisation de lecture ou le support Qonto avec le Ray ID assaini.
