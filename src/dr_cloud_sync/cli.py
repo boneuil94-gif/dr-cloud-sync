@@ -27,12 +27,13 @@ from .rehydration import (CatalogueRehydrationService, historical_observations,
                           packaged_historical_snapshot, run_rehydration_job)
 from .repositories import SQLiteOSRepository
 from .production_evidence import (backup_inventory, reconciliation_report,
-                                  restore_test, rollback_check, snapshot)
+                                  recovery_report, restore_test, rollback_check, snapshot)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Importe le catalogue maître PrestaShop")
-    parser.add_argument("command", choices=["pull", "shopcaisse-pull", "shopcaisse-import-dry-run", "shopcaisse-import-pilot", "shopcaisse-import-controlled", "shopcaisse-import-all", "build-catalog-mapping", "analyse-mapping-exceptions", "create-mapping-exceptions", "build-final-mapping", "inventory-serve", "os-serve", "automation-worker", "sumup-migrate", "os-init-catalog", "os-backup", "catalogue-rehydrate", "production-evidence", "backup-status", "restore-test", "rollback-check", "data-coverage", "finance-reconciliation-report"], help="Commande DrCloud")
+    parser.add_argument("command", choices=["pull", "shopcaisse-pull", "shopcaisse-import-dry-run", "shopcaisse-import-pilot", "shopcaisse-import-controlled", "shopcaisse-import-all", "build-catalog-mapping", "analyse-mapping-exceptions", "create-mapping-exceptions", "build-final-mapping", "inventory-serve", "os-serve", "automation-worker", "sumup-migrate", "os-init-catalog", "os-backup", "catalogue-rehydrate", "production-evidence", "backup-status", "restore-test", "rollback-check", "recovery-report", "data-coverage", "finance-reconciliation-report"], help="Commande DrCloud")
+    parser.add_argument("--json", action="store_true", help="Sortie JSON machine-readable (par défaut pour les preuves)")
     parser.add_argument("--apply-safe", action="store_true", help="Applique explicitement les seuls enrichissements SAFE")
     parser.add_argument("--snapshot", type=Path, default=packaged_historical_snapshot())
     parser.add_argument("--report", type=Path, default=Path("dist/rapport-rehydratation-catalogue.json"))
@@ -202,11 +203,16 @@ def main(argv: list[str] | None = None) -> int:
                                 actor=os.environ.get("DRCLOUD_ACTOR","cli-admin"))
         print(json.dumps({"status":"applied" if args.apply_safe else "dry-run",
                           "job_id":job.job_id,"summary":job.summary,"report":str(args.report)},ensure_ascii=False))
-    elif args.command in {"production-evidence","backup-status","restore-test","rollback-check","data-coverage","finance-reconciliation-report"}:
+    elif args.command in {"production-evidence","backup-status","restore-test","rollback-check","recovery-report","data-coverage","finance-reconciliation-report"}:
         settings=OSSettings.from_env(require_secrets=False); backup_root=Path(os.environ.get("DRCLOUD_BACKUP_DIR",settings.data_dir/"backups"))
         if args.command == "backup-status": result=backup_inventory(backup_root)
         elif args.command == "restore-test": result=restore_test(backup_root)
         elif args.command == "rollback-check": result=rollback_check(Path(os.environ["DRCLOUD_ROLLBACK_REPORT"]) if os.environ.get("DRCLOUD_ROLLBACK_REPORT") else None)
+        elif args.command == "recovery-report":
+            rollback_path=Path(os.environ["DRCLOUD_ROLLBACK_REPORT"]) if os.environ.get("DRCLOUD_ROLLBACK_REPORT") else None
+            result=recovery_report(backup_root,rollback_report=rollback_path)
+            evidence_path=Path(os.environ.get("DRCLOUD_RECOVERY_REPORT","recovery_evidence.json"))
+            evidence_path.write_text(json.dumps(result,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
         elif args.command == "finance-reconciliation-report": result=reconciliation_report(settings.database)
         else:
             from .data_hub import DataHub

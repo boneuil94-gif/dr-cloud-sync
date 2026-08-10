@@ -11,10 +11,12 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sqlite3
 import ssl
 import tempfile
 import time
+from uuid import uuid4
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -102,37 +104,109 @@ def backup_inventory(root: Path, *, stale_after_seconds: int = 86400) -> dict:
         db=bundle/"drcloud.db" if bundle.is_dir() else bundle
         meta=bundle/"metadata.json" if bundle.is_dir() else None
         if not db.is_file(): continue
-        stat=db.stat(); checksum=hashlib.sha256(db.read_bytes()).hexdigest()
+        stat=db.stat(); checksum=hashlib.sha256(db.read_bytes()).hexdigest(); manifest={}
         created=datetime.fromtimestamp(stat.st_mtime, timezone.utc)
         if meta and meta.exists():
-            try: created=datetime.fromisoformat(json.loads(meta.read_text()).get("created_at", "").replace("Z", "+00:00"))
+            try:
+                manifest=json.loads(meta.read_text()); created=datetime.fromisoformat(manifest.get("created_at", "").replace("Z", "+00:00"))
             except (ValueError, json.JSONDecodeError): pass
-        rows.append({"backup_id": bundle.name, "created_at": created.isoformat().replace("+00:00", "Z"), "size_bytes": stat.st_size, "sha256": checksum, "database": str(db)})
+        valid=stat.st_size > 0
+        try:
+            with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as connection:
+                quick=connection.execute("PRAGMA quick_check").fetchone()[0]
+                schema="\n".join((r[0] or "") for r in connection.execute("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY type,name"))
+            fingerprint=hashlib.sha256(schema.encode()).hexdigest(); valid &= quick == "ok" and bool(schema)
+        except sqlite3.DatabaseError: quick="FAILED"; fingerprint=None; valid=False
+        expected=manifest.get("sha256") or next((x.get("sha256") for x in manifest.get("files",[]) if x.get("path")=="drcloud.db"),None)
+        if expected: valid &= expected == checksum
+        rows.append({"backup_id": bundle.name, "created_at": created.isoformat().replace("+00:00", "Z"), "size_bytes": stat.st_size, "sha256": checksum, "database": str(db),
+                     "method":manifest.get("method","UNKNOWN"), "schema_fingerprint":fingerprint,
+                     "quick_check":quick, "manifest_status":manifest.get("status","UNKNOWN"),
+                     "status":"VALID" if valid else "INVALID"})
     rows.sort(key=lambda row: row["created_at"], reverse=True)
     if not rows: status="BACKUP_MISSING"
     else: status="BACKUP_PROVEN" if (datetime.now(timezone.utc)-datetime.fromisoformat(rows[0]["created_at"].replace("Z", "+00:00"))).total_seconds() <= stale_after_seconds else "BACKUP_STALE"
     return {"checked_at": checked, "status": status, "location": str(root), "frequency": os.environ.get("DRCLOUD_BACKUP_FREQUENCY") or "UNKNOWN", "rotation": os.environ.get("DRCLOUD_BACKUP_ROTATION") or "UNKNOWN", "retention": os.environ.get("DRCLOUD_BACKUP_RETENTION") or "UNKNOWN", "backups": rows}
 
 
-def restore_test(root: Path) -> dict:
+def restore_test(root: Path, *, actor: str = "cli-operator", environment: str = "isolated-temporary") -> dict:
     started=time.monotonic(); started_at=now(); inventory=backup_inventory(root)
-    report={"operation":"restore-test", "started_at":started_at, "environment":"isolated-temporary", "target_rpo":None, "target_rto":None}
-    if not inventory["backups"]:
-        return {**report,"completed_at":now(),"duration_seconds":round(time.monotonic()-started,3),"restore_result":"RESTORE_NOT_PROVEN","observed_rpo":None,"observed_rto":None,"integrity_check":"NOT_RUN","foreign_key_check":"NOT_RUN","app_boot":"NOT_RUN","health_result":"NOT_RUN"}
-    latest=inventory["backups"][0]
+    operation_id=str(uuid4()); report={"operation":"restore-test", "operation_id":operation_id, "actor":actor,
+        "commit":os.environ.get("DRCLOUD_COMMIT"), "started_at":started_at, "environment":environment,
+        "target_rpo":None, "target_rto":None}
+    valid=[row for row in inventory["backups"] if row.get("status")=="VALID"]
+    if not valid:
+        result="RESTORE_FAILED" if inventory["backups"] else "RESTORE_NOT_PROVEN"
+        return {**report,"completed_at":now(),"duration_seconds":round(time.monotonic()-started,3),"restore_result":result,
+            "backup_validation":"BACKUP_INVALID" if inventory["backups"] else "BACKUP_MISSING",
+            "observed_rpo":None,"observed_rto":None,"integrity_check":"NOT_RUN","foreign_key_check":"NOT_RUN","app_boot":"NOT_RUN","health_result":"NOT_RUN"}
+    latest=valid[0]; report["backup_id"]=latest["backup_id"]
     try:
         with tempfile.TemporaryDirectory(prefix="drcloud-restore-") as tmp:
-            target=Path(tmp)/"drcloud.db"; shutil.copy2(latest["database"],target)
+            target=Path(tmp)/"drcloud.db"; shutil.copy2(latest["database"],target); database_restored_at=now(); database_restored=time.monotonic()
+            if hashlib.sha256(target.read_bytes()).hexdigest()!=latest["sha256"]: raise sqlite3.DatabaseError("checksum mismatch")
             with sqlite3.connect(f"file:{target}?mode=ro", uri=True) as db:
                 integrity=db.execute("PRAGMA integrity_check").fetchone()[0]
                 foreign=list(db.execute("PRAGMA foreign_key_check")); tables={r[0]:db.execute(f'SELECT count(*) FROM "{r[0]}"').fetchone()[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
                 indexes=db.execute("SELECT count(*) FROM sqlite_master WHERE type='index'").fetchone()[0]
-            good=integrity=="ok" and not foreign
+            restored_schema="\n".join((r[0] or "") for r in sqlite3.connect(f"file:{target}?mode=ro",uri=True).execute("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY type,name"))
+            schema_fingerprint=hashlib.sha256(restored_schema.encode()).hexdigest()
+            good=integrity=="ok" and not foreign and schema_fingerprint==latest["schema_fingerprint"]
+            # A real isolated WSGI boot/probe is deliberately performed against the copied DB.
+            from .inventory_web import create_app
+            from .os_config import OSSettings
+            from wsgiref.simple_server import make_server
+            import threading
+            settings=OSSettings("recovery-test","recovery-secret-not-production","recovery","unused",Path(tmp),"127.0.0.1",0,True,False)
+            (Path(tmp)/"catalogue.json").write_text(json.dumps([{"prestashop_key":"recovery-probe","shopcaisse_item_id":"recovery-probe","product_id":0,"combination_id":None,"name":"Recovery probe"}]),encoding="utf-8")
+            (Path(tmp)/"catalogue-report.json").write_text(json.dumps({"ready_for_inventory":True}),encoding="utf-8")
+            app=create_app(settings); application_started_at=now(); application_started=time.monotonic()
+            server=make_server("127.0.0.1",0,app); thread=threading.Thread(target=server.handle_request,daemon=True); thread.start()
+            with urlopen(f"http://127.0.0.1:{server.server_port}/health",timeout=10) as response:
+                health=json.loads(response.read()); health_ok=response.status==200 and health.get("status")=="ok"
+            thread.join(10); server.server_close(); health_ok_at=now(); health_time=time.monotonic(); good &= health_ok
             completed=now(); duration=round(time.monotonic()-started,3)
             backup_time=datetime.fromisoformat(latest["created_at"].replace("Z", "+00:00")); incident=datetime.fromisoformat(started_at.replace("Z", "+00:00"))
-            return {**report,"completed_at":completed,"duration_seconds":duration,"restore_result":"RESTORE_PROVEN" if good else "RESTORE_FAILED","backup_age_seconds":round((incident-backup_time).total_seconds(),3),"observed_rpo":round((incident-backup_time).total_seconds(),3),"observed_rto":duration if good else None,"integrity_check":integrity,"foreign_key_check":"OK" if not foreign else "FAILED","app_boot":"OK" if good else "FAILED","health_result":"OK" if good else "FAILED","database_size":target.stat().st_size,"table_counts":tables,"index_count":indexes}
-    except (OSError, sqlite3.DatabaseError) as exc:
-        return {**report,"completed_at":now(),"duration_seconds":round(time.monotonic()-started,3),"restore_result":"RESTORE_FAILED","observed_rpo":None,"observed_rto":None,"integrity_check":"FAILED","app_boot":"FAILED","health_result":"FAILED","error":exc.__class__.__name__}
+            return {**report,"completed_at":completed,"database_restored_at":database_restored_at,"application_started_at":application_started_at,"health_ok_at":health_ok_at,
+                "duration_seconds":duration,"database_restore_duration":round(database_restored-started,3),"application_boot_duration":round(application_started-database_restored,3),"health_recovery_duration":round(health_time-application_started,3),
+                "restore_result":"RESTORE_PROVEN" if good else "RESTORE_FAILED","backup_age_seconds":round((incident-backup_time).total_seconds(),3),
+                "observed_rpo":round((incident-backup_time).total_seconds(),3),"observed_rpo_method":"incident_reference_at minus backup_created_at; business data timestamp unavailable",
+                "observed_rto":duration if good else None,"integrity_check":integrity,"foreign_key_check":"OK" if not foreign else "FAILED",
+                "schema_fingerprint":schema_fingerprint,"app_boot":"OK" if good else "FAILED","health_result":"OK" if health_ok else "FAILED","database_size":target.stat().st_size,"table_counts":tables,"index_count":indexes}
+    except Exception as exc:
+        return {**report,"completed_at":now(),"duration_seconds":round(time.monotonic()-started,3),"restore_result":"RESTORE_FAILED","observed_rpo":None,"observed_rto":None,"integrity_check":"FAILED","foreign_key_check":"NOT_RUN","app_boot":"FAILED","health_result":"FAILED","sanitized_error":exc.__class__.__name__}
+
+
+def recovery_report(root: Path, *, rollback_report: Path | None = None) -> dict:
+    """Execute the safe recovery drill and return its PII-free evidence envelope."""
+    backup=backup_inventory(root); restore=restore_test(root); crash=sqlite_crash_test()
+    return sanitize({"timestamp":now(),"environment":"isolated-temporary","commit":os.environ.get("DRCLOUD_COMMIT"),
+        "backup":backup,"restore":restore,"integrity":{"integrity_check":restore.get("integrity_check"),"foreign_key_check":restore.get("foreign_key_check")},
+        "observed_rpo":restore.get("observed_rpo"),"observed_rto":restore.get("observed_rto"),
+        "rollback":rollback_check(rollback_report),"rollback_schema_compatibility":"UNKNOWN",
+        "crash_recovery":crash,"warnings":["Production data was never modified","Rollback was not executed unless an external staging report is supplied"]})
+
+
+def sqlite_crash_test() -> dict:
+    """Kill a WAL writer in a disposable directory, reopen it and prove integrity."""
+    with tempfile.TemporaryDirectory(prefix="drcloud-crash-") as tmp:
+        database=Path(tmp)/"crash.db"
+        code=("import sqlite3,time,sys; db=sqlite3.connect(sys.argv[1]); "
+              "db.execute('PRAGMA journal_mode=WAL'); db.execute('CREATE TABLE evidence(id INTEGER PRIMARY KEY,value TEXT)'); db.commit(); "
+              "db.execute('BEGIN IMMEDIATE'); db.execute(\"INSERT INTO evidence(value) VALUES('uncommitted')\"); "
+              "print('WRITE_STARTED',flush=True); time.sleep(60)")
+        process=subprocess.Popen([os.environ.get("PYTHON","python"),"-c",code,str(database)],stdout=subprocess.PIPE,text=True)
+        marker=process.stdout.readline().strip() if process.stdout else ""; process.kill(); process.wait(timeout=5)
+        try:
+            with sqlite3.connect(database) as db:
+                mode=db.execute("PRAGMA journal_mode").fetchone()[0]
+                integrity=db.execute("PRAGMA integrity_check").fetchone()[0]
+                rows=db.execute("SELECT count(*) FROM evidence").fetchone()[0]
+            passed=marker=="WRITE_STARTED" and mode.lower()=="wal" and integrity=="ok" and rows==0
+            return {"result":"CRASH_RECOVERY_PROVEN" if passed else "CRASH_RECOVERY_FAILED","journal_mode":mode,
+                    "integrity_check":integrity,"uncommitted_rows":rows,"process_exit":process.returncode}
+        except sqlite3.DatabaseError as exc:
+            return {"result":"CRASH_RECOVERY_FAILED","integrity_check":"FAILED","sanitized_error":exc.__class__.__name__}
 
 
 def rollback_check(report_path: Path | None = None) -> dict:

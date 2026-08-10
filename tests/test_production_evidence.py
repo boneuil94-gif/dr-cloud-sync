@@ -3,7 +3,10 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 
 from dr_cloud_sync.production_evidence import (backup_inventory, coverage_contract,
-    reconciliation_report, restore_test, rollback_check, sanitize, sha_status, snapshot)
+    reconciliation_report, recovery_report, restore_test, rollback_check, sanitize,
+    sha_status, snapshot, sqlite_crash_test)
+from dr_cloud_sync.inventory_web import create_app
+from dr_cloud_sync.os_config import OSSettings
 
 
 def make_backup(tmp_path, *, corrupt=False, age=0):
@@ -11,8 +14,10 @@ def make_backup(tmp_path, *, corrupt=False, age=0):
     db=bundle/"drcloud.db"
     if corrupt: db.write_bytes(b"not sqlite")
     else:
-        with sqlite3.connect(db) as conn:
-            conn.executescript("CREATE TABLE sales(id INTEGER PRIMARY KEY); CREATE TABLE sale_payments(id INTEGER); INSERT INTO sales VALUES(1); INSERT INTO sale_payments VALUES(1);")
+        (bundle/"catalogue.json").write_text(json.dumps([{"prestashop_key":"proof","shopcaisse_item_id":"proof","product_id":0,"combination_id":None,"name":"Proof"}]))
+        (bundle/"catalogue-report.json").write_text(json.dumps({"ready_for_inventory":True}))
+        app=create_app(OSSettings("test","local-recovery-secret","operator","unused",bundle,"127.0.0.1",0,True,False))
+        app.service.repo.db.commit(); app.service.repo.db.close()
     stamp=datetime.now(timezone.utc)-timedelta(seconds=age)
     (bundle/"metadata.json").write_text(json.dumps({"created_at":stamp.isoformat()}))
     return root
@@ -48,7 +53,7 @@ def test_restore_missing_corrupt_and_rollback_not_proven(tmp_path):
 def test_reconciliation_partial_and_old_sqlite(tmp_path):
     db=make_backup(tmp_path).joinpath("one/drcloud.db")
     report=reconciliation_report(db)
-    assert report["sales_total"]==1 and report["payments_total"]==1
+    assert report["sales_total"]==0 and report["payments_total"]==0
     assert report["reconciliation_coverage"] is None and report["evidence_status"]=="TESTED"
 
 
@@ -62,3 +67,16 @@ def test_snapshot_has_no_secret_or_pii(tmp_path):
 
 def test_recursive_sanitizer():
     assert sanitize({"token":"bad","safe":{"password":"bad","count":2},"message":"Bearer abc"})=={"safe":{"count":2},"message":"[REDACTED]"}
+
+
+def test_recovery_envelope_targets_are_null_and_contains_no_secrets(tmp_path):
+    report=recovery_report(make_backup(tmp_path))
+    assert report["restore"]["target_rpo"] is None and report["restore"]["target_rto"] is None
+    assert report["restore"]["health_result"] == "OK"
+    assert not any(word in json.dumps(report).lower() for word in ("password", "api_key", "bearer "))
+
+
+def test_real_wal_crash_recovery_discards_uncommitted_write():
+    report=sqlite_crash_test()
+    assert report["result"] == "CRASH_RECOVERY_PROVEN"
+    assert report["integrity_check"] == "ok" and report["uncommitted_rows"] == 0

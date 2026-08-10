@@ -49,3 +49,13 @@ Méthode : 20 code, 20 wired, 20 tests, 25 production data, 10 observable, 5 doc
 | Backup / restore / rollback | 43 | 43 | CODE_EXISTS + TESTED; production NOT_PROVEN | aucune sauvegarde privée ni staging accessible |
 | Data Hub truth contract | — | — | TESTED | fraîcheur séparée de couverture; production totals inconnus |
 | Financial funnel | 57 | 57 | TESTED; production NOT_PROVEN | rapport fail-closed, aucune base production |
+
+## Recovery Evidence Update — 2026-08-10
+
+| FEATURE | CODED | WIRED | TESTED | PROD_DATA | PRODUCTION_PROVEN | EVIDENCE |
+|---|---|---|---|---|---|---|
+| Backup manifest/integrity | YES | YES | YES | NO | NO | SQLite backup API and local production-shaped bundle validated; no private production backup access |
+| Isolated restore + app health | YES | YES | YES | NO | NO | real local copy, real DrCloud WSGI boot and `/health` 200; synthetic local data only |
+| RPO/RTO measurement | YES | YES | YES | NO | NO | local observed RPO/RTO measured; production RPO remains UNKNOWN |
+| Rollback N/N-1 | YES | PARTIAL | PARTIAL | NO | NO | staging/OVH-equivalent execution unavailable; `ROLLBACK_NOT_PROVEN` |
+| SQLite WAL crash recovery | YES | YES | YES | NOT_APPLICABLE | NO | SIGKILL during uncommitted WAL write, reopen/integrity succeeded locally |
