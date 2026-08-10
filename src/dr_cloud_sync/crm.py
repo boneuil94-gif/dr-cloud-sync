@@ -6,7 +6,7 @@ anonymous and are still included in ledger revenue.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_FLOOR
 import hashlib
 import json
@@ -19,7 +19,7 @@ from uuid import uuid4
 CONSENT_STATES={"GRANTED","DENIED","WITHDRAWN","UNKNOWN","NOT_APPLICABLE"}
 CONSENT_CHANNELS={"EMAIL","SMS","PHONE","POSTAL","SOCIAL","PUSH"}
 QUALITY_STATES={"COMPLETE","PARTIAL","LOW_QUALITY","CONFLICT","ANONYMOUS"}
-IDENTITY_STATES={"MATCHED","POSSIBLE","CONFLICT","SEPARATE","ANONYMOUS"}
+IDENTITY_STATES={"MATCHED","PROBABLE","AMBIGUOUS","DISTINCT"}
 CAMPAIGN_STATES={"DRAFT","READY_FOR_REVIEW","APPROVED","BLOCKED_CONSENT","BLOCKED_PROVIDER","SCHEDULED_INTERNAL","MEASURED","CANCELLED"}
 
 SCHEMA="""
@@ -62,7 +62,24 @@ CREATE TRIGGER IF NOT EXISTS loyalty_transactions_no_delete BEFORE DELETE ON loy
 CREATE TABLE IF NOT EXISTS crm_recommendations(recommendation_id TEXT PRIMARY KEY,customer_id TEXT REFERENCES crm_customers(customer_id),reason TEXT NOT NULL,evidence_json TEXT NOT NULL,priority TEXT NOT NULL,allowed_channel TEXT,product_key TEXT,limitation TEXT,confidence REAL NOT NULL,next_action TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS crm_campaigns(campaign_id TEXT PRIMARY KEY,name TEXT NOT NULL,segment_id TEXT,objective TEXT NOT NULL,content TEXT NOT NULL,planned_channel TEXT NOT NULL,consent_required INTEGER NOT NULL,status TEXT NOT NULL,scheduled_at TEXT,measurement_json TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS crm_merge_history(merge_id TEXT PRIMARY KEY,primary_customer_id TEXT NOT NULL,secondary_customer_id TEXT NOT NULL,snapshot_json TEXT NOT NULL,merged_at TEXT NOT NULL,merged_by TEXT NOT NULL,reversed_at TEXT,reversed_by TEXT);
+CREATE TABLE IF NOT EXISTS crm_rfm_settings(
+ settings_id INTEGER PRIMARY KEY CHECK(settings_id=1),config_json TEXT NOT NULL,
+ updated_at TEXT NOT NULL,updated_by TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS crm_refresh_state(
+ state_id INTEGER PRIMARY KEY CHECK(state_id=1),segments_updated_at TEXT,
+ recommendations_updated_at TEXT,last_error TEXT);
 """
+
+DEFAULT_RFM_CONFIG={
+    "version":1,
+    "recency_days":[30,60,90,180],
+    "frequency_orders":[1,2,3,6,10],
+    "monetary_ttc":[0,50,200,500,1000],
+    "lost_after_days":180,
+    "reactivate_after_days":90,
+    "vip_min_orders":6,
+    "vip_min_revenue_ttc":500,
+}
 
 def now() -> str: return datetime.now(timezone.utc).isoformat()
 def normalise_email(value: str|None) -> str|None:
@@ -86,7 +103,10 @@ class CRMService:
         else:
             self.path=Path(path); self.db=sqlite3.connect(self.path,check_same_thread=False)
         self.db.row_factory=sqlite3.Row
-        with self.db:self.db.executescript(SCHEMA)
+        with self.db:
+            self.db.executescript(SCHEMA)
+            self.db.execute("INSERT OR IGNORE INTO crm_rfm_settings VALUES(1,?,?,?)",(json.dumps(DEFAULT_RFM_CONFIG),now(),"system-default"))
+            self.db.execute("INSERT OR IGNORE INTO crm_refresh_state(state_id) VALUES(1)")
 
     def ingest_customer(self,provider: str,external_id: str,record: Mapping[str,Any]) -> dict[str,Any]:
         """Idempotently ingest one explicit source identity; names never cause merging."""
@@ -114,7 +134,9 @@ class CRMService:
             candidates=(set(email_matches)|set(phone_matches))-{customer_id}
             for candidate in candidates:
                 evidence={"email_exact":candidate in email_matches,"phone_exact":candidate in phone_matches,"name_ignored":True}
-                self.db.execute("INSERT INTO crm_identities VALUES(?,?,?,?,?,?,NULL)",(f"identity:{uuid4()}",customer_id,candidate,"POSSIBLE",json.dumps(evidence),stamp))
+                # A single exact contact is strong evidence, but never sufficient
+                # for an automatic merge.  A human must resolve this candidate.
+                self.db.execute("INSERT INTO crm_identities VALUES(?,?,?,?,?,?,NULL)",(f"identity:{uuid4()}",customer_id,candidate,"PROBABLE",json.dumps(evidence),stamp))
             self._source_consents(customer_id,provider,record,stamp)
         return self.customer(customer_id,reveal_pii=True)
 
@@ -145,6 +167,27 @@ class CRMService:
             row=self.db.execute("SELECT status FROM crm_consents WHERE customer_id=? AND channel=? AND purpose=? ORDER BY observed_at DESC,created_at DESC LIMIT 1",(customer_id,channel,purpose)).fetchone()
         return row[0] if row else "UNKNOWN"
 
+    def marketing_consent(self,customer_id,channel="EMAIL"):
+        """Return an explicit marketing decision; absence can never become opt-in."""
+        row=self.db.execute("""SELECT status,source,observed_at,created_at FROM crm_consents
+            WHERE customer_id=? AND channel=? AND purpose IN ('marketing','newsletter')
+            ORDER BY observed_at DESC,created_at DESC LIMIT 1""",(customer_id,channel)).fetchone()
+        if not row:return {"marketing_consent":"UNKNOWN","consent_source":None,"consent_at":None,"revoked_at":None}
+        state={"GRANTED":"OPT_IN","DENIED":"OPT_OUT","WITHDRAWN":"REVOKED"}.get(row["status"],row["status"])
+        return {"marketing_consent":state,"consent_source":row["source"],"consent_at":row["observed_at"] if state=="OPT_IN" else None,"revoked_at":row["observed_at"] if state=="REVOKED" else None}
+
+    def rfm_config(self):
+        row=self.db.execute("SELECT config_json,updated_at,updated_by FROM crm_rfm_settings WHERE settings_id=1").fetchone()
+        return {**json.loads(row[0]),"updated_at":row[1],"updated_by":row[2]}
+
+    def configure_rfm(self,config: Mapping[str,Any],actor="administrator"):
+        merged={**DEFAULT_RFM_CONFIG,**dict(config)}
+        for key in ("recency_days","frequency_orders","monetary_ttc"):
+            values=merged[key]
+            if len(values) not in (4,5) or list(values)!=sorted(values):raise ValueError(f"invalid {key}")
+        with self.db:self.db.execute("UPDATE crm_rfm_settings SET config_json=?,updated_at=?,updated_by=? WHERE settings_id=1",(json.dumps(merged),now(),actor))
+        return self.rfm_config()
+
     def link_sale(self,customer_id,sale_event_id,*,source,link_method="EXTERNAL_CUSTOMER_ID",confidence=1.0,manually_verified=False):
         if link_method not in {"EXTERNAL_CUSTOMER_ID","EXTERNAL_REFERENCE","ORDER_REFERENCE","MANUAL_VERIFIED"}: raise ValueError("non-deterministic sale link")
         with self.db:self.db.execute("INSERT OR IGNORE INTO crm_sale_links VALUES(?,?,?,?,?,?,?,?)",(f"link:{uuid4()}",customer_id,sale_event_id,link_method,float(confidence),source,now(),int(manually_verified)))
@@ -157,19 +200,35 @@ class CRMService:
             rows=self.db.execute("SELECT s.* FROM sale_events s JOIN crm_sale_links l ON l.sale_event_id=s.sale_event_id WHERE l.customer_id=? AND s.sold_at<=? ORDER BY s.sold_at",(cid,end)).fetchall()
             if not rows: continue
             sales=[r for r in rows if r["event_kind"]=="SALE"]; refunds=[r for r in rows if r["event_kind"] in {"REFUND","RETURN"}]
-            money=lambda rs,col: sum((Decimal(r[col]) for r in rs if r[col] is not None),Decimal("0"))
-            revenue=money(sales,"line_total_ttc")-money(refunds,"line_total_ttc"); orders=len({r["external_sale_id"] for r in sales}); dates=[datetime.fromisoformat(r["sold_at"].replace("Z","+00:00")) for r in sales]
+            money=lambda rs,col: None if any(r[col] is None for r in rs) else sum((Decimal(r[col]) for r in rs),Decimal("0"))
+            sales_ttc,refunds_ttc=money(sales,"line_total_ttc"),money(refunds,"line_total_ttc")
+            revenue=None if sales_ttc is None or refunds_ttc is None else sales_ttc-refunds_ttc; orders=len({(r["source"],r["external_sale_id"]) for r in sales})
+            order_dates={ (r["source"],r["external_sale_id"]):datetime.fromisoformat(r["sold_at"].replace("Z","+00:00")) for r in sales }
+            dates=sorted(order_dates.values()); config=self.rfm_config()
             intervals=[(b-a).total_seconds()/86400 for a,b in zip(dates,dates[1:])]; channels={r["channel"] for r in sales if r["channel"]}
             recency=(datetime.fromisoformat(end.replace("Z","+00:00"))-dates[-1]).days if dates else None
-            rscore=5 if recency is not None and recency<=30 else 4 if recency is not None and recency<=60 else 3 if recency is not None and recency<=90 else 2 if recency is not None and recency<=180 else 1
-            fscore=5 if orders>=10 else 4 if orders>=6 else 3 if orders>=3 else 2 if orders>=2 else 1
-            mscore=5 if revenue>=1000 else 4 if revenue>=500 else 3 if revenue>=200 else 2 if revenue>=50 else 1
-            segment="Champions" if min(rscore,fscore,mscore)>=4 else "Nouveaux clients" if orders==1 and rscore>=4 else "Inactifs" if rscore<=2 else "Fidèles" if fscore>=3 else "Données insuffisantes"
-            rfm={"recency":{"value_days":recency,"score":rscore,"rule":"configurable defaults v1"},"frequency":{"value":orders,"score":fscore,"rule":"orders"},"monetary":{"value":str(revenue),"score":mscore,"rule":"Sales Ledger TTC"},"period_end":end,"segment":segment}
-            values=(f"snapshot:{uuid4()}",cid,dates[0].isoformat() if dates else None,end,dates[0].isoformat() if dates else None,dates[-1].isoformat() if dates else None,orders,len({r['external_sale_id'] for r in rows}),str(revenue),str(money(sales,"line_total_ht")-money(refunds,"line_total_ht")),str(revenue/orders) if orders else None,orders/max(1,(dates[-1]-dates[0]).days)*30 if len(dates)>1 else None,sum(intervals)/len(intervals) if intervals else None,str(sum((Decimal(r['quantity']) for r in sales),Decimal('0'))),str(money(refunds,"line_total_ttc")),sum(1 for r in rows if r['event_kind']=="CANCELLATION"),next(iter(channels)) if len(channels)==1 else "OMNICHANNEL" if channels else None,next((r['location'] for r in sales if r['location']),None),json.dumps(rfm),now())
+            rlimits=config["recency_days"]; rscore=next((5-i for i,x in enumerate(rlimits) if recency<=x),1)
+            fscore=sum(orders>=x for x in config["frequency_orders"]); mscore=None if revenue is None else sum(revenue>=Decimal(str(x)) for x in config["monetary_ttc"])
+            segment=self._segment(recency,orders,revenue,rscore,fscore,mscore,config)
+            rfm={"recency":{"value_days":recency,"score":rscore},"frequency":{"value":orders,"score":fscore},"monetary":{"value":str(revenue) if revenue is not None else None,"score":mscore,"authority":"SALES_LEDGER_TTC"},"config_version":config["version"],"period_end":end,"segment":segment}
+            sales_ht,refunds_ht=money(sales,"line_total_ht"),money(refunds,"line_total_ht"); revenue_ht=None if sales_ht is None or refunds_ht is None else sales_ht-refunds_ht
+            values=(f"snapshot:{uuid4()}",cid,dates[0].isoformat() if dates else None,end,dates[0].isoformat() if dates else None,dates[-1].isoformat() if dates else None,orders,len({r['external_sale_id'] for r in rows}),str(revenue) if revenue is not None else None,str(revenue_ht) if revenue_ht is not None else None,str(revenue/orders) if orders and revenue is not None else None,orders/max(1,(dates[-1]-dates[0]).days)*30 if len(dates)>1 else None,sum(intervals)/len(intervals) if intervals else None,str(sum((Decimal(r['quantity']) for r in sales),Decimal('0'))),str(refunds_ttc) if refunds_ttc is not None else None,sum(1 for r in rows if r['event_kind']=="CANCELLATION"),next(iter(channels)) if len(channels)==1 else "OMNICHANNEL" if channels else None,next((r['location'] for r in sales if r['location']),None),json.dumps(rfm),now())
             with self.db:self.db.execute("INSERT OR REPLACE INTO crm_metric_snapshots VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",values)
             count+=1
-        return {"customers_calculated":count,"revenue_authority":"SALES_LEDGER"}
+        stamp=now()
+        with self.db:self.db.execute("UPDATE crm_refresh_state SET segments_updated_at=?,recommendations_updated_at=?,last_error=NULL WHERE state_id=1",(stamp,stamp))
+        return {"customers_calculated":count,"revenue_authority":"SALES_LEDGER","segments_updated_at":stamp}
+
+    @staticmethod
+    def _segment(recency,orders,revenue,rscore,fscore,mscore,config):
+        if recency is None or orders<1 or revenue is None:return None
+        if recency>config["lost_after_days"]:return "PERDU"
+        if orders>=config["vip_min_orders"] and revenue>=Decimal(str(config["vip_min_revenue_ttc"])):return "VIP" if recency<=config["reactivate_after_days"] else "À RÉACTIVER"
+        if orders==1:return "NOUVEAU" if recency<=config["recency_days"][0] else "OCCASIONNEL"
+        if recency>config["reactivate_after_days"]:return "À RÉACTIVER"
+        if fscore>=3:return "FIDÈLE"
+        if rscore>=4:return "RÉCENT"
+        return "OCCASIONNEL"
 
     def loyalty_simulate(self,customer_id,amount,*,points_per_euro=1,minimum=0,maximum=None):
         raw=(Decimal(str(amount))*Decimal(str(points_per_euro))).quantize(Decimal("1"),rounding=ROUND_FLOOR); points=int(raw)
@@ -215,9 +274,78 @@ class CRMService:
         result=dict(row);result["quality_details"]=json.loads(result.pop("quality_details_json"))
         if not reveal_pii:result.update(email_normalized=mask_email(result["email_normalized"]),phone_normalized=mask_phone(result["phone_normalized"]))
         result["consents"]={channel:self.consent_status(customer_id,channel) for channel in sorted(CONSENT_CHANNELS)};result["loyalty"]=self.loyalty(customer_id)
+        result["marketing"] = self.marketing_consent(customer_id)
         return result
 
-    def customers(self,query="",page=1,per_page=25,reveal_pii=False):
+    def customer_360(self,customer_id,reveal_pii=False):
+        """Unified observed view. Missing source facts deliberately remain ``None``."""
+        result=self.customer(customer_id,reveal_pii)
+        snapshot=self.db.execute("SELECT * FROM crm_metric_snapshots WHERE customer_id=? ORDER BY period_end DESC LIMIT 1",(customer_id,)).fetchone()
+        metrics=dict(snapshot) if snapshot else {}
+        rfm=json.loads(metrics.get("rfm_json","{}")) if metrics else {}
+        rows=self.db.execute("""SELECT s.* FROM sale_events s JOIN crm_sale_links l ON l.sale_event_id=s.sale_event_id
+            WHERE l.customer_id=? AND s.event_kind='SALE' ORDER BY s.sold_at""",(customer_id,)).fetchall()
+        products={}
+        order_product={}
+        for row in rows:
+            key=row["product_key"]
+            if key:
+                entry=products.setdefault(key,{"product_key":key,"quantity":Decimal("0"),"purchase_dates":[]})
+                entry["quantity"]+=Decimal(row["quantity"]);entry["purchase_dates"].append(row["sold_at"])
+                order_product.setdefault((row["source"],row["external_sale_id"]),set()).add(key)
+        product_list=[]
+        for item in products.values():
+            dates=sorted({datetime.fromisoformat(x.replace("Z","+00:00")) for x in item.pop("purchase_dates")})
+            intervals=[(b-a).total_seconds()/86400 for a,b in zip(dates,dates[1:])]
+            mean=sum(intervals)/len(intervals) if intervals else None
+            predicted=(dates[-1]+timedelta(days=mean)).isoformat() if mean is not None else None
+            product_list.append({**item,"quantity":str(item["quantity"]),"last_purchase_at":dates[-1].isoformat(),"observed_intervals_days":intervals or None,"average_interval_days":mean,"potential_next_purchase_at":predicted,"prediction_status":"PREDICTED" if predicted else "UNKNOWN"})
+        pairs={}
+        for keys in order_product.values():
+            for a in sorted(keys):
+                for b in sorted(keys):
+                    if a<b:pairs[(a,b)]=pairs.get((a,b),0)+1
+        result["metrics"]={
+            "first_visit_at":metrics.get("first_order_at"),"last_visit_at":metrics.get("last_order_at"),
+            "orders_count":metrics.get("order_count"),"historical_revenue_ttc":metrics.get("revenue_ttc"),
+            "historical_margin":self._known_margin(customer_id),"average_basket":metrics.get("average_basket"),
+            "purchase_frequency":metrics.get("purchase_frequency"),"average_interval_days":metrics.get("average_interval_days"),
+            "days_since_last_purchase":rfm.get("recency",{}).get("value_days"),"segment":rfm.get("segment"),
+            "main_channel":metrics.get("main_channel"),"customer_since":result["created_at"],
+        }
+        result["products"]=sorted(product_list,key=lambda x:Decimal(x["quantity"]),reverse=True)
+        result["favorite_categories"]=None # no authoritative category on sale_events
+        result["products_bought_together"]=[{"products":list(k),"observed_orders":v} for k,v in sorted(pairs.items(),key=lambda x:-x[1])]
+        result["why_null"]={"favorite_categories":"Sales Ledger has no category field"}
+        return result
+
+    def _known_margin(self,customer_id):
+        rows=self.db.execute("""SELECT s.line_total_ht,s.cost_basis,s.quantity FROM sale_events s
+            JOIN crm_sale_links l ON l.sale_event_id=s.sale_event_id WHERE l.customer_id=? AND s.event_kind='SALE'""",(customer_id,)).fetchall()
+        if not rows or any(r["line_total_ht"] is None or r["cost_basis"] is None for r in rows):return None
+        return str(sum((Decimal(r["line_total_ht"])-Decimal(r["cost_basis"])*Decimal(r["quantity"]) for r in rows),Decimal("0")))
+
+    def duplicate_candidates(self):
+        rows=self.db.execute("""SELECT i.*,a.display_name customer_name,b.display_name candidate_name
+            FROM crm_identities i JOIN crm_customers a ON a.customer_id=i.customer_id
+            JOIN crm_customers b ON b.customer_id=i.candidate_customer_id WHERE i.resolved_at IS NULL ORDER BY i.created_at""").fetchall()
+        return [{**dict(r),"evidence":json.loads(r["evidence_json"]),"human_validation_required":r["state"] in {"PROBABLE","AMBIGUOUS"}} for r in rows]
+
+    def action_center(self):
+        actions=[]
+        for row in self.db.execute("SELECT customer_id,rfm_json,average_interval_days,last_order_at FROM crm_metric_snapshots WHERE (customer_id,period_end) IN (SELECT customer_id,max(period_end) FROM crm_metric_snapshots GROUP BY customer_id)"):
+            rfm=json.loads(row["rfm_json"]); segment=rfm.get("segment"); recency=rfm.get("recency",{}).get("value_days")
+            reason=None; action=None
+            if segment=="VIP" and recency is not None and recency>30:reason=f"VIP sans achat depuis {recency} jours";action="Préparer une réactivation"
+            elif segment=="À RÉACTIVER":reason=f"Dernier achat observé il y a {recency} jours";action="Préparer une réactivation"
+            elif segment=="NOUVEAU":reason="Une seule commande récente observée";action="Préparer un parcours de fidélisation"
+            elif row["average_interval_days"] is not None and recency is not None and recency>=row["average_interval_days"]*.8:reason=f"Proche de l'intervalle observé de {row['average_interval_days']:.1f} jours";action="Vérifier une opportunité de réachat"
+            if reason:
+                consent=self.marketing_consent(row["customer_id"])
+                actions.append({"customer_id":row["customer_id"],"segment":segment,"why_this_customer":reason,"suggested_action":action,"marketing_consent":consent["marketing_consent"],"send_allowed":consent["marketing_consent"]=="OPT_IN","automatic_send":False})
+        return actions
+
+    def customers(self,query="",page=1,per_page=25,reveal_pii=False,filters=None):
         page=max(1,int(page));per_page=min(100,max(1,int(per_page)));needle=f"%{str(query).strip().casefold()}%"
         where="merged_into IS NULL";args=[]
         if query:where+=" AND (lower(COALESCE(display_name,'')) LIKE ? OR lower(COALESCE(email_normalized,'')) LIKE ? OR COALESCE(phone_normalized,'') LIKE ? OR customer_id IN (SELECT customer_id FROM crm_external_references WHERE lower(external_id) LIKE ?))";args=[needle]*4
@@ -228,5 +356,19 @@ class CRMService:
     def cockpit(self):
         identified=self.db.execute("SELECT count(*) FROM crm_customers WHERE status='CLIENT_IDENTIFIED' AND merged_into IS NULL").fetchone()[0]
         ledger=self.db.execute("SELECT count(*),sum(CASE WHEN l.link_id IS NULL THEN 1 ELSE 0 END) FROM sale_events s LEFT JOIN crm_sale_links l ON l.sale_event_id=s.sale_event_id WHERE s.event_kind='SALE'").fetchone()
-        attributed=self.db.execute("SELECT sum(CAST(s.line_total_ttc AS REAL)) FROM sale_events s JOIN crm_sale_links l ON l.sale_event_id=s.sale_event_id WHERE s.event_kind='SALE'").fetchone()[0]
-        return {"identified_customers":identified,"attributed_revenue_ttc":attributed,"anonymous_sales":ledger[1],"anonymous_share":None if not ledger[0] else ledger[1]/ledger[0],"freshness":now(),"coverage":{"linked_sales":ledger[0]-ledger[1],"total_sales":ledger[0]},"external_messaging":False}
+        attributed_row=self.db.execute("SELECT sum(CAST(s.line_total_ttc AS REAL)),sum(s.line_total_ttc IS NULL) FROM sale_events s JOIN crm_sale_links l ON l.sale_event_id=s.sale_event_id WHERE s.event_kind='SALE'").fetchone()
+        total_row=self.db.execute("SELECT sum(CAST(line_total_ttc AS REAL)),sum(line_total_ttc IS NULL) FROM sale_events WHERE event_kind='SALE'").fetchone()
+        attributed=None if attributed_row[1] else attributed_row[0]
+        total_revenue=None if total_row[1] else total_row[0]
+        snapshots=[json.loads(r[0]) for r in self.db.execute("SELECT rfm_json FROM crm_metric_snapshots WHERE (customer_id,period_end) IN (SELECT customer_id,max(period_end) FROM crm_metric_snapshots GROUP BY customer_id)")]
+        distribution={}; active=0
+        for rfm in snapshots:
+            segment=rfm.get("segment");distribution[segment]=distribution.get(segment,0)+1
+            if rfm.get("recency",{}).get("value_days",10**9)<=90:active+=1
+        consent_known=self.db.execute("SELECT count(*) FROM crm_customers c WHERE c.merged_into IS NULL AND EXISTS(SELECT 1 FROM crm_consents x WHERE x.customer_id=c.customer_id AND x.purpose IN ('marketing','newsletter'))").fetchone()[0]
+        state=self.db.execute("SELECT * FROM crm_refresh_state WHERE state_id=1").fetchone()
+        sales_coverage=None if not ledger[0] else (ledger[0]-ledger[1])/ledger[0]
+        revenue_coverage=None if total_revenue in (None,0) or attributed is None else attributed/total_revenue
+        known=self.db.execute("SELECT count(*) FROM crm_customers WHERE merged_into IS NULL").fetchone()[0]
+        probable=self.db.execute("SELECT count(*) FROM crm_identities WHERE state IN ('PROBABLE','AMBIGUOUS') AND resolved_at IS NULL").fetchone()[0]
+        return {"identified_customers":identified,"customers_known":known,"customers_active":active if snapshots else None,"attributed_revenue_ttc":attributed,"anonymous_sales":ledger[1],"anonymous_share":None if not ledger[0] else ledger[1]/ledger[0],"freshness":now(),"coverage":{"linked_sales":ledger[0]-ledger[1],"total_sales":ledger[0],"sales_customer_link_coverage":sales_coverage,"revenue_customer_link_coverage":revenue_coverage},"customers_with_marketing_consent":consent_known,"consent_unknown":known-consent_known,"duplicates_probable":probable,"rfm_distribution":distribution,"crm_segments_updated_at":state["segments_updated_at"],"external_messaging":False}
