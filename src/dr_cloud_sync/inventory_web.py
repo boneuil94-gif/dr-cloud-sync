@@ -51,6 +51,7 @@ from .finance import FinanceProjection
 from .settlements import PaymentSettlementService
 from .financial_reconciliation import FinancialReconciliationService
 from .purchase_cost import PurchaseCostLedger
+from .replenishment import ReplenishmentEngine
 from .crm import CRMService
 
 ROOT = Path(__file__).parent / "static"
@@ -89,6 +90,7 @@ class InventoryApp:
         self.suppliers=SupplierService(SQLiteSupplierRepository(service.repo.path),self.os_repository)
         self.purchase_orders=PurchaseOrderService(SQLitePurchaseOrderRepository(service.repo.path),self.suppliers,self.os_repository,self.os_repository)
         self.purchase_costs=PurchaseCostLedger(service.repo.path,self.os_repository)
+        self.replenishment=ReplenishmentEngine(service.repo.path,self.os_repository)
         self.goods_receipts=GoodsReceiptService(SQLiteGoodsReceiptRepository(service.repo.path,service.repo.db),self.purchase_orders,service.repo,self.os_repository,self.purchase_costs)
         self.security=SecurityStore(service.repo.path,settings.admin_username,settings.admin_password) if settings else None
         self.credentials=CredentialStore(service.repo.path,settings.admin_password) if settings else None
@@ -591,6 +593,15 @@ class InventoryApp:
                 return self._html(start,"purchasing.html",session,request_id)
             if path.startswith("/achats/receptions"):
                 return self._html(start,"purchasing.html",session,request_id)
+            if path == "/api/replenishment" and method == "GET":
+                return self._json(start,{"products":[self.replenishment.snapshot(p.drcloud_product_key) for p in self.os_repository.all()],"evidence":self.replenishment.evidence()})
+            if path == "/api/replenishment/refresh" and method == "POST":
+                return self._json(start,self.replenishment.refresh())
+            if path == "/api/replenishment/settings" and method == "PATCH":
+                return self._json(start,self.replenishment.configure(**self._body(env)))
+            if path.startswith("/api/replenishment/suggestions/") and path.endswith("/status") and method == "POST":
+                identifier=unquote(path.removeprefix("/api/replenishment/suggestions/").removesuffix("/status"))
+                return self._json(start,self.replenishment.transition(identifier,self._body(env)["status"]))
             if path == "/api/goods-receipts" and method == "GET":
                 return self._json(start,{"goods_receipts":[self._goods_receipt(r) for r in self.goods_receipts.repository.list()]})
             if path.startswith("/api/goods-receipts/"):

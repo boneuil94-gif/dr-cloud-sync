@@ -209,6 +209,7 @@ class PurchaseOrderLine:
     unit_cost: str | None = None
     created_at: str = field(default_factory=utc_now)
     updated_at: str = field(default_factory=utc_now)
+    discount: str = "0.00"
 
     def __post_init__(self) -> None:
         if not self.line_id.startswith("pol:") or not self.purchase_order_id.startswith("po:"):
@@ -232,6 +233,7 @@ class PurchaseOrder:
     currency: str = "EUR"
     created_at: str = field(default_factory=utc_now)
     updated_at: str = field(default_factory=utc_now)
+    fees: str = "0.00"
 
     def __post_init__(self) -> None:
         if not self.purchase_order_id.startswith("po:"):
@@ -258,6 +260,9 @@ class Supplier:
     notes: str = ""
     created_at: str = field(default_factory=utc_now)
     updated_at: str = field(default_factory=utc_now)
+    currency: str = "EUR"
+    minimum_order: str | None = None
+    fees: str | None = None
 
     def __post_init__(self) -> None:
         if not self.supplier_id.strip():

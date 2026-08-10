@@ -31,7 +31,8 @@ class DuplicateSupplierIdentity(ValueError):
 
 class SQLiteSupplierRepository:
     COLUMNS = ("supplier_id","name","status","email","phone","website","address",
-               "postal_code","city","country","contact_name","notes","created_at","updated_at")
+               "postal_code","city","country","contact_name","notes","created_at","updated_at",
+               "currency","minimum_order","fees")
 
     def __init__(self, path: Path):
         self.db = sqlite3.connect(path, check_same_thread=False)
@@ -42,6 +43,9 @@ class SQLiteSupplierRepository:
           address TEXT NOT NULL DEFAULT '', postal_code TEXT NOT NULL DEFAULT '', city TEXT NOT NULL DEFAULT '',
           country TEXT NOT NULL DEFAULT '', contact_name TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',
           created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""")
+        columns={r[1] for r in self.db.execute("PRAGMA table_info(suppliers)")}
+        for name,definition in (("currency","TEXT NOT NULL DEFAULT 'EUR'"),("minimum_order","TEXT"),("fees","TEXT")):
+            if name not in columns:self.db.execute(f"ALTER TABLE suppliers ADD COLUMN {name} {definition}")
         self.db.execute("CREATE INDEX IF NOT EXISTS ix_suppliers_status ON suppliers(status)")
         self.db.execute("CREATE INDEX IF NOT EXISTS ix_suppliers_name ON suppliers(name)")
         self.db.commit()
@@ -105,6 +109,16 @@ class SupplierService:
             values[key]=value
         if not values["name"]: raise ValueError("name is required")
         if values["email"] and not self.EMAIL.fullmatch(values["email"]): raise ValueError("email is invalid")
+        currency=str(data.get("currency",getattr(current,"currency","EUR"))).strip().upper()
+        if not re.fullmatch(r"[A-Z]{3}",currency): raise ValueError("currency must be an ISO code")
+        values["currency"]=currency
+        for field in ("minimum_order","fees"):
+            raw=data.get(field,getattr(current,field,None))
+            if raw in (None,""): values[field]=None; continue
+            try: amount=Decimal(str(raw))
+            except InvalidOperation as exc: raise ValueError(f"{field} is invalid") from exc
+            if not amount.is_finite() or amount<0: raise ValueError(f"{field} must be positive or zero")
+            values[field]=str(amount.quantize(Decimal("0.01"),rounding=ROUND_HALF_UP))
         return values
 
     def duplicates(self, name, exclude=None):
@@ -155,8 +169,8 @@ class PurchaseOrderRepository(Protocol):
 
 
 class SQLitePurchaseOrderRepository:
-    ORDER_COLUMNS=("purchase_order_id","supplier_id","status","reference","supplier_reference","ordered_at","expected_at","notes","currency","created_at","updated_at")
-    LINE_COLUMNS=("line_id","purchase_order_id","product_key","supplier_product_reference","ordered_quantity","unit_cost","created_at","updated_at")
+    ORDER_COLUMNS=("purchase_order_id","supplier_id","status","reference","supplier_reference","ordered_at","expected_at","notes","currency","created_at","updated_at","fees")
+    LINE_COLUMNS=("line_id","purchase_order_id","product_key","supplier_product_reference","ordered_quantity","unit_cost","created_at","updated_at","discount")
     def __init__(self,path:Path):
         self.db=sqlite3.connect(path,check_same_thread=False); self.db.row_factory=sqlite3.Row
         self.db.execute("PRAGMA foreign_keys=ON")
@@ -170,6 +184,10 @@ class SQLitePurchaseOrderRepository:
           supplier_product_reference TEXT NOT NULL DEFAULT '',ordered_quantity INTEGER NOT NULL CHECK(ordered_quantity>0),
           unit_cost TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
           FOREIGN KEY(purchase_order_id) REFERENCES purchase_orders(purchase_order_id) ON DELETE RESTRICT)""")
+        order_columns={r[1] for r in self.db.execute("PRAGMA table_info(purchase_orders)")}
+        line_columns={r[1] for r in self.db.execute("PRAGMA table_info(purchase_order_lines)")}
+        if "fees" not in order_columns:self.db.execute("ALTER TABLE purchase_orders ADD COLUMN fees TEXT NOT NULL DEFAULT '0.00'")
+        if "discount" not in line_columns:self.db.execute("ALTER TABLE purchase_order_lines ADD COLUMN discount TEXT NOT NULL DEFAULT '0.00'")
         self.db.execute("CREATE INDEX IF NOT EXISTS ix_purchase_orders_status ON purchase_orders(status)")
         self.db.execute("CREATE INDEX IF NOT EXISTS ix_purchase_orders_supplier ON purchase_orders(supplier_id)")
         self.db.execute("CREATE INDEX IF NOT EXISTS ix_purchase_order_lines_order ON purchase_order_lines(purchase_order_id)"); self.db.commit()
@@ -183,7 +201,7 @@ class SQLitePurchaseOrderRepository:
         where=" WHERE status=?" if status else ""; params=(PurchaseOrderStatus(status).value,) if status else ()
         return [self._order(r) for r in self.db.execute("SELECT * FROM purchase_orders"+where+" ORDER BY created_at DESC",params)]
     def update_draft(self,o):
-        with self.db:r=self.db.execute("""UPDATE purchase_orders SET supplier_id=?,reference=?,supplier_reference=?,expected_at=?,notes=?,currency=?,updated_at=? WHERE purchase_order_id=? AND status='DRAFT'""",(o.supplier_id,o.reference,o.supplier_reference,o.expected_at,o.notes,o.currency,o.updated_at,o.purchase_order_id))
+        with self.db:r=self.db.execute("""UPDATE purchase_orders SET supplier_id=?,reference=?,supplier_reference=?,expected_at=?,notes=?,currency=?,fees=?,updated_at=? WHERE purchase_order_id=? AND status='DRAFT'""",(o.supplier_id,o.reference,o.supplier_reference,o.expected_at,o.notes,o.currency,o.fees,o.updated_at,o.purchase_order_id))
         if not r.rowcount: raise ValueError("only DRAFT purchase orders can be modified")
         return o
     def transition_status(self,i,status,ordered_at):
@@ -195,7 +213,7 @@ class SQLitePurchaseOrderRepository:
         with self.db:self.db.execute(f"INSERT INTO purchase_order_lines({','.join(self.LINE_COLUMNS)}) VALUES({','.join('?'*len(self.LINE_COLUMNS))})",tuple(getattr(line,k) for k in self.LINE_COLUMNS))
         return line
     def update_line(self,line):
-        with self.db:r=self.db.execute("UPDATE purchase_order_lines SET supplier_product_reference=?,ordered_quantity=?,unit_cost=?,updated_at=? WHERE line_id=? AND purchase_order_id=?",(line.supplier_product_reference,line.ordered_quantity,line.unit_cost,line.updated_at,line.line_id,line.purchase_order_id))
+        with self.db:r=self.db.execute("UPDATE purchase_order_lines SET supplier_product_reference=?,ordered_quantity=?,unit_cost=?,discount=?,updated_at=? WHERE line_id=? AND purchase_order_id=?",(line.supplier_product_reference,line.ordered_quantity,line.unit_cost,line.discount,line.updated_at,line.line_id,line.purchase_order_id))
         if not r.rowcount: raise KeyError("purchase order line not found")
         return line
     def remove_line(self,oid,lid):
@@ -219,7 +237,8 @@ class PurchaseOrderService:
         return str(amount.quantize(Decimal("0.01"),rounding=ROUND_HALF_UP))
     def create(self,data,actor="authenticated"):
         self._supplier(data.get("supplier_id","")); now=utc_now(); oid=f"po:{uuid.uuid4()}"
-        order=PurchaseOrder(oid,data["supplier_id"],data.get("reference","").strip() or f"PO-{now[:10].replace('-','')}-{oid[-6:].upper()}",supplier_reference=str(data.get("supplier_reference") or "").strip(),expected_at=data.get("expected_at") or None,notes=str(data.get("notes") or "").strip())
+        supplier=self.suppliers.get(data["supplier_id"])
+        order=PurchaseOrder(oid,data["supplier_id"],data.get("reference","").strip() or f"PO-{now[:10].replace('-','')}-{oid[-6:].upper()}",supplier_reference=str(data.get("supplier_reference") or "").strip(),expected_at=data.get("expected_at") or None,notes=str(data.get("notes") or "").strip(),currency=str(data.get("currency") or supplier.currency),fees=self._cost(data.get("fees")) or "0.00")
         self.repository.create(order); self._audit("PURCHASE_ORDER_CREATED",oid,actor); return order
     def get(self,i): return self.repository.get(i)
     def list(self,status=None): return self.repository.list(PurchaseOrderStatus(status) if status else None)
@@ -229,7 +248,7 @@ class PurchaseOrderService:
         if "purchase_order_id" in data and data["purchase_order_id"]!=i: raise ValueError("purchase_order_id is immutable")
         if "status" in data: raise ValueError("use the status transition endpoint")
         sid=data.get("supplier_id",old.supplier_id); self._supplier(sid)
-        changed=replace(old,supplier_id=sid,reference=str(data.get("reference",old.reference)).strip(),supplier_reference=str(data.get("supplier_reference",old.supplier_reference)).strip(),expected_at=data.get("expected_at",old.expected_at) or None,notes=str(data.get("notes",old.notes)).strip(),updated_at=utc_now())
+        changed=replace(old,supplier_id=sid,reference=str(data.get("reference",old.reference)).strip(),supplier_reference=str(data.get("supplier_reference",old.supplier_reference)).strip(),expected_at=data.get("expected_at",old.expected_at) or None,notes=str(data.get("notes",old.notes)).strip(),fees=self._cost(data.get("fees",old.fees)) or "0.00",updated_at=utc_now())
         self.repository.update_draft(changed); self._audit("PURCHASE_ORDER_UPDATED",i,actor); return changed
     def _editable(self,i):
         o=self.repository.get(i)
@@ -245,7 +264,7 @@ class PurchaseOrderService:
         try:q=int(data.get("ordered_quantity"))
         except (TypeError,ValueError): raise ValueError("ordered_quantity must be a positive integer")
         if isinstance(data.get("ordered_quantity"), bool) or str(data.get("ordered_quantity")).strip()!=str(q): raise ValueError("ordered_quantity must be a positive integer")
-        line=PurchaseOrderLine(f"pol:{uuid.uuid4()}",i,key,q,str(data.get("supplier_product_reference") or "").strip(),self._cost(data.get("unit_cost")))
+        line=PurchaseOrderLine(f"pol:{uuid.uuid4()}",i,key,q,str(data.get("supplier_product_reference") or "").strip(),self._cost(data.get("unit_cost")),discount=self._cost(data.get("discount")) or "0.00")
         self.repository.add_line(line); self._audit("PURCHASE_ORDER_LINE_ADDED",i,actor,line_id=line.line_id); return line
     def update_line(self,i,lid,data,actor="authenticated"):
         self._editable(i); old=next((x for x in self.repository.list_lines(i) if x.line_id==lid),None)
@@ -254,7 +273,7 @@ class PurchaseOrderService:
         try:q=int(raw_quantity)
         except (TypeError,ValueError): raise ValueError("ordered_quantity must be a positive integer")
         if isinstance(raw_quantity,bool) or str(raw_quantity).strip()!=str(q): raise ValueError("ordered_quantity must be a positive integer")
-        line=replace(old,ordered_quantity=q,supplier_product_reference=str(data.get("supplier_product_reference",old.supplier_product_reference)).strip(),unit_cost=self._cost(data.get("unit_cost",old.unit_cost)),updated_at=utc_now())
+        line=replace(old,ordered_quantity=q,supplier_product_reference=str(data.get("supplier_product_reference",old.supplier_product_reference)).strip(),unit_cost=self._cost(data.get("unit_cost",old.unit_cost)),discount=self._cost(data.get("discount",old.discount)) or "0.00",updated_at=utc_now())
         self.repository.update_line(line); self._audit("PURCHASE_ORDER_LINE_UPDATED",i,actor,line_id=lid); return line
     def remove_line(self,i,lid,actor="authenticated"):
         self._editable(i); self.repository.remove_line(i,lid); self._audit("PURCHASE_ORDER_LINE_REMOVED",i,actor,line_id=lid)
@@ -276,7 +295,7 @@ class PurchaseOrderService:
     def total(self,i):
         lines=self.lines(i)
         if any(x.unit_cost is None for x in lines): return None
-        return str(sum((Decimal(x.unit_cost)*x.ordered_quantity for x in lines),Decimal()).quantize(Decimal("0.01")))
+        return str((sum((Decimal(x.unit_cost)*x.ordered_quantity-Decimal(x.discount) for x in lines),Decimal())+Decimal(self.get(i).fees)).quantize(Decimal("0.01")))
     def activities(self,i): return [a for a in self.audit.activities() if a.drcloud_product_key==i]
 
 
