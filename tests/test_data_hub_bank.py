@@ -109,8 +109,9 @@ def test_sources_uses_single_connection_for_sources_and_schedule(tmp_path):
 def test_production_evidence_api_payload_is_read_only_shape(tmp_path):
  hub=DataHub(tmp_path/'evidence.db');hub.register_source('s','SALES','fake',configured=True)
  payload=hub.production_evidence()['sources'][0]
- assert set(payload) == {'provider','source_id','configuration','connectivity','freshness','last_attempt_at','last_success_at','last_rows_imported','rows_imported','data_min_at','data_max_at','records_available','last_error','next_run_at','last_run_id'}
- assert payload['configuration']=='CONFIGURED' and payload['freshness']=='CONNECTED_NO_DATA'
+ assert set(payload) == {'provider','source_id','freshness','coverage_status','provider_total','imported_total','rejected_total','duplicates_total','last_cursor','data_min_at','data_max_at','last_success_at','coverage_ratio','evidence_status'}
+ assert payload['freshness']=='CONNECTED_NO_DATA'
+ assert payload['coverage_status']=='UNKNOWN_COVERAGE' and payload['coverage_ratio'] is None
 
 def test_sync_all_isolated_ordered_skips_and_detailed_results(tmp_path):
  hub=DataHub(tmp_path/'all.db')

@@ -1,0 +1,19 @@
+{
+  "captured_at": "2026-08-10T13:48:07Z",
+  "environment": "production-public",
+  "expected_main_commit": "6798ab3f156e7c644d45d331f2586998baecf317",
+  "deployed_commit": "6798ab3f156e7c644d45d331f2586998baecf317",
+  "served_commit": "6798ab3f156e7c644d45d331f2586998baecf317",
+  "sha_status": "MATCH",
+  "health": {"url": "https://osdrcloud.fr/health", "http_status": 200, "status": "ok", "application": "drcloud-os", "version": "1.0.0", "database": "ok"},
+  "transport": {"https": "OK", "certificate": "TLS_HANDSHAKE_PROVEN_DETAILS_UNKNOWN", "http_redirect": 308, "redirect_location": "https://osdrcloud.fr/health"},
+  "headers": {"content-security-policy": "PRESENT", "strict-transport-security": "MISSING", "x-content-type-options": "PRESENT", "referrer-policy": "PRESENT", "x-frame-options": "PRESENT"},
+  "private_evidence": "NOT_PROVEN",
+  "backup_status": "UNKNOWN",
+  "restore_result": "RESTORE_NOT_PROVEN",
+  "observed_rpo": null,
+  "observed_rto": null,
+  "rollback_result": "ROLLBACK_NOT_PROVEN",
+  "data_hub_coverage": "UNKNOWN_COVERAGE",
+  "financial_funnel": "NOT_PROVEN"
+}
