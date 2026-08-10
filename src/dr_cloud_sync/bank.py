@@ -87,7 +87,11 @@ class BankLedger:
             if cursor is None: break
         self.store_accounts(provider_name,provider.accounts());self.store_balances(provider_name,provider.balances())
         available=self.db.execute("SELECT count(*) FROM bank_transactions WHERE provider=?",(provider_name,)).fetchone()[0]
+        diagnostic=getattr(provider,"last_sync_diagnostic",None)
+        if diagnostic is not None:
+            diagnostic={**diagnostic,"classification":("TRANSACTIONS_IMPORTED" if total else
+                diagnostic.get("classification","CONNECTED_NO_TRANSACTIONS")),"cursor_after":cursor}
         return {"rows_imported":total,"duplicates":duplicates,"cursor":cursor,
             "data_min_at":min(observed_dates) if observed_dates else None,
             "data_max_at":max(observed_dates) if observed_dates else None,
-            "records_available":available}
+            "records_available":available,"qonto_diagnostic":diagnostic}

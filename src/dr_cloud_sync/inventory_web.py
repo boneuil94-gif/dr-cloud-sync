@@ -276,6 +276,8 @@ class InventoryApp:
             return {"rows_imported":products+combinations,"products_read":products,"combinations_read":combinations}
         def bank(cursor):
             report=self.bank.sync("Qonto",self.bank_provider,cursor)
+            if report.get("qonto_diagnostic"):
+                self.qonto_configuration["transaction_sync"]=report["qonto_diagnostic"]
             # Bank Ledger is durable before settlement recomputation; Qonto remains
             # strictly read-only while SumUp payouts can immediately find credits.
             report["settlements"]=self.settlements.recompute()
