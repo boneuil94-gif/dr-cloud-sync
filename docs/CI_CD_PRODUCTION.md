@@ -47,7 +47,7 @@ sudo chmod 0600 /home/drcloud-deploy/.ssh/authorized_keys
 sudo /opt/drcloud-os/deploy/ovh/prepare-deployment-state.sh
 ```
 
-Conserver le `drcloud.env` de production (mode `0600`) et y ajouter `DRCLOUD_ROADMAP=/app/docs/drcloud-os-roadmap.json`. La clé publique dédiée peut être limitée dans `authorized_keys` par IP source si les plages GitHub utilisées sont maintenues ; le compte n'a besoin d'aucun `sudo`, seulement de l'accès au dépôt et à Docker. Le script de préparation est une opération root unique et idempotente : il fixe `.deployment-state` à `drcloud-deploy:drcloud-deploy 0755`. Les déploiements suivants n'utilisent jamais sudo. Tester ensuite manuellement une fois `update.sh <SHA-main>`.
+Conserver le `drcloud.env` de production (mode `0600`) et y ajouter `DRCLOUD_ROADMAP=/app/config/roadmap_v3.json`. La clé publique dédiée peut être limitée dans `authorized_keys` par IP source si les plages GitHub utilisées sont maintenues ; le compte n'a besoin d'aucun `sudo`, seulement de l'accès au dépôt et à Docker. Le script de préparation est une opération root unique et idempotente : il fixe `.deployment-state` à `drcloud-deploy:drcloud-deploy 0755`. Les déploiements suivants n'utilisent jamais sudo. Tester ensuite manuellement une fois `update.sh <SHA-main>`.
 
 ## Échec, rollback et secours
 

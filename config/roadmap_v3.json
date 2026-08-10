@@ -1,0 +1,243 @@
+{
+  "version": 3,
+  "title": "Roadmap V3 / Module Scorecard — Grand Audit V2",
+  "global_score": 58,
+  "dimensions": {
+    "code_maturity": 72,
+    "production_maturity": 49,
+    "business_completeness": 55,
+    "security": 74,
+    "observability": 61,
+    "test_quality": 76,
+    "ux": 60
+  },
+  "evidence_date": "2026-08-10",
+  "methodology": "Score strict audité; aucune moyenne naïve des modules. Code, wiring, tests, production, observabilité et documentation sont évalués séparément.",
+  "modules": [
+    {
+      "id": "architecture",
+      "name": "Architecture",
+      "score": 68,
+      "status": "PARTIAL",
+      "justification": "domaines, repositories, adapters et jobs structurés",
+      "blocker": "composition WSGI monolithique et schémas dispersés",
+      "next_step": "séparer router/composition et unifier les migrations",
+      "evidence_level": "TESTED"
+    },
+    {
+      "id": "core",
+      "name": "Core",
+      "score": 72,
+      "status": "PARTIAL",
+      "justification": "lifecycle, SQLite, idempotence, retry et health testés",
+      "blocker": "concurrence et crash non éprouvés",
+      "next_step": "tester multi-worker et fault injection",
+      "evidence_level": "TESTED"
+    },
+    {
+      "id": "deployment",
+      "name": "Deployment",
+      "score": 68,
+      "status": "PARTIAL",
+      "justification": "CI/CD au SHA exact et health/HTTPS publics prouvés",
+      "blocker": "restore, rollback et monitoring non prouvés",
+      "next_step": "exercer recovery et rollback avec preuve datée",
+      "evidence_level": "PRODUCTION_PROVEN"
+    },
+    {
+      "id": "security",
+      "name": "Security",
+      "score": 74,
+      "status": "PARTIAL",
+      "justification": "auth, sessions, RBAC, CSRF, headers et audit",
+      "blocker": "PII ops, CVE, pentest et rate-limit production",
+      "next_step": "ajouter SBOM, scans, pentest et revue RGPD",
+      "evidence_level": "PARTIAL"
+    },
+    {
+      "id": "data-hub",
+      "name": "Data Hub",
+      "score": 65,
+      "status": "PARTIAL",
+      "justification": "sources, batches, retry, freshness et schema health",
+      "blocker": "fraîcheur ne prouve pas l’exhaustivité",
+      "next_step": "publier totaux d’autorité, alerting et SLO",
+      "evidence_level": "TESTED"
+    },
+    {
+      "id": "shopcaisse",
+      "name": "ShopCaisse",
+      "score": 58,
+      "status": "PARTIAL",
+      "justification": "API/CSV ventes et paiements testés",
+      "blocker": "couverture production inconnue et écriture catalogue simulée",
+      "next_step": "valider payloads live et totaux d’autorité",
+      "evidence_level": "PARTIAL"
+    },
+    {
+      "id": "prestashop",
+      "name": "PrestaShop",
+      "score": 64,
+      "status": "PARTIAL",
+      "justification": "catalogue, ventes et médias câblés et testés",
+      "blocker": "paid states, couverture live et médias incomplets",
+      "next_step": "prouver pagination, états payés et réconciliation source",
+      "evidence_level": "PARTIAL"
+    },
+    {
+      "id": "sumup",
+      "name": "SumUp",
+      "score": 58,
+      "status": "PARTIAL",
+      "justification": "transactions et payouts câblés",
+      "blocker": "plusieurs sous-endpoints sont seulement préparés",
+      "next_step": "alimenter et mesurer chaque endpoint officiel",
+      "evidence_level": "PARTIAL"
+    },
+    {
+      "id": "qonto",
+      "name": "Qonto",
+      "score": 78,
+      "status": "PARTIAL",
+      "justification": "client et ledger avec 2 718 lignes historiques prouvées",
+      "blocker": "fraîcheur et sous-modules non revalidés",
+      "next_step": "capturer un snapshot et mesurer pagination/matching",
+      "evidence_level": "PRODUCTION_PROVEN"
+    },
+    {
+      "id": "finance",
+      "name": "Finance",
+      "score": 61,
+      "status": "PARTIAL",
+      "justification": "cockpit et KPI issus des ledgers",
+      "blocker": "coûts, settlements et clôture restent partiels",
+      "next_step": "mesurer la réconciliation et contractualiser les KPI",
+      "evidence_level": "TESTED"
+    },
+    {
+      "id": "settlements",
+      "name": "Settlements",
+      "score": 57,
+      "status": "PARTIAL",
+      "justification": "chaîne, modèles, explorer et revue présents",
+      "blocker": "aucun taux production et statuts divergents",
+      "next_step": "mesurer le funnel complet en production",
+      "evidence_level": "PARTIAL"
+    },
+    {
+      "id": "stock",
+      "name": "Stock",
+      "score": 67,
+      "status": "PARTIAL",
+      "justification": "ledger, projection, réceptions et valeur testés",
+      "blocker": "terrain, mapping et convergence inconnus",
+      "next_step": "réaliser stocktake et mesurer la couverture source",
+      "evidence_level": "TESTED"
+    },
+    {
+      "id": "purchases",
+      "name": "Purchases",
+      "score": 63,
+      "status": "PARTIAL",
+      "justification": "suppliers, PO, receipts, FIFO et replenishment",
+      "blocker": "providers et budget production absents",
+      "next_step": "prouver l’usage avec des fournisseurs réels",
+      "evidence_level": "TESTED"
+    },
+    {
+      "id": "crm",
+      "name": "CRM",
+      "score": 52,
+      "status": "PARTIAL",
+      "justification": "vue 360, RFM, segments et consentement présents",
+      "blocker": "couverture inconnue et fidélité simulée",
+      "next_step": "mesurer identity/consent et activer de façon contrôlée",
+      "evidence_level": "PARTIAL"
+    },
+    {
+      "id": "marketing",
+      "name": "Marketing",
+      "score": 47,
+      "status": "PARTIAL",
+      "justification": "fondation, review et cockpit internes",
+      "blocker": "publication et learning production absents",
+      "next_step": "connecter un provider officiel et mesurer l’attribution",
+      "evidence_level": "PARTIAL"
+    },
+    {
+      "id": "social",
+      "name": "Social",
+      "score": 22,
+      "status": "NOT_CONFIGURED",
+      "justification": "ports et garde-fous présents",
+      "blocker": "quatre providers officiels non configurés",
+      "next_step": "configurer les API officielles et valider la conformité",
+      "evidence_level": "NOT_CONFIGURED"
+    },
+    {
+      "id": "analytics",
+      "name": "Analytics",
+      "score": 51,
+      "status": "PARTIAL",
+      "justification": "agrégats calculés sur les ledgers",
+      "blocker": "couverture et forecasts partiels",
+      "next_step": "définir les data contracts et valider le dashboard",
+      "evidence_level": "PARTIAL"
+    },
+    {
+      "id": "ai",
+      "name": "AI",
+      "score": 35,
+      "status": "BLOCKED",
+      "justification": "génération déterministe avec revue humaine",
+      "blocker": "aucun provider ni usage IA production",
+      "next_step": "décider build/buy puis évaluer coût, sécurité et qualité",
+      "evidence_level": "BLOCKED"
+    },
+    {
+      "id": "ux",
+      "name": "UX",
+      "score": 60,
+      "status": "PARTIAL",
+      "justification": "navigation, pages, états et filtres présents",
+      "blocker": "E2E, mobile et accessibilité absents",
+      "next_step": "tester les parcours métier dans un navigateur",
+      "evidence_level": "TESTED"
+    },
+    {
+      "id": "tests",
+      "name": "Tests",
+      "score": 76,
+      "status": "PARTIAL",
+      "justification": "563 tests passaient lors de l’audit V2",
+      "blocker": "live, charge, DR et E2E absents",
+      "next_step": "ajouter une pyramide production-like",
+      "evidence_level": "TESTED"
+    },
+    {
+      "id": "documentation",
+      "name": "Documentation",
+      "score": 70,
+      "status": "PARTIAL",
+      "justification": "architecture, providers, déploiement et runbooks documentés",
+      "blocker": "exercices, SLO, incidents et ownership sans preuve",
+      "next_step": "exercer les runbooks et dater les preuves",
+      "evidence_level": "TESTED"
+    }
+  ],
+  "priorities": [
+    "P0 — prouver backup restaurable et état secrets/bootstrap",
+    "P1 — exercer rollback, recovery et RPO/RTO",
+    "P1 — mesurer couverture sources et funnel financier",
+    "P1 — tester SQLite multi-worker",
+    "P1 — prouver le lifecycle PII/consent",
+    "P1 — clarifier et brancher les sous-sources SumUp"
+  ],
+  "blockers": [
+    "restore et rollback non exercés",
+    "couverture production des connecteurs inconnue",
+    "funnel SALE→PAYMENT→SUMUP→PAYOUT→QONTO non mesuré",
+    "concurrence SQLite non prouvée",
+    "providers sociaux officiels non configurés"
+  ]
+}
