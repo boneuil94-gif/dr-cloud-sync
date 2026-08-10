@@ -6,6 +6,7 @@ source "$script_dir/deployment-environment.sh"
 cd "$script_dir"
 env_file=drcloud.env
 [[ -f "$env_file" ]] || { echo "ERREUR: créer $PWD/$env_file depuis drcloud.env.example." >&2; exit 1; }
+DRCLOUD_ENV_FILE="$PWD/$env_file" "$script_dir/configure-roadmap-env.sh"
 chmod 600 "$env_file"
 value() { sed -n "s/^$1=//p" "$env_file" | tail -1; }
 [[ "$(value DRCLOUD_SAFE_MODE)" == true ]] || { echo "ERREUR: DRCLOUD_SAFE_MODE doit être true." >&2; exit 1; }

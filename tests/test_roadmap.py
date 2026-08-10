@@ -1,4 +1,6 @@
 import json
+import logging
+import os
 import subprocess
 from copy import deepcopy
 from pathlib import Path
@@ -6,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from dr_cloud_sync.inventory_web import InventoryApp
+import dr_cloud_sync.roadmap as roadmap_module
 from dr_cloud_sync.roadmap import RoadmapError, RoadmapService
 from test_inventory import request, service
 
@@ -13,6 +16,73 @@ ROOT = Path(__file__).parents[1]
 ROADMAP = ROOT / "config" / "roadmap_v3.json"
 
 def raw_roadmap(): return json.loads(ROADMAP.read_text(encoding="utf-8"))
+
+def test_absent_environment_uses_v3_default(monkeypatch):
+    monkeypatch.delenv("DRCLOUD_ROADMAP", raising=False)
+    service = RoadmapService()
+    assert service.configured_path is None
+    assert service.path == ROADMAP
+    assert service.load()["global_score"] == 58
+
+def test_new_environment_path_is_used(monkeypatch):
+    monkeypatch.setenv("DRCLOUD_ROADMAP", str(ROADMAP))
+    service = RoadmapService()
+    assert service.configured_path == service.path == ROADMAP
+    assert service.diagnostic() == {
+        "configured_path": str(ROADMAP), "effective_path": str(ROADMAP),
+        "file_exists": True, "version": 3, "status": "OK",
+    }
+
+def test_deleted_legacy_path_falls_back_only_when_v3_exists(monkeypatch, caplog, tmp_path):
+    replacement = tmp_path / "roadmap_v3.json"
+    replacement.write_text(ROADMAP.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(roadmap_module, "DEFAULT_ROADMAP", replacement)
+    with caplog.at_level(logging.WARNING, logger="drcloud.roadmap"):
+        service = RoadmapService("/app/docs/drcloud-os-roadmap.json")
+    assert service.path == replacement
+    assert "ROADMAP_LEGACY_PATH" in caplog.text
+    assert service.load()["global_score"] == 58
+
+    replacement.unlink()
+    service = RoadmapService("/app/docs/drcloud-os-roadmap.json")
+    assert service.path == RoadmapService.LEGACY_PATH
+    with pytest.raises(RoadmapError, match="Roadmap illisible"):
+        service.load()
+
+def test_missing_and_invalid_files_are_diagnosed_without_fallback(tmp_path):
+    missing = RoadmapService(tmp_path / "custom.json")
+    assert missing.diagnostic()["status"] == "MISSING"
+    with pytest.raises(RoadmapError, match="Roadmap illisible"):
+        missing.load()
+    invalid_path = tmp_path / "invalid.json"
+    invalid_path.write_text("{not-json", encoding="utf-8")
+    invalid = RoadmapService(invalid_path)
+    assert invalid.diagnostic()["status"] == "INVALID"
+    with pytest.raises(RoadmapError, match="Roadmap illisible"):
+        invalid.load()
+
+def test_persistent_production_environment_is_migrated(tmp_path):
+    env_file = tmp_path / "drcloud.env"
+    env_file.write_text("DRCLOUD_SAFE_MODE=true\nDRCLOUD_ROADMAP=/app/docs/drcloud-os-roadmap.json\n", encoding="utf-8")
+    script = ROOT / "deploy/ovh/configure-roadmap-env.sh"
+    result = subprocess.run(
+        [script], env={**os.environ, "DRCLOUD_ENV_FILE": str(env_file)},
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "DRCLOUD_ROADMAP=/app/config/roadmap_v3.json" in env_file.read_text(encoding="utf-8")
+    assert "/app/docs/drcloud-os-roadmap.json" not in env_file.read_text(encoding="utf-8")
+    assert env_file.stat().st_mode & 0o777 == 0o600
+
+def test_absent_roadmap_setting_is_added_to_persistent_environment(tmp_path):
+    env_file = tmp_path / "drcloud.env"
+    env_file.write_text("DRCLOUD_SAFE_MODE=true\n", encoding="utf-8")
+    result = subprocess.run(
+        [ROOT / "deploy/ovh/configure-roadmap-env.sh"],
+        env={**os.environ, "DRCLOUD_ENV_FILE": str(env_file)}, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert env_file.read_text(encoding="utf-8").endswith("DRCLOUD_ROADMAP=/app/config/roadmap_v3.json\n")
 
 def test_v3_scorecard_is_the_strict_source_of_truth():
     data = RoadmapService(ROADMAP).load()
@@ -50,6 +120,9 @@ def test_api_and_ui_use_the_same_structured_source(service):
     assert 'fetch("/api/roadmap")' in javascript
     assert "Pourquoi le score n’est pas 75.93 %" in html
     assert request(app, "/roadmap")[0] == "200 OK"
+    health_status, health_body = request(app, "/api/roadmap/health")
+    assert health_status == "200 OK"
+    assert json.loads(health_body)["status"] == "OK"
 
 def test_legacy_read_routes_and_dashboard_alias_remain_compatible(service):
     app = InventoryApp(service, roadmap_service=RoadmapService(ROADMAP))
