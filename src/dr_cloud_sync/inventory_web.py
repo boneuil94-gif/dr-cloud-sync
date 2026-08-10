@@ -49,6 +49,7 @@ from .sqlite_diagnostics import register_runtime, runtime_diagnostics
 from .reconciliation import ReconciliationService
 from .finance import FinanceProjection
 from .settlements import PaymentSettlementService
+from .financial_reconciliation import FinancialReconciliationService
 from .purchase_cost import PurchaseCostLedger
 from .crm import CRMService
 
@@ -106,6 +107,7 @@ class InventoryApp:
             window_seconds=int(os.environ.get("SETTLEMENT_MATCH_WINDOW_SECONDS","600")),
             rounding_tolerance=os.environ.get("SETTLEMENT_ROUNDING_TOLERANCE","0.01"),
             transit_window_days=int(os.environ.get("SUMUP_TRANSIT_WINDOW_DAYS","14")))
+        self.financial_reconciliation=FinancialReconciliationService(self.bank.db)
         register_runtime(self.bank.db, "web")
         secrets_provider=EnvironmentSecretProvider(os.environ,{
             "qonto.production": "QONTO_CREDENTIAL",
@@ -403,6 +405,18 @@ class InventoryApp:
             if path == "/api/finance/tax" and method == "GET": return self._json(start,self.finance.tax())
             if path == "/api/finance/profitability" and method == "GET": return self._json(start,self.finance.profitability())
             if path == "/api/finance/reconciliations" and method == "GET": return self._json(start,{"counts":self.finance._reconciliation_counts(),"items":self.reconciliation.list()})
+            if path == "/api/finance/bank-ledger" and method == "GET":
+                query=parse_qs(env.get("QUERY_STRING","")); return self._json(start,self.financial_reconciliation.ledger(limit=query.get("limit",[100])[0],offset=query.get("offset",[0])[0]))
+            if path == "/api/finance/reconciliation" and method == "GET": return self._json(start,{**self.financial_reconciliation.matches(),"evidence":self.financial_reconciliation.evidence()})
+            if path == "/api/finance/anomalies" and method == "GET":
+                query=parse_qs(env.get("QUERY_STRING","")); return self._json(start,self.financial_reconciliation.anomalies(query.get("status",[None])[0]))
+            if path == "/api/finance/reconciliation/recompute" and method == "POST":
+                result=self.financial_reconciliation.recompute(); self.security and self.security.audit(session["uid"],"FINANCE_RECONCILIATION_RECOMPUTED","FINANCE_RECONCILIATION",result["run_id"],request_id,"finance",result); return self._json(start,result,"202 Accepted")
+            if path.startswith("/api/finance/reconciliation/") and path.endswith(("/confirm","/reject")) and method == "POST":
+                action="confirm" if path.endswith("/confirm") else "reject"; match_id=unquote(path.removeprefix("/api/finance/reconciliation/").removesuffix("/"+action))
+                try: result=self.financial_reconciliation.review(match_id,"CONFIRM" if action=="confirm" else "REJECT",session["uid"])
+                except KeyError: return self._json(start,{"error":"Rapprochement introuvable"},"404 Not Found")
+                self.security and self.security.audit(session["uid"],"FINANCE_MATCH_"+action.upper(),"FINANCE_RECONCILIATION",match_id,request_id,"finance"); return self._json(start,result)
             if path == "/api/settlements/summary" and method == "GET": return self._json(start,self.settlements.summary())
             if path == "/api/settlements/shopcaisse-audit" and method == "GET": return self._json(start,self.settlements.shopcaisse_audit())
             if path.startswith("/api/settlements/aggregates/") and method == "GET":
