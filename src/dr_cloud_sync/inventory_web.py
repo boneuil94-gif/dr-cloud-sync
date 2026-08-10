@@ -37,7 +37,7 @@ from .sales import SalesLedger, SocialAnalyticsService
 from .sales_ingestion import PrestaShopSalesProvider, SalesSyncService, ShopCaisseAPISalesProvider, ShopCaisseCSVProvider, ShopCaisseSalesProvider
 from .shopcaisse import ShopCaisseClient, ShopCaisseError
 from .social import MarketingSchedulingService, SocialConnectionService, SocialPublishingService
-from .data_hub import DataHub, JobDefinition
+from .data_hub import BatchAlreadyRunning, DataHub, JobDefinition
 from .connector_diagnostics import ConnectorDiagnostic
 from .bank import BankLedger, DisabledQontoProvider
 from .qonto import (EnvironmentSecretProvider, QontoBankProvider, QontoError,
@@ -361,7 +361,15 @@ class InventoryApp:
             if path == "/api/admin/sumup" and method == "GET":
                 return self._json(start,self.sumup_settlements.cockpit())
             if path == "/api/data-hub/evidence" and method == "GET": return self._json(start,self.data_hub.production_evidence())
-            if path == "/api/data-hub" and method == "GET": return self._json(start,{**self.data_hub.health(),"sales_diagnostics":self.sales_sync.diagnostics(),"runtime":{**self.data_hub.runtime(self.automation_operations()),"configuration":{"prestashop_paid_state_ids":"CONFIGURED" if self.prestashop_paid_states_configured else "MISSING","qonto":self.qonto_configuration}}})
+            if path == "/api/data-hub" and method == "GET": return self._json(start,{**self.data_hub.health(),"latest_batch":self.data_hub.latest_batch(),"sales_diagnostics":self.sales_sync.diagnostics(),"runtime":{**self.data_hub.runtime(self.automation_operations()),"configuration":{"prestashop_paid_state_ids":"CONFIGURED" if self.prestashop_paid_states_configured else "MISSING","qonto":self.qonto_configuration}}})
+            if path in {"/api/data-hub/sync-all","/api/data-hub/sync-all/retry"} and method == "POST":
+                try: result=self.data_hub.run_all(self.automation_operations(),triggered_by=session["uid"],retry_failed=path.endswith("/retry"))
+                except BatchAlreadyRunning: return self._json(start,{"error":"BATCH_ALREADY_RUNNING"},"409 Conflict")
+                self.security and self.security.audit(session["uid"],"DATA_HUB_SYNC_ALL","DATA_HUB_BATCH",result["batch_id"],request_id,"api",result["summary"])
+                return self._json(start,result)
+            if path.startswith("/api/data-hub/sync-batches/") and method == "GET":
+                result=self.data_hub.sync_batch(unquote(path.removeprefix("/api/data-hub/sync-batches/")))
+                return self._json(start,result) if result else self._json(start,{"error":"Batch introuvable"},"404 Not Found")
             if path == "/api/admin/shopcaisse-sales/failures" and method == "GET":
                 return self._json(start,self.sales_sync.failed_sales("SHOPCAISSE"))
             if path.startswith("/api/data-hub/sources/") and path.endswith("/test") and method == "POST":
@@ -822,7 +830,7 @@ class InventoryApp:
             return "settlements.backfill" if path.endswith(("/backfill","/recompute")) else "settlements.review"
         if path.startswith("/api/crm/customers"): return "crm.customer.read" if method=="GET" else "crm.customer.write"
         if path.startswith("/api/crm"): return "crm.read"
-        domains=(("/api/purchasing","purchasing.cost.read" if method=="GET" else "purchasing.cost.validate"),("/api/finance","finance.read" if method=="GET" else "finance.write"),("/api/data-hub/sources/","admin.write"),("/api/data-hub/jobs/","bank.sync"),("/api/data-hub","admin.read"),("/api/sales","sales.read" if method=="GET" else "sales.sync"),("/api/marketing","marketing.read" if method=="GET" else "marketing.approve"),("/api/purchase-orders","purchasing.read" if method=="GET" else "purchasing.write"),("/api/goods-receipts","purchasing.read" if method=="GET" else "purchasing.write"),("/api/suppliers","purchasing.read" if method=="GET" else "purchasing.write"),("/api/admin","admin.read" if method=="GET" else "admin.write"),("/api/roadmap","admin.read"),("/api/stock","stock.read"),("/api/inventory","stock.read" if method=="GET" else "stock.validate"),("/api/count","stock.write"),("/api/complete","stock.validate"),("/api/barcodes","catalogue.write"),("/api/products","catalogue.read" if method=="GET" else "catalogue.write"),("/api/catalogue","catalogue.read"),("/api/search","catalogue.read"),("/api/scan","catalogue.read"),("/api/history","stock.read"),("/api/report","stock.read"),("/api/export.csv","stock.read"),("/api/state","stock.read"),("/api/dashboard","catalogue.read"))
+        domains=(("/api/purchasing","purchasing.cost.read" if method=="GET" else "purchasing.cost.validate"),("/api/finance","finance.read" if method=="GET" else "finance.write"),("/api/data-hub/sync-all","admin.write"),("/api/data-hub/sources/","admin.write"),("/api/data-hub/jobs/","bank.sync"),("/api/data-hub","admin.read"),("/api/sales","sales.read" if method=="GET" else "sales.sync"),("/api/marketing","marketing.read" if method=="GET" else "marketing.approve"),("/api/purchase-orders","purchasing.read" if method=="GET" else "purchasing.write"),("/api/goods-receipts","purchasing.read" if method=="GET" else "purchasing.write"),("/api/suppliers","purchasing.read" if method=="GET" else "purchasing.write"),("/api/admin","admin.read" if method=="GET" else "admin.write"),("/api/roadmap","admin.read"),("/api/stock","stock.read"),("/api/inventory","stock.read" if method=="GET" else "stock.validate"),("/api/count","stock.write"),("/api/complete","stock.validate"),("/api/barcodes","catalogue.write"),("/api/products","catalogue.read" if method=="GET" else "catalogue.write"),("/api/catalogue","catalogue.read"),("/api/search","catalogue.read"),("/api/scan","catalogue.read"),("/api/history","stock.read"),("/api/report","stock.read"),("/api/export.csv","stock.read"),("/api/state","stock.read"),("/api/dashboard","catalogue.read"))
         for prefix,permission in domains:
             if path.startswith(prefix): return permission
         return "__default_deny__" if path.startswith("/api/") else "__not_found__"
