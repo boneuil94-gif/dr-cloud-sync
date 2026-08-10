@@ -156,3 +156,7 @@ Architecture, setup/déploiement, providers, migrations/domaines, KPI finance, r
 - **90** : prouver tous les connecteurs essentiels avec totaux d'autorité; taux settlement/CRM/stock; backups restaurés; rollback exercé; monitoring/SLO; tests E2E, charge et multi-worker; supprimer les faux `FRESH` sans exhaustivité.
 - **95** : clôture/comptabilité contrôlée, disaster recovery chronométré, sécurité indépendante/pentest, canary/rollback automatisé, providers sociaux officiels nécessaires au périmètre, data quality contractualisée.
 - **100** : aucune dette/risque connu n'est réaliste durablement. Il faudrait en plus preuves continues, zéro blocage critique, documentation et runbooks exercés, compatibilité production multi-instance et validation métier complète. 100 doit rester un état temporaire auditable, jamais une promesse.
+
+## Addendum de preuves — Production Truth & Recovery Pack
+
+Le 10 août 2026 à 13:48:07Z, `/health` public a répondu 200/ok et exposé `6798ab3f156e7c644d45d331f2586998baecf317`, identique au SHA main/déployé attendu. HTTPS et la redirection 308 sont prouvés; CSP, frame, nosniff et Referrer-Policy sont présents, HSTS absent. Cette preuve remplace uniquement les mentions « commit/health public non testé » : Production maturity **47 → 49**, Deployment **66 → 68**, global strict **58 → 58**. Backup/restore/rollback/RPO/RTO, données privées et funnel restent `NOT_PROVEN`. Voir `PRODUCTION_TRUTH.md` et la capture JSON datée.

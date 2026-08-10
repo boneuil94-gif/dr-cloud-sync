@@ -72,3 +72,22 @@ Cette roadmap ne crédite une étape qu'avec code + wiring + tests + observabili
 8. Exécuter tests contention/crash/load SQLite et documenter la décision storage.
 9. Ajouter E2E des parcours Data Hub, Finance, Stock, CRM et Marketing bloqué.
 10. Lancer SBOM/CVE/secret scan puis exercice incident/rollback.
+
+## Evidence update — Production Truth & Recovery Pack
+
+**Coupe : 2026-08-10T13:48:07Z. GLOBAL BEFORE 58/100 · GLOBAL AFTER 58/100.** La formule Audit V2 (20 code, 20 wiring, 20 tests, 25 données production, 10 observabilité, 5 documentation) est inchangée. Le gain étroit de preuve de déploiement ne modifie pas l'arrondi global strict.
+
+| Dimension/module | BEFORE | AFTER | EVIDENCE | WHY |
+|---|---:|---:|---|---|
+| Production maturity | 47 | 49 | health public 200, HTTPS/redirection et trois SHA identiques, capture datée | runtime public désormais prouvé; recovery/données privées toujours inconnus |
+| Deployment | 66 | 68 | `production-public-2026-08-10.json` | exact SHA et health servis prouvés; restore/rollback absents |
+| Data Hub | 65 | 65 | contrat fraîcheur/couverture testé, aucun export production | code ajouté sans preuve data : inchangé |
+| Finance | 61 | 61 | rapport read-only testé, aucune base production accessible | funnel non mesuré : inchangé |
+| Settlements | 57 | 57 | mapping POSSIBLE/CONFLICT documenté | aucun taux production : inchangé |
+| Security | 74 | 74 | CSP/frame/nosniff/referrer présents, HSTS manquant | preuve mixte, pas de hausse |
+| Observability | 61 | 61 | snapshot/alert rules testés localement | aucune alerte/SLO production exercé |
+| Global strict | 58 | 58 | même méthode Audit V2 | preuve trop circonscrite pour changer le score global |
+
+**Scores augmentés :** Production maturity +2, Deployment +2. **Scores inchangés :** Data Hub, Finance, Settlements, Security, Observability et global. **P0 fermé :** commit/health/HTTPS public inconnus. **P0 restant :** backup restaurable et état secrets/bootstrap production. **P1 fermé :** aucun. **P1 ouverts :** restore/RPO/RTO, rollback staging, coverage provider, funnel financier, SQLite multi-worker, PII lifecycle, SumUp sous-sources.
+
+Nouvelles preuves : capture publique datée et assainie; contrat Data Hub empêchant `FRESH == COMPLETE`; inventaire/restore temporaire et rapports rollback/funnel fail-closed; commandes opérateur et tests. Les capacités locales sont `CODE_EXISTS/TESTED`; backup, restore, rollback, couverture privée et funnel restent `NOT_PROVEN`.

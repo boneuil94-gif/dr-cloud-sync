@@ -370,6 +370,11 @@ class InventoryApp:
             if path == "/api/admin/sumup" and method == "GET":
                 return self._json(start,self.sumup_settlements.cockpit())
             if path == "/api/data-hub/evidence" and method == "GET": return self._json(start,self.data_hub.production_evidence())
+            if path == "/api/production-evidence" and method == "GET":
+                from .production_evidence import backup_inventory, reconciliation_report, rollback_check, snapshot
+                runtime=self.data_hub.runtime(); hearts=runtime["worker_heartbeats"]
+                evidence=snapshot(database=self.settings.database,environment=self.settings.environment,expected_commit=os.environ.get("EXPECTED_COMMIT"),deployed_commit=os.environ.get("DRCLOUD_COMMIT"),public_url=os.environ.get("DRCLOUD_HTTPS_URL"),worker_state=runtime["worker_state"],last_heartbeat=hearts[-1]["seen_at"] if hearts else None,sources=self.data_hub.production_evidence()["sources"])["production_evidence_snapshot"]
+                return self._json(start,{**evidence,"backup":backup_inventory(self.backup_service.root),"last_restore_test":{"result":"RESTORE_NOT_PROVEN"},"last_rollback_test":rollback_check(),"reconciliation":reconciliation_report(self.settings.database)})
             if path == "/api/data-hub" and method == "GET": return self._json(start,{**self.data_hub.health(),"latest_batch":self.data_hub.latest_batch(),"sales_diagnostics":self.sales_sync.diagnostics(),"runtime":{**self.data_hub.runtime(self.automation_operations()),"configuration":{"prestashop_paid_state_ids":"CONFIGURED" if self.prestashop_paid_states_configured else "MISSING","qonto":self.qonto_configuration}}})
             if path in {"/api/data-hub/sync-all","/api/data-hub/sync-all/retry"} and method == "POST":
                 try: result=self.data_hub.run_all(self.automation_operations(),triggered_by=session["uid"],retry_failed=path.endswith("/retry"))

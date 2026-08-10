@@ -266,12 +266,13 @@ class DataHub:
         registered=set((operations or {}).keys())
         return {"database_fingerprint":self.database_fingerprint(),"worker_state":self.worker_state(),"worker_heartbeats":heartbeats,"jobs":[{"job_id":j["job_id"],"handler_registered":j["job_type"] in registered} for j in self.jobs()]}
     def production_evidence(self):
+        from .production_evidence import coverage_contract
         keys=("provider","source_id","configuration","connectivity","freshness","last_attempt_at","last_success_at","last_rows_imported","rows_imported","data_min_at","data_max_at","records_available","last_error","next_run_at","last_run_id")
         out=[]
         for s in self.sources():
             item={"provider":s["provider"],"source_id":s["source_id"],"configuration":"CONFIGURED" if s["enabled"] and s["status"]!=SourceStatus.NOT_CONFIGURED else "NOT_CONFIGURED","connectivity":s["status"],"freshness":s["freshness"]}
             item.update({k:s.get(k) for k in keys if k not in item})
-            out.append(item)
+            out.append(coverage_contract(item))
         return {"sources":out}
     def health(self):
         sources=self.sources()

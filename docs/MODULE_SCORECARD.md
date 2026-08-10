@@ -29,3 +29,7 @@ Notation stricte définie dans [AUDIT_V2.md](AUDIT_V2.md). Une absence de preuve
 ## Scores techniques séparés des modules
 
 `ShopCaisse CODE 72 / PRODUCTION 38`; `PrestaShop Catalog 72 / Sales 66 / Media 54`; `Marketing INTERNAL_READY 61 / PROVIDER_READY 42 / PRODUCTION_READY 20`; chaque provider social officiel 18 et bloqué.
+
+## Evidence update — 2026-08-10
+
+Même méthode et aucun crédit pour le code seul. Deployment passe **66 → 68** grâce au SHA/health/HTTPS publics datés. Data Hub **65 → 65**, Finance **61 → 61**, Settlements **57 → 57**, Security **74 → 74**, Observability **61 → 61**. Le global reste **58 → 58**. Restore, rollback, backup inventory privé, coverage et funnel restent `NOT_PROVEN`.

@@ -40,3 +40,12 @@ Méthode : 20 code, 20 wired, 20 tests, 25 production data, 10 observable, 5 doc
 | Snapchat official API | NO | NO | PARTIAL | NO | YES | YES | 18 | NOT_CONFIGURED |
 | Analytics dashboards | YES | YES | YES | UNKNOWN | PARTIAL | YES | 51 | ledgers réels, coverage/validation E2E absents |
 | Web/mobile UX | YES | YES | PARTIAL | UNKNOWN | PARTIAL | YES | 60 | assets/routes testés, aucun E2E navigateur/mobile |
+
+## Update — Production Truth & Recovery Pack (2026-08-10)
+
+| FEATURE | BEFORE | AFTER | LEVEL | EVIDENCE |
+|---|---:|---:|---|---|
+| OVH deploy exact commit | 66 | 68 | PRODUCTION_PROVEN (public scope) | SHA main/déployé/servi identique, health 200 et HTTPS datés |
+| Backup / restore / rollback | 43 | 43 | CODE_EXISTS + TESTED; production NOT_PROVEN | aucune sauvegarde privée ni staging accessible |
+| Data Hub truth contract | — | — | TESTED | fraîcheur séparée de couverture; production totals inconnus |
+| Financial funnel | 57 | 57 | TESTED; production NOT_PROVEN | rapport fail-closed, aucune base production |
