@@ -91,3 +91,15 @@ La source structurée d’autorité consommée par l’UI et l’API est [`confi
 **Scores augmentés :** Production maturity +2, Deployment +2. **Scores inchangés :** Data Hub, Finance, Settlements, Security, Observability et global. **P0 fermé :** commit/health/HTTPS public inconnus. **P0 restant :** backup restaurable et état secrets/bootstrap production. **P1 fermé :** aucun. **P1 ouverts :** restore/RPO/RTO, rollback staging, coverage provider, funnel financier, SQLite multi-worker, PII lifecycle, SumUp sous-sources.
 
 Nouvelles preuves : capture publique datée et assainie; contrat Data Hub empêchant `FRESH == COMPLETE`; inventaire/restore temporaire et rapports rollback/funnel fail-closed; commandes opérateur et tests. Les capacités locales sont `CODE_EXISTS/TESTED`; backup, restore, rollback, couverture privée et funnel restent `NOT_PROVEN`.
+
+## Recovery Evidence Update — 2026-08-10
+
+| Score | BEFORE | AFTER | EVIDENCE | WHY |
+|---|---:|---:|---|---|
+| Global strict | 58 | 58 | isolated local recovery report | no production-data or equivalent-staging proof; Audit V2 forbids code-only credit |
+| Production maturity | 49 | 49 | restore/health executed on synthetic local copy | production backup and production RPO remain unavailable |
+| Deployment | 68 | 68 | real ephemeral WSGI recovery, rollback not executed | no OVH-equivalent N/N-1 rollback |
+| Core | 72 | 72 | real WAL SIGKILL/reopen/integrity proof | one targeted crash case does not close concurrency resilience |
+| Observability | 61 | 61 | JSON evidence, audit IDs and read-only status UI | no external alert delivery or production history |
+
+Priorities: **P0 backup restorable: PARTIAL** (local proof, production backup untested); **P1 rollback/recovery: PARTIAL** (restore local proven, rollback open); **P1 RPO/RTO: PARTIAL** (local observations only, targets undefined); **P1 SQLite crash/concurrency: PARTIAL** (single WAL crash proven, multi-worker/concurrency still open).

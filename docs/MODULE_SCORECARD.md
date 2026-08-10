@@ -33,3 +33,7 @@ La source structurée d’autorité est [`config/roadmap_v3.json`](../config/roa
 ## Evidence update — 2026-08-10
 
 Même méthode et aucun crédit pour le code seul. Deployment passe **66 → 68** grâce au SHA/health/HTTPS publics datés. Data Hub **65 → 65**, Finance **61 → 61**, Settlements **57 → 57**, Security **74 → 74**, Observability **61 → 61**. Le global reste **58 → 58**. Restore, rollback, backup inventory privé, coverage et funnel restent `NOT_PROVEN`.
+
+## Recovery Evidence Update — 2026-08-10
+
+No score is raised: the dated exercise used an isolated, production-shaped **local synthetic** database, not production data or OVH-equivalent staging. Core remains **72**, Deployment **68**, Security **74**, Observability **61**, and Tests **76**. Evidence improves from code-only to locally executed for restore/health/WAL crash, while production backup, production RPO/RTO, and staging rollback remain blockers.

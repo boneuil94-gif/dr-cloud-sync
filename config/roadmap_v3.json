@@ -239,5 +239,43 @@
     "funnel SALE→PAYMENT→SUMUP→PAYOUT→QONTO non mesuré",
     "concurrence SQLite non prouvée",
     "providers sociaux officiels non configurés"
-  ]
+  ],
+  "recovery_evidence_update": {
+    "date": "2026-08-10",
+    "scope": "isolated-local-synthetic",
+    "scores": {
+      "global_strict": {
+        "before": 58,
+        "after": 58
+      },
+      "production_maturity": {
+        "before": 49,
+        "after": 49
+      },
+      "deployment": {
+        "before": 68,
+        "after": 68
+      },
+      "core": {
+        "before": 72,
+        "after": 72
+      },
+      "observability": {
+        "before": 61,
+        "after": 61
+      }
+    },
+    "evidence": [
+      "recovery_evidence.json",
+      "real ephemeral WSGI /health probe",
+      "real SQLite WAL SIGKILL recovery"
+    ],
+    "why": "No score increase without production-data restore or OVH-equivalent staging rollback.",
+    "priorities": {
+      "p0_backup_restorable": "PARTIAL",
+      "p1_rollback_recovery": "PARTIAL",
+      "p1_rpo_rto": "PARTIAL",
+      "p1_sqlite_crash_concurrency": "PARTIAL"
+    }
+  }
 }

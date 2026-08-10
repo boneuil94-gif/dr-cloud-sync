@@ -62,6 +62,13 @@ class BackupService:
         if not result or result[0] != "ok":
             raise sqlite3.DatabaseError("backup integrity_check failed")
 
+    @staticmethod
+    def _schema_fingerprint(path: Path) -> str:
+        with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as connection:
+            schema = "\n".join((row[0] or "") for row in connection.execute(
+                "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY type,name"))
+        return hashlib.sha256(schema.encode()).hexdigest()
+
     def create(self, database: Path, *, reason: str, environment: str,
                safe_mode: bool, application: dict | None = None) -> dict:
         """Create, verify, and atomically publish a complete backup bundle."""
@@ -90,8 +97,14 @@ class BackupService:
                               "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
             self._sqlite_check(db_target)
             created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            db_file = next(item for item in files if item["path"] == "drcloud.db")
             metadata = {"backup_id": backup_id, "created_at": created_at,
-                        "reason": reason, "status": "SUCCESS", "application": application or {},
+                        "source_database": Path(database).name,
+                        "database_size": db_file["size"], "sha256": db_file["sha256"],
+                        "schema_fingerprint": self._schema_fingerprint(db_target),
+                        "app_commit": (application or {}).get("commit"), "data_max_at": None,
+                        "method": "sqlite_backup_api", "manifest_status": "VALID", "reason": reason, "status": "SUCCESS",
+                        "application": application or {},
                         "configuration": {"environment": environment, "safe_mode": safe_mode},
                         "files": files, "media": {"included": True,
                         "files": [item for item in files if item["path"].startswith("media/")]}}
@@ -122,7 +135,7 @@ class BackupService:
             if bundle.parent.resolve() != self.root.resolve() or bundle.name.startswith("."):
                 raise ValueError("bundle outside backup root")
             metadata = json.loads((bundle / "metadata.json").read_text(encoding="utf-8"))
-            if metadata.get("status") != "SUCCESS" or metadata.get("backup_id") != bundle.name:
+            if metadata.get("status") not in {"SUCCESS", "VALID"} or metadata.get("backup_id") != bundle.name:
                 raise ValueError("invalid metadata")
             expected = metadata.get("files")
             if not isinstance(expected, list) or not any(x.get("path") == "drcloud.db" for x in expected):
@@ -134,6 +147,8 @@ class BackupService:
                 if candidate.stat().st_size != item["size"] or hashlib.sha256(candidate.read_bytes()).hexdigest() != item["sha256"]:
                     raise ValueError("component verification failed")
             self._sqlite_check(bundle / "drcloud.db")
+            if metadata.get("schema_fingerprint") and metadata["schema_fingerprint"] != self._schema_fingerprint(bundle / "drcloud.db"):
+                raise ValueError("schema fingerprint mismatch")
             return {**metadata, "size_bytes": sum(x["size"] for x in expected)}
         except Exception as exc:
             LOG.exception("backup_verification_failed bundle=%s", bundle)
