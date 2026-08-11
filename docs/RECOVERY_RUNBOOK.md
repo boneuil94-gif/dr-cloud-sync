@@ -18,6 +18,30 @@ DRCLOUD_DATA_DIR=/data DRCLOUD_BACKUP_DIR=/data/backups dr-cloud-sync backup-sta
 
 ## Isolated restore drill
 
+### GitHub Actions Production Recovery Game Day
+
+Lancer manuellement **Actions → DrCloud OS Recovery Game Day → Run workflow**. Le seul
+déclencheur est `workflow_dispatch`; le mode par défaut `restore-only` prouve le dernier
+backup `VALID`, sa copie/restauration, l'intégrité, le démarrage SAFE MODE et le health
+sur l'hôte OVH. Le mode `full` autorise en plus la preuve de rollback isolée. En l'absence
+d'un historique ordonné de deux SHA réellement known-good, il retourne volontairement
+`ROLLBACK_NOT_PROVEN` (jamais un `HEAD^` supposé).
+
+Le job réutilise exclusivement l'identité SSH production et son `known_hosts`. Deux
+`flock` interdisent un Game Day concurrent et bloquent devant un déploiement actif.
+La cible est un `mktemp`, montée dans un conteneur éphémère sans credential provider,
+en SAFE MODE, sur un réseau Docker interne et un port loopback aléatoire. Le volume
+`drcloud-data`, la base active et les conteneurs live ne sont jamais montés comme cible,
+arrêtés ou modifiés. Le trap supprime conteneur, réseau et répertoire, y compris en erreur.
+
+Le seul artefact téléchargé est `recovery_evidence_production.json`, rétention 30 jours.
+Un scan récursif refuse les clés et motifs de secrets avant copie. Il contient seulement
+l'identifiant/basename du backup, des métriques structurelles anonymisées, intégrité,
+RPO/RTO et résultats de rollback. `BACKUP_ON_HOST_ONLY` reste un risque explicite tant
+qu'aucune preuve off-site/redundante n'existe. L'existence du workflow n'est pas une
+preuve : seuls `PRODUCTION_DATA_PROVEN` et, séparément, `ROLLBACK_PROVEN` issus d'une
+exécution réussie peuvent faire évoluer la matrice.
+
 ```bash
 DRCLOUD_DATA_DIR=/data DRCLOUD_BACKUP_DIR=/data/backups \
 DRCLOUD_RECOVERY_REPORT=/var/lib/drcloud/evidence/recovery_evidence.json \

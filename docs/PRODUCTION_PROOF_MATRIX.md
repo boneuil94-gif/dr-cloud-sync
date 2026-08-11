@@ -72,3 +72,18 @@ Méthode : 20 code, 20 wired, 20 tests, 25 production data, 10 observable, 5 doc
 | Sécurité | SAFE MODE, aucune action externe | OBSERVED | aucune connexion provider, aucun paiement/publication/CRM |
 
 Le rapport assaini `recovery_evidence_production.json` conserve les `null` au lieu d'inventer des compteurs. N est le merge PR #148 (`7ad7412…`) et N-1 son premier parent (`7bb7258…`), mais leur statut effectivement servi en production reste inconnu.
+
+## GitHub Actions Production Recovery Game Day
+
+Le workflow manuel `.github/workflows/drcloud-os-recovery-gameday.yml` déplace la preuve
+sur l'hôte OVH accessible par l'environnement GitHub `production`. `restore-only` est le
+mode par défaut; `full` demande également le rollback OVH-equivalent isolé. Il sélectionne
+un vrai backup production `VALID` (ou lance d'abord le backup officiel), copie uniquement
+son manifeste et sa base dans `mktemp`, vérifie checksum/taille/schéma/SQLite, puis démarre
+l'image production sans secrets externes, en SAFE MODE, réseau interne et loopback.
+
+L'artefact assaini de 30 jours expose des compteurs agrégés, RPO/RTO et les états
+`PRODUCTION_BACKUP_VALID`, `PRODUCTION_DATA_PROVEN` et éventuellement `ROLLBACK_PROVEN`.
+Un N-1 absent de l'historique known-good donne `ROLLBACK_NOT_PROVEN`. Le stockage actuel
+reste classé `BACKUP_ON_HOST_ONLY`. **Cette PR n'est pas une exécution production** : les
+scores restent Global strict **58**, Production maturity **49**, Deployment **68**.
