@@ -37,3 +37,16 @@ Même méthode et aucun crédit pour le code seul. Deployment passe **66 → 68*
 ## Recovery Evidence Update — 2026-08-10
 
 No score is raised: the dated exercise used an isolated, production-shaped **local synthetic** database, not production data or OVH-equivalent staging. Core remains **72**, Deployment **68**, Security **74**, Observability **61**, and Tests **76**. Evidence improves from code-only to locally executed for restore/health/WAL crash, while production backup, production RPO/RTO, and staging rollback remain blockers.
+
+## Recovery game day production — tentative fail-closed (2026-08-11)
+
+| Dimension | BEFORE | AFTER | EVIDENCE | WHY |
+|---|---:|---:|---|---|
+| Global strict | 58 | 58 | `recovery_evidence_production.json` | backup production inaccessible à l'exécuteur |
+| Production maturity | 49 | 49 | rapport assaini | aucun restore production-data |
+| Deployment | 68 | 68 | rapport assaini | rollback OVH-equivalent non exécuté |
+| Core | 72 | 72 | rapport assaini | schéma N/N-1 non exercé |
+| Observability | 61 | 61 | rapport assaini | RPO et RTO inconnus |
+| Tests | 76 | 76 | test d'affichage des niveaux de preuve | pas de crédit production pour un test unitaire |
+
+L'exécution s'est arrêtée après `BACKUP_MISSING` sur le répertoire non monté `/data/backups`; elle n'a pas remplacé les données par le fixture synthétique. Tous les scores restent donc strictement inchangés.

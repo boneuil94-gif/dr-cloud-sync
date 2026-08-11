@@ -69,6 +69,16 @@ def test_recursive_sanitizer():
     assert sanitize({"token":"bad","safe":{"password":"bad","count":2},"message":"Bearer abc"})=={"safe":{"count":2},"message":"[REDACTED]"}
 
 
+def test_production_status_ui_keeps_evidence_levels_distinct():
+    html = __import__("pathlib").Path("src/dr_cloud_sync/static/administration.html").read_text()
+    javascript = __import__("pathlib").Path("src/dr_cloud_sync/static/administration.js").read_text()
+    for level in ("LOCAL_TEST", "PRODUCTION_DATA_RESTORE", "OVH_EQUIVALENT_ROLLBACK"):
+        assert level in html
+    assert 'r.evidence_level==="PRODUCTION_DATA_RESTORE"' in javascript
+    assert 'rb.evidence_level==="OVH_EQUIVALENT_ROLLBACK"' in javascript
+    assert "backup_location_classification" in javascript
+
+
 def test_recovery_envelope_targets_are_null_and_contains_no_secrets(tmp_path):
     report=recovery_report(make_backup(tmp_path))
     assert report["restore"]["target_rpo"] is None and report["restore"]["target_rto"] is None

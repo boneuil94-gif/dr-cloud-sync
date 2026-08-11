@@ -103,3 +103,18 @@ Nouvelles preuves : capture publique datée et assainie; contrat Data Hub empêc
 | Observability | 61 | 61 | JSON evidence, audit IDs and read-only status UI | no external alert delivery or production history |
 
 Priorities: **P0 backup restorable: PARTIAL** (local proof, production backup untested); **P1 rollback/recovery: PARTIAL** (restore local proven, rollback open); **P1 RPO/RTO: PARTIAL** (local observations only, targets undefined); **P1 SQLite crash/concurrency: PARTIAL** (single WAL crash proven, multi-worker/concurrency still open).
+
+## Production Recovery Game Day — tentative du 11 août 2026
+
+L'exécuteur de cette PR n'avait ni accès OVH, ni remote Git, ni volume `/data`, ni répertoire de backups monté. La commande SAFE MODE a retourné `BACKUP_MISSING` pour `/data/backups`. Ce résultat signifie **backup production indisponible depuis cet exécuteur**, et non absence démontrée sur l'hôte OVH. Conformément au fail-closed, aucune base synthétique n'a été substituée et aucun restore/rollback n'a été lancé.
+
+| Score | BEFORE | AFTER | EVIDENCE | WHY |
+|---|---:|---:|---|---|
+| Global strict | 58 | 58 | `recovery_evidence_production.json` | aucune nouvelle preuve production |
+| Production maturity | 49 | 49 | même rapport | backup/restore/rollback production non exécutés |
+| Deployment | 68 | 68 | même rapport | aucun OVH-equivalent N/N-1 |
+| Core | 72 | 72 | même rapport | aucune validation sur données production |
+| Observability | 61 | 61 | même rapport | RPO/RTO restent inconnus |
+| Tests | 76 | 76 | tests UI/contrat seulement | un test automatisé n'est pas un game day |
+
+Priorités inchangées : **P0 backup production restaurable PARTIAL**, **P1 rollback/recovery PARTIAL**, **P1 RPO/RTO PARTIAL**, **P1 SQLite crash/concurrency PARTIAL**. La preuve locale antérieure demeure valide, mais ne ferme aucun point production.

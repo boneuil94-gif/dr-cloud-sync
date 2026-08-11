@@ -277,5 +277,44 @@
       "p1_rpo_rto": "PARTIAL",
       "p1_sqlite_crash_concurrency": "PARTIAL"
     }
+  },
+  "production_recovery_gameday_2026_08_11": {
+    "scope": "production-requested-access-unavailable",
+    "result": "NOT_EXECUTED_FAIL_CLOSED",
+    "backup_status": "PRODUCTION_BACKUP_MISSING",
+    "evidence": "recovery_evidence_production.json",
+    "scores": {
+      "global_strict": {
+        "before": 58,
+        "after": 58
+      },
+      "production_maturity": {
+        "before": 49,
+        "after": 49
+      },
+      "deployment": {
+        "before": 68,
+        "after": 68
+      },
+      "core": {
+        "before": 72,
+        "after": 72
+      },
+      "observability": {
+        "before": 61,
+        "after": 61
+      },
+      "tests": {
+        "before": 76,
+        "after": 76
+      }
+    },
+    "why": "No OVH access or mounted production backup; no synthetic substitution and no score increase.",
+    "priorities": {
+      "p0_backup_restorable": "PARTIAL",
+      "p1_rollback_recovery": "PARTIAL",
+      "p1_rpo_rto": "PARTIAL",
+      "p1_sqlite_crash_concurrency": "PARTIAL"
+    }
   }
 }
