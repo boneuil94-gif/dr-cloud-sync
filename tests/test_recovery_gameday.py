@@ -1,9 +1,51 @@
+import os
 from pathlib import Path
+import re
+import subprocess
 
 
 ROOT = Path(__file__).parents[1]
 WORKFLOW = ROOT / ".github/workflows/drcloud-os-recovery-gameday.yml"
 SCRIPT = ROOT / "deploy/ovh/recovery-gameday.sh"
+
+
+def _run_python_runtime_selection(tmp_path, runtimes):
+    for runtime in runtimes:
+        executable = tmp_path / runtime
+        executable.write_text("#!/bin/sh\nexit 0\n")
+        executable.chmod(0o755)
+    text = SCRIPT.read_text()
+    selection = "\n".join(text.splitlines()[3:8])
+    return subprocess.run(
+        ["/bin/bash", "-c", f'{selection}\nprintf "%s" "$PYTHON_BIN"'],
+        env={**os.environ, "PATH": str(tmp_path)},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def test_host_python_runtime_prefers_python3_and_falls_back_or_fails_closed(tmp_path):
+    preferred = _run_python_runtime_selection(tmp_path, ("python", "python3"))
+    assert preferred.returncode == 0
+    assert preferred.stdout == str(tmp_path / "python3")
+
+    (tmp_path / "python3").unlink()
+    fallback = _run_python_runtime_selection(tmp_path, ("python",))
+    assert fallback.returncode == 0
+    assert fallback.stdout == str(tmp_path / "python")
+
+    (tmp_path / "python").unlink()
+    missing = _run_python_runtime_selection(tmp_path, ())
+    assert missing.returncode == 127
+    assert missing.stderr.strip() == "RECOVERY_PYTHON_RUNTIME_MISSING"
+
+
+def test_host_python_calls_always_use_selected_runtime():
+    text = SCRIPT.read_text()
+    assert 'PYTHON_BIN="$(command -v python3 || command -v python || true)"' in text
+    assert not re.search(r"(?m)^\s*(?:if\s+)?python(?:\s|$)", text)
+    assert text.count('"$PYTHON_BIN"') == 8
 
 
 def test_workflow_is_dispatch_only_and_restore_only_by_default():

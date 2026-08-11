@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+PYTHON_BIN="$(command -v python3 || command -v python || true)"
+[[ -n "$PYTHON_BIN" ]] || {
+  echo "RECOVERY_PYTHON_RUNTIME_MISSING" >&2
+  exit 127
+}
+
 mode="${1:-restore-only}"
 started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 [[ "$mode" == "restore-only" || "$mode" == "full" ]] || { echo "mode invalide" >&2; exit 2; }
@@ -35,7 +41,7 @@ production_backup_status() {
   docker compose exec -T drcloud-os dr-cloud-sync backup-status --json >"$status_json"
 }
 production_backup_status
-if ! python - "$status_json" <<'PY'
+if ! "$PYTHON_BIN" - "$status_json" <<'PY'
 import json,sys
 d=json.load(open(sys.argv[1])); raise SystemExit(not any(x.get("status")=="VALID" for x in d.get("backups",[])))
 PY
@@ -45,7 +51,7 @@ then
 fi
 
 selection="$work/selection.json"
-python - "$status_json" "$selection" <<'PY'
+"$PYTHON_BIN" - "$status_json" "$selection" <<'PY'
 import json,sys
 d=json.load(open(sys.argv[1])); rows=[x for x in d.get("backups",[]) if x.get("status")=="VALID"]
 if not rows:
@@ -54,7 +60,7 @@ r=rows[0]
 if not r.get("database","/").startswith("/data/backups/"): raise SystemExit("unsafe backup location")
 json.dump({k:r.get(k) for k in ("backup_id","created_at","size_bytes","sha256","schema_fingerprint","database")},open(sys.argv[2],"w"))
 PY
-backup_id="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["backup_id"])' "$selection")"
+backup_id="$("$PYTHON_BIN" -c 'import json,sys; print(json.load(open(sys.argv[1]))["backup_id"])' "$selection")"
 backup_selected_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 [[ "$backup_id" =~ ^drcloud-os-backup-[A-Za-z0-9T_-]+$ ]] || { echo "PRODUCTION_BACKUP_INVALID" >&2; exit 1; }
 
@@ -68,7 +74,7 @@ chmod 600 "$work/restored-data/drcloud.db"
 restore_completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 timings="$work/timings.json"
-python - "$selection" "$work/bundle/metadata.json" "$work/restored-data/drcloud.db" "$timings" <<'PY'
+"$PYTHON_BIN" - "$selection" "$work/bundle/metadata.json" "$work/restored-data/drcloud.db" "$timings" <<'PY'
 import datetime,hashlib,json,os,sqlite3,sys,time
 selection=json.load(open(sys.argv[1])); manifest=json.load(open(sys.argv[2])); db_path=sys.argv[3]
 if manifest.get("backup_id") != selection["backup_id"]: raise SystemExit("manifest mismatch")
@@ -114,7 +120,7 @@ port="$(docker port "$container" 8080/tcp | sed -n 's/.*://p')"
 health_ok_at=""
 for _ in $(seq 1 30); do
   if curl --fail --silent --show-error --max-time 2 "http://127.0.0.1:$port/health" >"$work/health.json" && \
-     python -c 'import json,sys; d=json.load(open(sys.argv[1])); raise SystemExit(d.get("status")!="ok" or d.get("database")!="ok")' "$work/health.json"; then
+     "$PYTHON_BIN" -c 'import json,sys; d=json.load(open(sys.argv[1])); raise SystemExit(d.get("status")!="ok" or d.get("database")!="ok")' "$work/health.json"; then
     health_ok_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"; break
   fi
   sleep 1
@@ -124,7 +130,7 @@ curl --fail --silent --max-time 2 "http://127.0.0.1:$port/api/roadmap" >/dev/nul
 
 completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 phases="$work/phases.json"
-python - "$phases" "$started_at" "$backup_selected_at" "$restore_completed_at" "$integrity_completed_at" "$app_started_at" "$health_ok_at" "$completed_at" <<'PY'
+"$PYTHON_BIN" - "$phases" "$started_at" "$backup_selected_at" "$restore_completed_at" "$integrity_completed_at" "$app_started_at" "$health_ok_at" "$completed_at" <<'PY'
 import json,sys
 keys=("started_at","backup_selected_at","restore_completed_at","integrity_completed_at","app_started_at","health_ok_at","business_validation_completed_at")
 json.dump(dict(zip(keys,sys.argv[2:])),open(sys.argv[1],"w"))
@@ -143,7 +149,7 @@ if [[ "$mode" == "full" ]]; then
 fi
 
 report="$DRCLOUD_DEPLOYMENT_STATE_DIR/recovery_evidence_production.json"
-python - "$selection" "$timings" "$phases" "$report" "$mode" "$rollback_result" "$n" "$n_minus_1" <<'PY'
+"$PYTHON_BIN" - "$selection" "$timings" "$phases" "$report" "$mode" "$rollback_result" "$n" "$n_minus_1" <<'PY'
 import datetime,json,re,sys
 sel=json.load(open(sys.argv[1])); facts=json.load(open(sys.argv[2])); phases=json.load(open(sys.argv[3])); out=sys.argv[4]
 parse=lambda x: datetime.datetime.fromisoformat(x.replace("Z","+00:00"))
