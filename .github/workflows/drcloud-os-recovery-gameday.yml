@@ -1,0 +1,89 @@
+name: DrCloud OS Recovery Game Day
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Recovery proof to execute on the production OVH host
+        required: true
+        default: restore-only
+        type: choice
+        options:
+          - restore-only
+          - full
+
+permissions:
+  contents: read
+
+concurrency:
+  group: drcloud-os-recovery-gameday
+  cancel-in-progress: false
+
+jobs:
+  recovery-gameday:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check out the reviewed game day code
+        uses: actions/checkout@v4
+
+      - name: Configure dedicated SSH identity
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.OVH_SSH_PRIVATE_KEY }}
+          OVH_SSH_KNOWN_HOSTS: ${{ secrets.OVH_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/drcloud_deploy
+          chmod 600 ~/.ssh/drcloud_deploy
+          printf '%s\n' "$OVH_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Stage and execute the isolated recovery drill
+        env:
+          OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
+          OVH_SSH_PORT: ${{ secrets.OVH_SSH_PORT }}
+          OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
+          GAMEDAY_MODE: ${{ inputs.mode }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          remote_script="/tmp/drcloud-recovery-gameday-${RUN_ID}.sh"
+          scp -q -i ~/.ssh/drcloud_deploy -P "${OVH_SSH_PORT:-22}" \
+            deploy/ovh/recovery-gameday.sh "$OVH_SSH_USER@$OVH_SSH_HOST:$remote_script"
+          ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" \
+            "$OVH_SSH_USER@$OVH_SSH_HOST" \
+            "chmod 700 '$remote_script'; status=0; '$remote_script' '$GAMEDAY_MODE' || status=\$?; rm -f -- '$remote_script'; exit \$status"
+
+      - name: Download only the sanitized evidence
+        env:
+          OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
+          OVH_SSH_PORT: ${{ secrets.OVH_SSH_PORT }}
+          OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
+        run: |
+          scp -q -i ~/.ssh/drcloud_deploy -P "${OVH_SSH_PORT:-22}" \
+            "$OVH_SSH_USER@$OVH_SSH_HOST:/opt/drcloud-os/deploy/ovh/.deployment-state/recovery_evidence_production.json" \
+            recovery_evidence_production.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("recovery_evidence_production.json").read_text())
+          forbidden = ("password", "secret", "token", "credential", "api_key", "private_key", "authorization")
+          def walk(value):
+              if isinstance(value, dict):
+                  for key, child in value.items():
+                      assert not any(word in key.lower() for word in forbidden), "forbidden evidence key"
+                      walk(child)
+              elif isinstance(value, list):
+                  for child in value: walk(child)
+              elif isinstance(value, str):
+                  lower = value.lower()
+                  assert not any(mark in lower for mark in ("bearer ", "basic ", "-----begin", "ghp_", "sk_live_")), "credential pattern"
+          walk(report)
+          PY
+
+      - name: Upload sanitized production recovery evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: drcloud-production-recovery-evidence-${{ github.run_id }}
+          path: recovery_evidence_production.json
+          if-no-files-found: error
+          retention-days: 30
