@@ -49,7 +49,7 @@ production_backup_status() {
 production_backup_status
 if ! "$PYTHON_BIN" - "$status_json" <<'PY'
 import json,sys
-d=json.load(open(sys.argv[1])); raise SystemExit(not any(x.get("status")=="VALID" for x in d.get("backups",[])))
+d=json.load(open(sys.argv[1])); raise SystemExit(not any(x.get("status")=="VALID" and x.get("backup_class")=="APP_RESTORABLE" and x.get("runtime_files_complete") is True for x in d.get("backups",[])))
 PY
 then
   "$repo/deploy/ovh/backup.sh" >/dev/null
@@ -59,31 +59,50 @@ fi
 selection="$work/selection.json"
 "$PYTHON_BIN" - "$status_json" "$selection" <<'PY'
 import json,sys
-d=json.load(open(sys.argv[1])); rows=[x for x in d.get("backups",[]) if x.get("status")=="VALID"]
+d=json.load(open(sys.argv[1])); rows=[x for x in d.get("backups",[]) if x.get("status")=="VALID" and x.get("backup_class")=="APP_RESTORABLE" and x.get("runtime_files_complete") is True]
 if not rows:
     print("PRODUCTION_BACKUP_INVALID" if d.get("backups") else "PRODUCTION_BACKUP_MISSING",file=sys.stderr); raise SystemExit(1)
 r=rows[0]
 if not r.get("database","/").startswith("/data/backups/"): raise SystemExit("unsafe backup location")
-json.dump({k:r.get(k) for k in ("backup_id","created_at","size_bytes","sha256","schema_fingerprint","database")},open(sys.argv[2],"w"))
+json.dump({k:r.get(k) for k in ("backup_id","created_at","size_bytes","sha256","schema_fingerprint","database","backup_class","runtime_files_complete")},open(sys.argv[2],"w"))
 PY
 backup_id="$("$PYTHON_BIN" -c 'import json,sys; print(json.load(open(sys.argv[1]))["backup_id"])' "$selection")"
 backup_selected_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 [[ "$backup_id" =~ ^drcloud-os-backup-[A-Za-z0-9T_-]+$ ]] || { echo "PRODUCTION_BACKUP_INVALID" >&2; exit 1; }
 
 mkdir -m 700 "$work/bundle" "$work/restored-data"
-# docker cp reads only the selected official bundle.  The active /data/drcloud.db
+# docker cp reads only the selected official bundle.  The active /data runtime
 # and the production volume are never a restore source or target mount.
-docker compose cp -L "drcloud-os:/data/backups/$backup_id/drcloud.db" "$work/bundle/drcloud.db" >/dev/null
-docker compose cp -L "drcloud-os:/data/backups/$backup_id/metadata.json" "$work/bundle/metadata.json" >/dev/null
-cp --reflink=auto "$work/bundle/drcloud.db" "$work/restored-data/drcloud.db"
-chmod 600 "$work/restored-data/drcloud.db"
+for runtime_file in drcloud.db catalogue.json catalogue-report.json metadata.json; do
+  docker compose cp -L "drcloud-os:/data/backups/$backup_id/$runtime_file" "$work/bundle/$runtime_file" >/dev/null
+  cp --reflink=auto "$work/bundle/$runtime_file" "$work/restored-data/$runtime_file"
+done
+if docker compose exec -T drcloud-os test -d "/data/backups/$backup_id/media"; then
+  docker compose cp -L "drcloud-os:/data/backups/$backup_id/media" "$work/bundle/media" >/dev/null
+  cp -a "$work/bundle/media" "$work/restored-data/media"
+fi
+chmod 600 "$work/restored-data/drcloud.db" "$work/restored-data/catalogue.json" "$work/restored-data/catalogue-report.json"
 restore_completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 timings="$work/timings.json"
-"$PYTHON_BIN" - "$selection" "$work/bundle/metadata.json" "$work/restored-data/drcloud.db" "$timings" <<'PY'
+if ! "$PYTHON_BIN" - "$selection" "$work/bundle/metadata.json" "$work/restored-data" "$timings" <<'PY'
 import datetime,hashlib,json,os,sqlite3,sys,time
-selection=json.load(open(sys.argv[1])); manifest=json.load(open(sys.argv[2])); db_path=sys.argv[3]
+selection=json.load(open(sys.argv[1])); manifest=json.load(open(sys.argv[2])); restored=sys.argv[3]; db_path=os.path.join(restored,"drcloud.db")
 if manifest.get("backup_id") != selection["backup_id"]: raise SystemExit("manifest mismatch")
+required=["drcloud.db","catalogue.json","catalogue-report.json"]
+if manifest.get("required_runtime_files") != required: raise SystemExit("runtime contract mismatch")
+entries={x.get("path"):x for x in manifest.get("files",[]) if isinstance(x,dict)}
+for name in required:
+    path=os.path.join(restored,name); entry=entries.get(name)
+    if not entry or not os.path.isfile(path): raise SystemExit("missing runtime file")
+    content=open(path,"rb").read()
+    if len(content)!=entry.get("size") or hashlib.sha256(content).hexdigest()!=entry.get("sha256"): raise SystemExit("runtime checksum mismatch")
+try:
+    catalogue=json.load(open(os.path.join(restored,"catalogue.json")))
+    report=json.load(open(os.path.join(restored,"catalogue-report.json")))
+except (OSError,json.JSONDecodeError): raise SystemExit("invalid runtime JSON")
+rows=catalogue.get("mappings") if isinstance(catalogue,dict) else catalogue
+if not isinstance(rows,list) or not rows or report.get("ready_for_inventory") is not True: raise SystemExit("runtime inventory state invalid")
 raw=open(db_path,"rb").read(); actual=hashlib.sha256(raw).hexdigest()
 if actual != selection["sha256"] or actual != manifest.get("sha256"): raise SystemExit("checksum mismatch")
 if len(raw) != selection["size_bytes"] or len(raw) != manifest.get("database_size"): raise SystemExit("size mismatch")
@@ -110,6 +129,10 @@ json.dump({"integrity_check":"ok","foreign_key_check":"OK","quick_check":"ok","s
  "observed_rpo_human":f"{int(rpo)}s" if rpo is not None else "UNKNOWN",
  "rpo_method":"business_data_max_at" if data_max else "backup_created_at","rpo_confidence":"HIGH" if data_max else "LOW"},open(sys.argv[4],"w"))
 PY
+then
+  echo "RESTORE_RUNTIME_STATE_INVALID" >&2
+  exit 1
+fi
 integrity_completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 image="$(docker inspect --format '{{.Config.Image}}' "$(docker compose ps -q drcloud-os)")"
@@ -123,10 +146,12 @@ if ! docker run --rm --user 0:0 --network none --read-only \
   --mount "type=volume,src=$recovery_volume,dst=/data" \
   --mount "type=bind,src=$work/restored-data,dst=/seed,readonly" \
   --entrypoint /bin/sh "$image" -c '
-    cp /seed/drcloud.db /data/drcloud.db &&
+    cp /seed/drcloud.db /seed/catalogue.json /seed/catalogue-report.json /data/ &&
+    if [ -d /seed/media ]; then cp -R /seed/media /data/media; fi &&
     chown -R drcloud:drcloud /data &&
     chmod 700 /data &&
-    chmod 600 /data/drcloud.db
+    chmod 600 /data/drcloud.db /data/catalogue.json /data/catalogue-report.json &&
+    if [ -d /data/media ]; then find /data/media -type d -exec chmod 700 {} +; find /data/media -type f -exec chmod 600 {} +; fi
   '
 then
   echo "RESTORE_VOLUME_PERMISSION_FAILED" >&2
@@ -144,7 +169,13 @@ if ! docker run --rm --network none --read-only \
     test "$(stat -c %a /data)" = 700 &&
     test "$(stat -c %u /data/drcloud.db)" = "$uid" &&
     test "$(stat -c %g /data/drcloud.db)" = "$gid" &&
-    test "$(stat -c %a /data/drcloud.db)" = 600
+    test "$(stat -c %a /data/drcloud.db)" = 600 &&
+    test "$(stat -c %u /data/catalogue.json)" = "$uid" &&
+    test "$(stat -c %g /data/catalogue.json)" = "$gid" &&
+    test "$(stat -c %u /data/catalogue-report.json)" = "$uid" &&
+    test "$(stat -c %g /data/catalogue-report.json)" = "$gid" &&
+    test "$(stat -c %a /data/catalogue.json)" = 600 &&
+    test "$(stat -c %a /data/catalogue-report.json)" = 600
   '
 then
   echo "RESTORE_VOLUME_PERMISSION_FAILED" >&2

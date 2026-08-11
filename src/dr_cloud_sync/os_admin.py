@@ -35,9 +35,11 @@ def init_catalog(source: Path, report: Path, database: Path) -> int:
 
 
 def backup(database: Path, destination: Path, *, environment: str, safe_mode: bool,
-           reason: str = "MANUAL") -> Path:
+           reason: str = "MANUAL", catalogue: Path | None = None,
+           mapping_report: Path | None = None) -> Path:
     result = BackupService(destination).create(database, reason=reason, environment=environment,
-        safe_mode=safe_mode, application=application_metadata())
+        safe_mode=safe_mode, application=application_metadata(), catalogue=catalogue,
+        mapping_report=mapping_report)
     return Path(destination) / result["backup_id"]
 
 
@@ -45,8 +47,9 @@ def restore_backup(source: Path, data_dir: Path) -> None:
     """Restore a stopped instance after validating the complete DB/media bundle."""
     metadata=json.loads((source/"metadata.json").read_text(encoding="utf-8"))
     database=source/"drcloud.db"
-    if not database.is_file() or metadata.get("media",{}).get("included") is not True:
-        raise ValueError("Backup DB + médias incomplet")
+    required=metadata.get("required_runtime_files",[])
+    if required != ["drcloud.db","catalogue.json","catalogue-report.json"] or not all((source/name).is_file() for name in required) or metadata.get("media",{}).get("included") is not True:
+        raise ValueError("Backup runtime + médias incomplet")
     for item in metadata["media"].get("files",[]):
         candidate=(source/item["path"]).resolve()
         if source.resolve() not in candidate.parents or not candidate.is_file(): raise ValueError("Média de backup manquant")
@@ -55,6 +58,8 @@ def restore_backup(source: Path, data_dir: Path) -> None:
     data_dir.mkdir(parents=True,exist_ok=True)
     temporary=data_dir/"drcloud.db.restore"
     shutil.copyfile(database,temporary); temporary.replace(data_dir/"drcloud.db")
+    for name in ("catalogue.json","catalogue-report.json"):
+        shutil.copyfile(source/name,data_dir/name)
     if (source/"media").is_dir():
         media_tmp=data_dir/"media.restore"
         if media_tmp.exists(): shutil.rmtree(media_tmp)

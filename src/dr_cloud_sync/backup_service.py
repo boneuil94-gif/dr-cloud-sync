@@ -13,6 +13,8 @@ from uuid import uuid4
 
 LOG = logging.getLogger("drcloud.os.backup")
 BACKUP_UNAVAILABLE_MESSAGE = "Sauvegarde impossible : le stockage des sauvegardes n'est pas disponible."
+BACKUP_INCOMPLETE_RUNTIME_STATE = "BACKUP_INCOMPLETE_RUNTIME_STATE"
+REQUIRED_RUNTIME_FILES = ("drcloud.db", "catalogue.json", "catalogue-report.json")
 
 
 class BackupUnavailable(RuntimeError):
@@ -70,7 +72,9 @@ class BackupService:
         return hashlib.sha256(schema.encode()).hexdigest()
 
     def create(self, database: Path, *, reason: str, environment: str,
-               safe_mode: bool, application: dict | None = None) -> dict:
+               safe_mode: bool, application: dict | None = None,
+               catalogue: Path | None = None,
+               mapping_report: Path | None = None) -> dict:
         """Create, verify, and atomically publish a complete backup bundle."""
         health = self.health(create=True)
         if not health["available"]:
@@ -79,6 +83,13 @@ class BackupService:
         temporary = self.root / f".{backup_id}.partial"
         target = self.root / backup_id
         try:
+            database = Path(database)
+            runtime_sources = {
+                "catalogue.json": Path(catalogue) if catalogue is not None else database.parent / "catalogue.json",
+                "catalogue-report.json": Path(mapping_report) if mapping_report is not None else database.parent / "catalogue-report.json",
+            }
+            if any(not source.is_file() for source in runtime_sources.values()):
+                raise BackupUnavailable(BACKUP_INCOMPLETE_RUNTIME_STATE)
             temporary.mkdir(mode=0o700)
             db_target = temporary / "drcloud.db"
             source = sqlite3.connect(f"file:{Path(database)}?mode=ro", uri=True)
@@ -87,6 +98,8 @@ class BackupService:
                 source.backup(copy)
             finally:
                 copy.close(); source.close()
+            for canonical_name, runtime_source in runtime_sources.items():
+                shutil.copyfile(runtime_source, temporary / canonical_name)
             media_source = Path(database).parent / "media"
             if media_source.is_dir():
                 shutil.copytree(media_source, temporary / "media", symlinks=False)
@@ -105,6 +118,7 @@ class BackupService:
                         "app_commit": (application or {}).get("commit"), "data_max_at": None,
                         "method": "sqlite_backup_api", "manifest_status": "VALID", "reason": reason, "status": "SUCCESS",
                         "application": application or {},
+                        "required_runtime_files": list(REQUIRED_RUNTIME_FILES),
                         "configuration": {"environment": environment, "safe_mode": safe_mode},
                         "files": files, "media": {"included": True,
                         "files": [item for item in files if item["path"].startswith("media/")]}}
@@ -140,6 +154,11 @@ class BackupService:
             expected = metadata.get("files")
             if not isinstance(expected, list) or not any(x.get("path") == "drcloud.db" for x in expected):
                 raise ValueError("incomplete bundle")
+            required = metadata.get("required_runtime_files")
+            if required is not None and required != list(REQUIRED_RUNTIME_FILES):
+                raise ValueError("invalid runtime contract")
+            if required is not None and not all(any(x.get("path") == name for x in expected) for name in required):
+                raise ValueError("incomplete runtime manifest")
             for item in expected:
                 candidate = (bundle / item["path"]).resolve()
                 if bundle.resolve() not in candidate.parents or not candidate.is_file():
@@ -149,7 +168,10 @@ class BackupService:
             self._sqlite_check(bundle / "drcloud.db")
             if metadata.get("schema_fingerprint") and metadata["schema_fingerprint"] != self._schema_fingerprint(bundle / "drcloud.db"):
                 raise ValueError("schema fingerprint mismatch")
-            return {**metadata, "size_bytes": sum(x["size"] for x in expected)}
+            complete = required == list(REQUIRED_RUNTIME_FILES)
+            return {**metadata, "size_bytes": sum(x["size"] for x in expected),
+                    "backup_class": "APP_RESTORABLE" if complete else "LEGACY_DB_ONLY",
+                    "runtime_files_complete": complete}
         except Exception as exc:
             LOG.exception("backup_verification_failed bundle=%s", bundle)
             raise BackupUnavailable(BACKUP_UNAVAILABLE_MESSAGE) from exc

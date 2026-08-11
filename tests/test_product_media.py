@@ -64,6 +64,8 @@ def test_storage_rejects_traversal_and_absolute_paths(media_service):
 
 def test_backup_restore_media_manifest_and_corruption(media_service,tmp_path):
     service,_=media_service; media=service.add("drc:12:0",image_bytes())
+    (tmp_path/"catalogue.json").write_text('[{"name":"test"}]')
+    (tmp_path/"catalogue-report.json").write_text('{"ready_for_inventory":true}')
     target=backup(tmp_path/"drcloud.db",tmp_path/"backups",environment="test",safe_mode=True)
     metadata=json.loads((target/"metadata.json").read_text())
     assert metadata["media"]["included"] and metadata["media"]["files"]

@@ -119,10 +119,20 @@ def backup_inventory(root: Path, *, stale_after_seconds: int = 86400) -> dict:
         except sqlite3.DatabaseError: quick="FAILED"; fingerprint=None; valid=False
         expected=manifest.get("sha256") or next((x.get("sha256") for x in manifest.get("files",[]) if x.get("path")=="drcloud.db"),None)
         if expected: valid &= expected == checksum
+        required=("drcloud.db","catalogue.json","catalogue-report.json")
+        entries={x.get("path"):x for x in manifest.get("files",[]) if isinstance(x,dict)}
+        runtime_complete=manifest.get("required_runtime_files")==list(required)
+        for name in required:
+            candidate=bundle/name; entry=entries.get(name)
+            runtime_complete &= bool(entry and candidate.is_file() and candidate.stat().st_size==entry.get("size") and hashlib.sha256(candidate.read_bytes()).hexdigest()==entry.get("sha256"))
+        if manifest.get("required_runtime_files") is not None:
+            valid &= bool(runtime_complete)
+        backup_class="APP_RESTORABLE" if valid and runtime_complete else "LEGACY_DB_ONLY" if valid else "INVALID"
         rows.append({"backup_id": bundle.name, "created_at": created.isoformat().replace("+00:00", "Z"), "size_bytes": stat.st_size, "sha256": checksum, "database": str(db),
                      "method":manifest.get("method","UNKNOWN"), "schema_fingerprint":fingerprint,
                      "quick_check":quick, "manifest_status":manifest.get("status","UNKNOWN"),
-                     "status":"VALID" if valid else "INVALID"})
+                     "status":"VALID" if valid else "INVALID", "backup_class":backup_class,
+                     "runtime_files_complete":bool(runtime_complete)})
     rows.sort(key=lambda row: row["created_at"], reverse=True)
     if not rows: status="BACKUP_MISSING"
     else: status="BACKUP_PROVEN" if (datetime.now(timezone.utc)-datetime.fromisoformat(rows[0]["created_at"].replace("Z", "+00:00"))).total_seconds() <= stale_after_seconds else "BACKUP_STALE"
@@ -134,7 +144,7 @@ def restore_test(root: Path, *, actor: str = "cli-operator", environment: str = 
     operation_id=str(uuid4()); report={"operation":"restore-test", "operation_id":operation_id, "actor":actor,
         "commit":os.environ.get("DRCLOUD_COMMIT"), "started_at":started_at, "environment":environment,
         "target_rpo":None, "target_rto":None}
-    valid=[row for row in inventory["backups"] if row.get("status")=="VALID"]
+    valid=[row for row in inventory["backups"] if row.get("status")=="VALID" and row.get("backup_class")=="APP_RESTORABLE"]
     if not valid:
         result="RESTORE_FAILED" if inventory["backups"] else "RESTORE_NOT_PROVEN"
         return {**report,"completed_at":now(),"duration_seconds":round(time.monotonic()-started,3),"restore_result":result,
@@ -143,7 +153,10 @@ def restore_test(root: Path, *, actor: str = "cli-operator", environment: str = 
     latest=valid[0]; report["backup_id"]=latest["backup_id"]
     try:
         with tempfile.TemporaryDirectory(prefix="drcloud-restore-") as tmp:
-            target=Path(tmp)/"drcloud.db"; shutil.copy2(latest["database"],target); database_restored_at=now(); database_restored=time.monotonic()
+            target=Path(tmp)/"drcloud.db"; bundle=Path(latest["database"]).parent
+            for name in ("drcloud.db","catalogue.json","catalogue-report.json"):
+                shutil.copy2(bundle/name,Path(tmp)/name)
+            database_restored_at=now(); database_restored=time.monotonic()
             if hashlib.sha256(target.read_bytes()).hexdigest()!=latest["sha256"]: raise sqlite3.DatabaseError("checksum mismatch")
             with sqlite3.connect(f"file:{target}?mode=ro", uri=True) as db:
                 integrity=db.execute("PRAGMA integrity_check").fetchone()[0]
@@ -158,8 +171,6 @@ def restore_test(root: Path, *, actor: str = "cli-operator", environment: str = 
             from wsgiref.simple_server import make_server
             import threading
             settings=OSSettings("recovery-test","recovery-secret-not-production","recovery","unused",Path(tmp),"127.0.0.1",0,True,False)
-            (Path(tmp)/"catalogue.json").write_text(json.dumps([{"prestashop_key":"recovery-probe","shopcaisse_item_id":"recovery-probe","product_id":0,"combination_id":None,"name":"Recovery probe"}]),encoding="utf-8")
-            (Path(tmp)/"catalogue-report.json").write_text(json.dumps({"ready_for_inventory":True}),encoding="utf-8")
             app=create_app(settings); application_started_at=now(); application_started=time.monotonic()
             server=make_server("127.0.0.1",0,app); thread=threading.Thread(target=server.handle_request,daemon=True); thread.start()
             with urlopen(f"http://127.0.0.1:{server.server_port}/health",timeout=10) as response:

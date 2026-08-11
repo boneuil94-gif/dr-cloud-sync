@@ -1,4 +1,5 @@
 import json
+import hashlib
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
@@ -19,7 +20,10 @@ def make_backup(tmp_path, *, corrupt=False, age=0):
         app=create_app(OSSettings("test","local-recovery-secret","operator","unused",bundle,"127.0.0.1",0,True,False))
         app.service.repo.db.commit(); app.service.repo.db.close()
     stamp=datetime.now(timezone.utc)-timedelta(seconds=age)
-    (bundle/"metadata.json").write_text(json.dumps({"created_at":stamp.isoformat()}))
+    files=[]
+    for path in (bundle/"drcloud.db",bundle/"catalogue.json",bundle/"catalogue-report.json"):
+        if path.exists(): files.append({"path":path.name,"size":path.stat().st_size,"sha256":hashlib.sha256(path.read_bytes()).hexdigest()})
+    (bundle/"metadata.json").write_text(json.dumps({"created_at":stamp.isoformat(),"required_runtime_files":["drcloud.db","catalogue.json","catalogue-report.json"],"files":files}))
     return root
 
 
@@ -42,6 +46,16 @@ def test_backup_inventory_stale_and_restore_success(tmp_path):
     report=restore_test(root)
     assert report["restore_result"]=="RESTORE_PROVEN" and report["integrity_check"]=="ok"
     assert report["observed_rpo"] is not None and report["observed_rto"] is not None
+
+
+def test_legacy_db_only_is_valid_sqlite_but_not_application_restorable(tmp_path):
+    root=make_backup(tmp_path); bundle=root/"one"
+    (bundle/"catalogue.json").unlink(); (bundle/"catalogue-report.json").unlink()
+    (bundle/"metadata.json").write_text(json.dumps({"created_at":datetime.now(timezone.utc).isoformat()}))
+    row=backup_inventory(root)["backups"][0]
+    assert row["status"] == "VALID" and row["backup_class"] == "LEGACY_DB_ONLY"
+    assert row["runtime_files_complete"] is False
+    assert restore_test(root)["restore_result"] == "RESTORE_FAILED"
 
 
 def test_restore_missing_corrupt_and_rollback_not_proven(tmp_path):
