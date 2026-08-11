@@ -45,7 +45,7 @@ def test_host_python_calls_always_use_selected_runtime():
     text = SCRIPT.read_text()
     assert 'PYTHON_BIN="$(command -v python3 || command -v python || true)"' in text
     assert not re.search(r"(?m)^\s*(?:if\s+)?python(?:\s|$)", text)
-    assert text.count('"$PYTHON_BIN"') == 8
+    assert text.count('"$PYTHON_BIN"') == 7
 
 
 def test_workflow_is_dispatch_only_and_restore_only_by_default():
@@ -77,6 +77,24 @@ def test_safe_mode_no_provider_secrets_and_no_production_restore_target():
     assert "src=drcloud-data" not in text and "drcloud-data:/data" not in text
 
 
+def test_recovery_uses_internal_docker_healthcheck_without_published_port():
+    text = SCRIPT.read_text()
+    docker_run = text[text.index("docker run -d"):text.index('app_started_at=')]
+    assert " -p " not in docker_run
+    assert "docker port" not in text
+    assert "{{.State.Health.Status}}" in text
+    assert 'healthy) health_ok_at=' in text
+    assert "RESTORE_HEALTH_FAILED" in text
+    assert "RESTORE_HEALTH_TIMEOUT" in text
+    assert "RESTORE_APP_BOOT_FAILED" in text
+    assert "{{.State.Running}}" in text
+    assert 'docker exec "$container" python -c' in text
+    assert "http://127.0.0.1:8080/api/roadmap" in text
+    assert "exc.code in (401,403)" in text
+    assert '"network_exposure":"NONE"' in text
+    assert '"production_port_published":False' in text
+
+
 def test_fail_closed_locks_cleanup_and_failure_paths():
     text = SCRIPT.read_text()
     assert "/tmp/drcloud-os-recovery-gameday.lock" in text and "flock -n 8" in text
@@ -85,7 +103,9 @@ def test_fail_closed_locks_cleanup_and_failure_paths():
     assert "trap cleanup EXIT INT TERM" in text
     assert 'docker rm -f "$container"' in text and 'docker network rm "$network"' in text
     assert "PRODUCTION_BACKUP_INVALID" in text and "PRODUCTION_BACKUP_MISSING" in text
-    assert text.count("RESTORE_FAILED") >= 2
+    assert "RESTORE_APP_BOOT_FAILED" in text
+    assert "RESTORE_HEALTH_FAILED" in text
+    assert "RESTORE_HEALTH_TIMEOUT" in text
 
 
 def test_report_sanitization_and_unknown_n_minus_one_are_explicit():
