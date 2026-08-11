@@ -113,20 +113,51 @@ docker run -d --name "$container" --network "$network" --read-only --tmpfs /tmp:
   -e DRCLOUD_ENV=recovery-gameday -e DRCLOUD_SAFE_MODE=true -e BARCODE_SYNC_MODE=dry-run \
   -e DRCLOUD_DATA_DIR=/data -e DRCLOUD_HOST=0.0.0.0 -e DRCLOUD_PORT=8080 \
   -e DRCLOUD_SECRET_KEY=recovery-isolated-nonproduction -e DRCLOUD_ADMIN_USERNAME=recovery \
-  -e DRCLOUD_ADMIN_PASSWORD=recovery-isolated-unused -p 127.0.0.1::8080 "$image" >/dev/null
+  -e DRCLOUD_ADMIN_PASSWORD=recovery-isolated-unused "$image" >/dev/null
 app_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-port="$(docker port "$container" 8080/tcp | sed -n 's/.*://p')"
-[[ "$port" =~ ^[0-9]+$ ]] || { echo "RESTORE_FAILED" >&2; exit 1; }
+
+sanitized_container_logs() {
+  docker logs --tail 50 "$container" 2>&1 | sed -E \
+    -e 's/([Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn])[^[:space:]]*/\1=[REDACTED]/g' \
+    -e 's/(Bearer|Basic) [^[:space:]]+/\1 [REDACTED]/g' >&2
+}
+
+running="$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)"
+if [[ "$running" != "true" ]]; then
+  sanitized_container_logs
+  echo "RESTORE_APP_BOOT_FAILED" >&2
+  exit 1
+fi
+
 health_ok_at=""
 for _ in $(seq 1 30); do
-  if curl --fail --silent --show-error --max-time 2 "http://127.0.0.1:$port/health" >"$work/health.json" && \
-     "$PYTHON_BIN" -c 'import json,sys; d=json.load(open(sys.argv[1])); raise SystemExit(d.get("status")!="ok" or d.get("database")!="ok")' "$work/health.json"; then
-    health_ok_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"; break
+  running="$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)"
+  if [[ "$running" != "true" ]]; then
+    sanitized_container_logs
+    echo "RESTORE_APP_BOOT_FAILED" >&2
+    exit 1
   fi
+  health_status="$(docker inspect --format '{{.State.Health.Status}}' "$container" 2>/dev/null || true)"
+  case "$health_status" in
+    healthy) health_ok_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"; break ;;
+    starting) ;;
+    unhealthy)
+      sanitized_container_logs
+      echo "RESTORE_HEALTH_FAILED" >&2
+      exit 1
+      ;;
+    *) ;;
+  esac
   sleep 1
 done
-[[ -n "$health_ok_at" ]] || { echo "RESTORE_FAILED" >&2; exit 1; }
-curl --fail --silent --max-time 2 "http://127.0.0.1:$port/api/roadmap" >/dev/null || true
+[[ -n "$health_ok_at" ]] || { echo "RESTORE_HEALTH_TIMEOUT" >&2; exit 1; }
+# Secondary business probe only: authentication failures and endpoint errors do
+# not override the mandatory Docker /health result.
+docker exec "$container" python -c 'import urllib.error,urllib.request
+try:
+    urllib.request.urlopen("http://127.0.0.1:8080/api/roadmap", timeout=2).read()
+except urllib.error.HTTPError as exc:
+    raise SystemExit(0 if exc.code in (401,403) else 1)' >/dev/null 2>&1 || true
 
 completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 phases="$work/phases.json"
@@ -165,7 +196,7 @@ report={"schema_version":1,"environment":"production","evidence_level":"PRODUCTI
         "observed_rto_seconds":rto,"observed_rto_human":f"{int(rto)}s"},
  "rollback":{"evidence_level":"OVH_EQUIVALENT_ROLLBACK" if sys.argv[6]=="ROLLBACK_PROVEN" else "NOT_EXECUTED","environment":"OVH_EQUIVALENT_STAGING","result":sys.argv[6],"n":sys.argv[7] or None,"n_minus_1":sys.argv[8] or None,
              "schema_compatibility":"UNKNOWN" if sys.argv[6]!="ROLLBACK_PROVEN" else "COMPATIBLE"},
- "safety":{"safe_mode":True,"external_credentials":"NONE","production_database_target":False,"production_volume_mounted":False,"network":"INTERNAL_ONLY"}}
+ "safety":{"safe_mode":True,"external_credentials":"NONE","production_database_target":False,"production_volume_mounted":False,"network":"INTERNAL_ONLY","network_exposure":"NONE","production_port_published":False}}
 forbidden=("password","secret","token","credential","api_key","private_key","authorization")
 def scan(v):
  if isinstance(v,dict):
