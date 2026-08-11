@@ -26,10 +26,16 @@ flock -n 9 || { echo "GAME_DAY_BLOCKED_DEPLOYMENT_ACTIVE" >&2; exit 1; }
 work="$(mktemp -d -t drcloud-recovery-gameday.XXXXXX)"
 container="drcloud-recovery-${$}"
 network="drcloud-recovery-${$}"
+recovery_volume="drcloud-recovery-data-${$}"
 cleanup() {
   local status=$?
   docker rm -f "$container" >/dev/null 2>&1 || true
   docker network rm "$network" >/dev/null 2>&1 || true
+  # Only remove volumes created for an isolated Game Day run.  Never pass an
+  # unchecked name to `docker volume rm`, even during best-effort cleanup.
+  if [[ "$recovery_volume" =~ ^drcloud-recovery-data-[0-9]+$ ]]; then
+    docker volume rm -f "$recovery_volume" >/dev/null 2>&1 || true
+  fi
   rm -rf -- "$work"
   [[ ! -e "$work" ]] || status=1
   exit "$status"
@@ -107,9 +113,47 @@ PY
 integrity_completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 image="$(docker inspect --format '{{.Config.Image}}' "$(docker compose ps -q drcloud-os)")"
+docker volume create "$recovery_volume" >/dev/null
+
+# Seed the validated, isolated database copy into a disposable Docker volume.
+# This one-shot container has no network or credentials and never starts the
+# application.  Running only this preparation step as root permits it to hand
+# ownership of /data to the image's normal drcloud user.
+if ! docker run --rm --user 0:0 --network none --read-only \
+  --mount "type=volume,src=$recovery_volume,dst=/data" \
+  --mount "type=bind,src=$work/restored-data,dst=/seed,readonly" \
+  --entrypoint /bin/sh "$image" -c '
+    cp /seed/drcloud.db /data/drcloud.db &&
+    chown -R drcloud:drcloud /data &&
+    chmod 700 /data &&
+    chmod 600 /data/drcloud.db
+  '
+then
+  echo "RESTORE_VOLUME_PERMISSION_FAILED" >&2
+  exit 1
+fi
+
+# Fail closed unless ownership and modes are exactly those required by the
+# application.  Numeric comparisons avoid trusting localized stat output.
+if ! docker run --rm --network none --read-only \
+  --mount "type=volume,src=$recovery_volume,dst=/data" \
+  --entrypoint /bin/sh "$image" -c '
+    uid="$(id -u drcloud)" && gid="$(id -g drcloud)" &&
+    test "$(stat -c %u /data)" = "$uid" &&
+    test "$(stat -c %g /data)" = "$gid" &&
+    test "$(stat -c %a /data)" = 700 &&
+    test "$(stat -c %u /data/drcloud.db)" = "$uid" &&
+    test "$(stat -c %g /data/drcloud.db)" = "$gid" &&
+    test "$(stat -c %a /data/drcloud.db)" = 600
+  '
+then
+  echo "RESTORE_VOLUME_PERMISSION_FAILED" >&2
+  exit 1
+fi
+
 docker network create --internal "$network" >/dev/null
 docker run -d --name "$container" --network "$network" --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m \
-  --cap-drop ALL --security-opt no-new-privileges --mount "type=bind,src=$work/restored-data,dst=/data" \
+  --cap-drop ALL --security-opt no-new-privileges --mount "type=volume,src=$recovery_volume,dst=/data" \
   -e DRCLOUD_ENV=recovery-gameday -e DRCLOUD_SAFE_MODE=true -e BARCODE_SYNC_MODE=dry-run \
   -e DRCLOUD_DATA_DIR=/data -e DRCLOUD_HOST=0.0.0.0 -e DRCLOUD_PORT=8080 \
   -e DRCLOUD_SECRET_KEY=recovery-isolated-nonproduction -e DRCLOUD_ADMIN_USERNAME=recovery \
@@ -188,6 +232,7 @@ start=parse(phases["started_at"]); end=parse(phases["business_validation_complet
 rto=max(0,(end-start).total_seconds())
 duration=lambda a,b:max(0,(parse(phases[b])-parse(phases[a])).total_seconds())
 report={"schema_version":1,"environment":"production","evidence_level":"PRODUCTION_DATA_RESTORE","mode":sys.argv[5],
+ "storage":{"type":"TEMPORARY_DOCKER_VOLUME","production_volume_mounted":False,"restored_database_copy":True,"runtime_user":"drcloud"},
  "backup":{"result":"PRODUCTION_BACKUP_VALID","backup_id":sel["backup_id"],"created_at":sel["created_at"],"location_classification":"BACKUP_ON_HOST_ONLY"},
  "restore":{"evidence_level":"PRODUCTION_DATA_RESTORE","result":"PRODUCTION_DATA_PROVEN","completed_at":phases["business_validation_completed_at"],"app_boot":"APP_BOOT_OK","health":"HEALTH_OK","observed_rto_seconds":rto,**facts},
  "rto":{**phases,"backup_selection_duration":duration("started_at","backup_selected_at"),"database_restore_duration":duration("backup_selected_at","restore_completed_at"),
