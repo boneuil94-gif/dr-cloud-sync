@@ -378,6 +378,7 @@ class InventoryApp:
                 try: persisted=json.loads(evidence_file.read_text(encoding="utf-8"))
                 except (OSError,json.JSONDecodeError): pass
                 return self._json(start,{**evidence,"backup":backup_inventory(self.backup_service.root),
+                    "backup_location_classification":persisted.get("backup_location_classification","UNKNOWN"),
                     "last_restore_test":persisted.get("restore",{"restore_result":"RESTORE_NOT_PROVEN"}),
                     "last_rollback_test":persisted.get("rollback",rollback_check()),"reconciliation":reconciliation_report(self.settings.database)})
             if path == "/api/data-hub" and method == "GET": return self._json(start,{**self.data_hub.health(),"latest_batch":self.data_hub.latest_batch(),"sales_diagnostics":self.sales_sync.diagnostics(),"runtime":{**self.data_hub.runtime(self.automation_operations()),"configuration":{"prestashop_paid_state_ids":"CONFIGURED" if self.prestashop_paid_states_configured else "MISSING","qonto":self.qonto_configuration}}})

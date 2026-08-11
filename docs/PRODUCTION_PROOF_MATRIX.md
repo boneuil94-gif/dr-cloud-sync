@@ -59,3 +59,16 @@ Méthode : 20 code, 20 wired, 20 tests, 25 production data, 10 observable, 5 doc
 | RPO/RTO measurement | YES | YES | YES | NO | NO | local observed RPO/RTO measured; production RPO remains UNKNOWN |
 | Rollback N/N-1 | YES | PARTIAL | PARTIAL | NO | NO | staging/OVH-equivalent execution unavailable; `ROLLBACK_NOT_PROVEN` |
 | SQLite WAL crash recovery | YES | YES | YES | NOT_APPLICABLE | NO | SIGKILL during uncommitted WAL write, reopen/integrity succeeded locally |
+
+## Tentative Production Recovery Game Day — 2026-08-11
+
+| Contrôle | Résultat | Niveau | Preuve / limite |
+|---|---|---|---|
+| Inventaire vrai backup | `PRODUCTION_BACKUP_MISSING` dans l'exécuteur | NOT_PROVEN | `/data/backups` absent/non monté; l'hôte OVH n'était pas accessible |
+| Restore données production | `RESTORE_NOT_PROVEN` | NOT_EXECUTED | arrêt fail-closed, aucune substitution synthétique |
+| RPO / RTO production | `UNKNOWN` / `UNKNOWN` | NOT_PROVEN | aucun backup sélectionnable |
+| Rollback N/N-1 | `ROLLBACK_NOT_PROVEN` | NOT_EXECUTED | `OVH_EQUIVALENT_STAGING` indisponible |
+| Compatibilité schéma / data loss | `UNKNOWN` / `NOT_RUN` | NOT_PROVEN | aucune migration ni écriture exécutée |
+| Sécurité | SAFE MODE, aucune action externe | OBSERVED | aucune connexion provider, aucun paiement/publication/CRM |
+
+Le rapport assaini `recovery_evidence_production.json` conserve les `null` au lieu d'inventer des compteurs. N est le merge PR #148 (`7ad7412…`) et N-1 son premier parent (`7bb7258…`), mais leur statut effectivement servi en production reste inconnu.
