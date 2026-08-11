@@ -73,8 +73,50 @@ def test_safe_mode_no_provider_secrets_and_no_production_restore_target():
     assert '--network "$network"' in text and "docker network create --internal" in text
     for provider in ("QONTO_CREDENTIAL", "SUMUP_API_KEY", "PRESTASHOP_API_KEY", "SHOPCAISSE_API_KEY", "CRM_TOKEN"):
         assert provider not in text
-    assert "src=$work/restored-data,dst=/data" in text
+    final_run = text[text.index("docker run -d"):text.index('app_started_at=')]
+    assert "type=bind,src=$work/restored-data,dst=/data" not in final_run
+    assert "type=volume,src=$recovery_volume,dst=/data" in final_run
     assert "src=drcloud-data" not in text and "drcloud-data:/data" not in text
+
+
+def test_temporary_recovery_volume_is_seeded_verified_and_cleaned_up():
+    text = SCRIPT.read_text()
+    assert 'recovery_volume="drcloud-recovery-data-${$}"' in text
+    assert 'docker volume create "$recovery_volume"' in text
+    assert 'docker volume rm -f "$recovery_volume"' in text
+    assert "^drcloud-recovery-data-[0-9]+$" in text
+    assert "RESTORE_VOLUME_PERMISSION_FAILED" in text
+
+    seed = text[text.index("# Seed the validated"):text.index("# Fail closed unless ownership")]
+    assert "--user 0:0 --network none --read-only" in seed
+    assert "type=bind,src=$work/restored-data,dst=/seed,readonly" in seed
+    assert "chown -R drcloud:drcloud /data" in seed
+    assert "chmod 700 /data" in seed
+    assert "chmod 600 /data/drcloud.db" in seed
+    for provider in ("QONTO_CREDENTIAL", "SUMUP_API_KEY", "PRESTASHOP_API_KEY", "SHOPCAISSE_API_KEY", "CRM_TOKEN"):
+        assert provider not in seed
+
+    verification = text[text.index("# Fail closed unless ownership"):text.index("docker network create --internal")]
+    assert "--network none --read-only" in verification
+    assert 'stat -c %a /data)" = 700' in verification
+    assert 'stat -c %a /data/drcloud.db)" = 600' in verification
+
+
+def test_final_recovery_container_keeps_image_user_and_hardening():
+    text = SCRIPT.read_text()
+    final_run = text[text.index("docker run -d"):text.index('app_started_at=')]
+    assert "--user" not in final_run
+    assert "--read-only" in final_run
+    assert "--cap-drop ALL" in final_run
+    assert "no-new-privileges" in final_run
+    assert "type=volume,src=$recovery_volume,dst=/data" in final_run
+    assert "type=bind" not in final_run
+    assert "chmod 777" not in text
+
+
+def test_application_data_directory_hardening_is_preserved():
+    source = (ROOT / "src" / "dr_cloud_sync" / "inventory_web.py").read_text()
+    assert "settings.data_dir.chmod(0o700)" in source
 
 
 def test_recovery_uses_internal_docker_healthcheck_without_published_port():
@@ -102,6 +144,7 @@ def test_fail_closed_locks_cleanup_and_failure_paths():
     assert "GAME_DAY_BLOCKED_DEPLOYMENT_ACTIVE" in text
     assert "trap cleanup EXIT INT TERM" in text
     assert 'docker rm -f "$container"' in text and 'docker network rm "$network"' in text
+    assert 'docker volume rm -f "$recovery_volume"' in text
     assert "PRODUCTION_BACKUP_INVALID" in text and "PRODUCTION_BACKUP_MISSING" in text
     assert "RESTORE_APP_BOOT_FAILED" in text
     assert "RESTORE_HEALTH_FAILED" in text
@@ -115,6 +158,9 @@ def test_report_sanitization_and_unknown_n_minus_one_are_explicit():
     assert "ROLLBACK_NOT_PROVEN" in text
     assert "Never substitute HEAD^" in text or "Never substitute" in text
     assert 'history="$DRCLOUD_DEPLOYMENT_STATE_DIR/successful-commit-history"' in text
+    assert '"type":"TEMPORARY_DOCKER_VOLUME"' in text
+    assert '"restored_database_copy":True' in text
+    assert '"runtime_user":"drcloud"' in text
 
 
 def test_full_environment_is_explicitly_isolated():
