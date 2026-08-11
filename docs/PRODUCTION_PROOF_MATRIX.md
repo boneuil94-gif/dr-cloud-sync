@@ -75,6 +75,8 @@ Le rapport assaini `recovery_evidence_production.json` conserve les `null` au li
 
 ## GitHub Actions Production Recovery Game Day
 
+Le Game Day #4 a démontré le défaut de contrat suivant : **SQLite backup valid ≠ application-restorable backup**. Le bundle officiel inclut désormais la base, le catalogue réellement configuré, son rapport de mapping validé, leurs checksums et les médias éventuels. Les anciens bundles restent `LEGACY_DB_ONLY` et sont exclus de la preuve applicative. Aucun score n’est relevé avant une nouvelle exécution réelle retournant `PRODUCTION_DATA_PROVEN`, `APP_BOOT_OK` et `HEALTH_OK`.
+
 Le workflow manuel `.github/workflows/drcloud-os-recovery-gameday.yml` déplace la preuve
 sur l'hôte OVH accessible par l'environnement GitHub `production`. `restore-only` est le
 mode par défaut; `full` demande également le rollback OVH-equivalent isolé. Il sélectionne

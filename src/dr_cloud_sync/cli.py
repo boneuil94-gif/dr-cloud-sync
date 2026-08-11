@@ -187,7 +187,10 @@ def main(argv: list[str] | None = None) -> int:
         count=init_catalog(Path(os.environ.get("INVENTORY_CATALOGUE", "dist/mapping-prestashop-shopcaisse-final.json")), Path(os.environ.get("INVENTORY_MAPPING_REPORT", "dist/rapport-mapping-final.json")), settings.database)
         print(json.dumps({"status":"initialized","products":count,"database":str(settings.database)}))
     elif args.command == "os-backup":
-        settings=OSSettings.from_env(require_secrets=False); target=backup(settings.database,settings.data_dir / "backups" if not os.environ.get("DRCLOUD_BACKUP_DIR") else Path(os.environ["DRCLOUD_BACKUP_DIR"]),environment=settings.environment,safe_mode=settings.safe_mode)
+        settings=OSSettings.from_env(require_secrets=False)
+        catalogue=Path(os.environ.get("INVENTORY_CATALOGUE", settings.data_dir / "catalogue.json"))
+        report=Path(os.environ.get("INVENTORY_MAPPING_REPORT", settings.data_dir / "catalogue-report.json"))
+        target=backup(settings.database,settings.data_dir / "backups" if not os.environ.get("DRCLOUD_BACKUP_DIR") else Path(os.environ["DRCLOUD_BACKUP_DIR"]),environment=settings.environment,safe_mode=settings.safe_mode,catalogue=catalogue,mapping_report=report)
         print(json.dumps({"status":"backup-created","path":str(target)}))
     elif args.command == "catalogue-rehydrate":
         settings=OSSettings.from_env(require_secrets=False)

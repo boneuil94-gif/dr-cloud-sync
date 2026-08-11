@@ -6,7 +6,7 @@
 
 ## Backup contract
 
-`deploy/ovh/backup.sh` invokes `dr-cloud-sync os-backup`. The application uses SQLite's online backup API (not a hot file copy), includes `/data/media`, validates `integrity_check`, writes SHA-256 checksums, and atomically publishes a private bundle. The production default is `/data/backups` inside the `drcloud-data` Docker volume. The manifest records `backup_id`, UTC creation, basename of the source DB, size, checksum, schema fingerprint, app commit, nullable `data_max_at`, method, and status; it contains no business rows.
+`deploy/ovh/backup.sh` invokes `dr-cloud-sync os-backup`. **SQLite backup valid ≠ application-restorable backup.** The complete runtime contract is `drcloud.db`, `catalogue.json`, `catalogue-report.json`, `metadata.json`, plus `media/` when present. Catalogue sources are resolved from `INVENTORY_CATALOGUE` and `INVENTORY_MAPPING_REPORT` (falling back beside the configured database), then stored under canonical, non-sensitive names. The application uses SQLite's online backup API (not a hot file copy), validates every required file's size and SHA-256, and atomically publishes a private bundle. The production default is `/data/backups` inside the `drcloud-data` Docker volume. The manifest records `backup_id`, UTC creation, basename of the source DB, size, checksum, schema fingerprint, app commit, nullable `data_max_at`, method, and status; it contains no business rows.
 
 Frequency, rotation and retention are `UNKNOWN` unless `DRCLOUD_BACKUP_FREQUENCY`, `DRCLOUD_BACKUP_ROTATION`, and `DRCLOUD_BACKUP_RETENTION` are explicitly configured. An on-host volume is not an off-site disaster-recovery copy. Operators must verify owner/mode with `stat`; bundles should remain private (`0700` directory, `0600` database).
 
@@ -14,7 +14,7 @@ Frequency, rotation and retention are `UNKNOWN` unless `DRCLOUD_BACKUP_FREQUENCY
 DRCLOUD_DATA_DIR=/data DRCLOUD_BACKUP_DIR=/data/backups dr-cloud-sync backup-status --json
 ```
 
-`VALID` requires a present non-empty file, matching manifest checksum, an openable SQLite database, `quick_check=ok`, and a detectable schema. `BACKUP_INVALID` stops recovery; it is never skipped silently.
+`APP_RESTORABLE` requires `required_runtime_files` and matching manifest entries for all three runtime files. A historical SQLite-valid bundle without that contract is retained as `LEGACY_DB_ONLY`; it is never eligible for application-restore proof. Missing runtime state makes creation fail closed with `BACKUP_INCOMPLETE_RUNTIME_STATE`.
 
 ## Isolated restore drill
 
@@ -22,7 +22,7 @@ DRCLOUD_DATA_DIR=/data DRCLOUD_BACKUP_DIR=/data/backups dr-cloud-sync backup-sta
 
 Lancer manuellement **Actions → DrCloud OS Recovery Game Day → Run workflow**. Le seul
 déclencheur est `workflow_dispatch`; le mode par défaut `restore-only` prouve le dernier
-backup `VALID`, sa copie/restauration, l'intégrité, le démarrage SAFE MODE et le health
+backup `APP_RESTORABLE` et `VALID`, sa copie/restauration, l'intégrité, le démarrage SAFE MODE et le health
 sur l'hôte OVH. Le mode `full` autorise en plus la preuve de rollback isolée. En l'absence
 d'un historique ordonné de deux SHA réellement known-good, il retourne volontairement
 `ROLLBACK_NOT_PROVEN` (jamais un `HEAD^` supposé).

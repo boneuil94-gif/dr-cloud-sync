@@ -102,6 +102,26 @@ def test_temporary_recovery_volume_is_seeded_verified_and_cleaned_up():
     assert 'stat -c %a /data/drcloud.db)" = 600' in verification
 
 
+def test_application_restore_uses_only_complete_official_bundle():
+    text=SCRIPT.read_text()
+    assert 'x.get("backup_class")=="APP_RESTORABLE"' in text
+    assert 'x.get("runtime_files_complete") is True' in text
+    for name in ("drcloud.db","catalogue.json","catalogue-report.json","metadata.json"):
+        assert f'/data/backups/$backup_id/$runtime_file' in text
+        assert f'cp /seed/drcloud.db /seed/catalogue.json /seed/catalogue-report.json /data/' in text
+    restore=text[text.index('mkdir -m 700 "$work/bundle"'):text.index('restore_completed_at=')]
+    assert '/data/catalogue.json' not in restore and '/data/catalogue-report.json' not in restore
+    assert 'BACKUP_INCOMPLETE_RUNTIME_STATE' not in text
+
+
+def test_runtime_json_and_inventory_readiness_fail_closed_before_boot():
+    text=SCRIPT.read_text(); validation=text[text.index('if ! "$PYTHON_BIN" - "$selection"'):text.index('integrity_completed_at=')]
+    assert 'json.load(open(os.path.join(restored,"catalogue.json")))' in validation
+    assert 'report.get("ready_for_inventory") is not True' in validation
+    assert 'not isinstance(rows,list) or not rows' in validation
+    assert 'RESTORE_RUNTIME_STATE_INVALID' in validation
+
+
 def test_final_recovery_container_keeps_image_user_and_hardening():
     text = SCRIPT.read_text()
     final_run = text[text.index("docker run -d"):text.index('app_started_at=')]
