@@ -11,8 +11,8 @@
     "test_quality": 76,
     "ux": 60
   },
-  "evidence_date": "2026-08-10",
-  "methodology": "Score strict audité; aucune moyenne naïve des modules. Code, wiring, tests, production, observabilité et documentation sont évalués séparément.",
+  "evidence_date": "2026-08-12",
+  "methodology": "Score strict audité; aucune moyenne naïve des modules. Code, wiring, tests, production, observabilité et documentation sont évalués séparément. Les nouvelles preuves mettent à jour les statuts factuels; aucun score numérique n'est relevé sans re-score formel Audit V2.",
   "modules": [
     {
       "id": "architecture",
@@ -30,7 +30,7 @@
       "score": 72,
       "status": "PARTIAL",
       "justification": "lifecycle, SQLite, idempotence, retry et health testés",
-      "blocker": "concurrence et crash non éprouvés",
+      "blocker": "concurrence et crash multi-worker non éprouvés",
       "next_step": "tester multi-worker et fault injection",
       "evidence_level": "TESTED"
     },
@@ -39,9 +39,9 @@
       "name": "Deployment",
       "score": 68,
       "status": "PARTIAL",
-      "justification": "CI/CD au SHA exact et health/HTTPS publics prouvés",
-      "blocker": "restore, rollback et monitoring non prouvés",
-      "next_step": "exercer recovery et rollback avec preuve datée",
+      "justification": "CI/CD au SHA exact, health/HTTPS publics et restauration production-data isolée prouvés",
+      "blocker": "rollback N→N-1, backup hors hôte et monitoring/alerting non prouvés",
+      "next_step": "exercer le Game Day full avec rollback et externaliser les backups",
       "evidence_level": "PRODUCTION_PROVEN"
     },
     {
@@ -99,8 +99,8 @@
       "name": "Qonto",
       "score": 78,
       "status": "PARTIAL",
-      "justification": "client et ledger avec 2 718 lignes historiques prouvées",
-      "blocker": "fraîcheur et sous-modules non revalidés",
+      "justification": "client et ledger avec données production présentes dans la preuve recovery datée",
+      "blocker": "exhaustivité, balance et sous-modules non revalidés par totaux d’autorité",
       "next_step": "capturer un snapshot et mesurer pagination/matching",
       "evidence_level": "PRODUCTION_PROVEN"
     },
@@ -209,8 +209,8 @@
       "name": "Tests",
       "score": 76,
       "status": "PARTIAL",
-      "justification": "563 tests passaient lors de l’audit V2",
-      "blocker": "live, charge, DR et E2E absents",
+      "justification": "563 tests passaient lors de l’audit V2; 607 tests passent après le correctif recovery #156",
+      "blocker": "live, charge, DR répété et E2E absents",
       "next_step": "ajouter une pyramide production-like",
       "evidence_level": "TESTED"
     },
@@ -219,22 +219,26 @@
       "name": "Documentation",
       "score": 70,
       "status": "PARTIAL",
-      "justification": "architecture, providers, déploiement et runbooks documentés",
-      "blocker": "exercices, SLO, incidents et ownership sans preuve",
-      "next_step": "exercer les runbooks et dater les preuves",
+      "justification": "architecture, providers, déploiement, runbooks et preuve recovery datée documentés",
+      "blocker": "SLO, incidents, ownership et DR répété sans preuve",
+      "next_step": "exercer les runbooks périodiquement et dater les preuves",
       "evidence_level": "TESTED"
     }
   ],
   "priorities": [
-    "P0 — prouver backup restaurable et état secrets/bootstrap",
-    "P1 — exercer rollback, recovery et RPO/RTO",
+    "P0 — prouver état secrets/bootstrap production",
+    "P1 — externaliser les backups hors hôte et définir rétention/rotation",
+    "P1 — exercer rollback N→N-1 et confirmer compatibilité schéma",
+    "P1 — améliorer la mesure RPO avec data_max_at plutôt que backup_created_at",
     "P1 — mesurer couverture sources et funnel financier",
     "P1 — tester SQLite multi-worker",
     "P1 — prouver le lifecycle PII/consent",
     "P1 — clarifier et brancher les sous-sources SumUp"
   ],
   "blockers": [
-    "restore et rollback non exercés",
+    "rollback N→N-1 non exercé et compatibilité schéma UNKNOWN",
+    "backup encore BACKUP_ON_HOST_ONLY",
+    "état secrets/bootstrap production non prouvé",
     "couverture production des connecteurs inconnue",
     "funnel SALE→PAYMENT→SUMUP→PAYOUT→QONTO non mesuré",
     "concurrence SQLite non prouvée",
@@ -244,26 +248,11 @@
     "date": "2026-08-10",
     "scope": "isolated-local-synthetic",
     "scores": {
-      "global_strict": {
-        "before": 58,
-        "after": 58
-      },
-      "production_maturity": {
-        "before": 49,
-        "after": 49
-      },
-      "deployment": {
-        "before": 68,
-        "after": 68
-      },
-      "core": {
-        "before": 72,
-        "after": 72
-      },
-      "observability": {
-        "before": 61,
-        "after": 61
-      }
+      "global_strict": {"before": 58, "after": 58},
+      "production_maturity": {"before": 49, "after": 49},
+      "deployment": {"before": 68, "after": 68},
+      "core": {"before": 72, "after": 72},
+      "observability": {"before": 61, "after": 61}
     },
     "evidence": [
       "recovery_evidence.json",
@@ -284,36 +273,72 @@
     "backup_status": "PRODUCTION_BACKUP_MISSING",
     "evidence": "recovery_evidence_production.json",
     "scores": {
-      "global_strict": {
-        "before": 58,
-        "after": 58
-      },
-      "production_maturity": {
-        "before": 49,
-        "after": 49
-      },
-      "deployment": {
-        "before": 68,
-        "after": 68
-      },
-      "core": {
-        "before": 72,
-        "after": 72
-      },
-      "observability": {
-        "before": 61,
-        "after": 61
-      },
-      "tests": {
-        "before": 76,
-        "after": 76
-      }
+      "global_strict": {"before": 58, "after": 58},
+      "production_maturity": {"before": 49, "after": 49},
+      "deployment": {"before": 68, "after": 68},
+      "core": {"before": 72, "after": 72},
+      "observability": {"before": 61, "after": 61},
+      "tests": {"before": 76, "after": 76}
     },
     "why": "No OVH access or mounted production backup; no synthetic substitution and no score increase.",
     "priorities": {
       "p0_backup_restorable": "PARTIAL",
       "p1_rollback_recovery": "PARTIAL",
       "p1_rpo_rto": "PARTIAL",
+      "p1_sqlite_crash_concurrency": "PARTIAL"
+    }
+  },
+  "production_recovery_gameday_2026_08_12": {
+    "scope": "production-data-isolated-restore",
+    "run_number": 6,
+    "run_id": 31585890450,
+    "head_sha": "dfe525ac4e1f7ef08357dad9bc1e3a588d9bf51a",
+    "result": "PRODUCTION_DATA_PROVEN",
+    "backup_status": "PRODUCTION_BACKUP_VALID",
+    "backup_location": "BACKUP_ON_HOST_ONLY",
+    "app_boot": "APP_BOOT_OK",
+    "health": "HEALTH_OK",
+    "quick_check": "ok",
+    "integrity_check": "ok",
+    "foreign_key_check": "OK",
+    "database_size_bytes": 70647808,
+    "table_count": 124,
+    "index_count": 223,
+    "observed_rto_seconds": 19.0,
+    "observed_rpo_seconds": 117.378,
+    "rpo_confidence": "LOW",
+    "rpo_method": "backup_created_at",
+    "rollback": "NOT_REQUESTED",
+    "schema_compatibility": "UNKNOWN",
+    "safety": {
+      "safe_mode": true,
+      "external_provider_auth": "NONE",
+      "network": "INTERNAL_ONLY",
+      "network_exposure": "NONE",
+      "production_database_target": false,
+      "production_volume_mounted": false,
+      "production_port_published": false
+    },
+    "evidence": [
+      "docs/evidence/recovery_evidence_production_2026-08-12.json",
+      "GitHub Actions DrCloud OS Recovery Game Day #6",
+      "artifact drcloud-production-recovery-evidence-31585890450"
+    ],
+    "scores": {
+      "global_strict": {"before": 58, "after": 58},
+      "production_maturity": {"before": 49, "after": 49},
+      "deployment": {"before": 68, "after": 68},
+      "core": {"before": 72, "after": 72},
+      "observability": {"before": 61, "after": 61},
+      "tests": {"before": 76, "after": 76}
+    },
+    "score_policy": "Scores intentionally unchanged until a formal Audit V2 re-score; the new production proof closes factual blockers without inventing numeric credit.",
+    "priorities": {
+      "p0_backup_restorable": "CLOSED_PROVEN",
+      "p0_secrets_bootstrap": "OPEN",
+      "p1_rollback_recovery": "PARTIAL_RESTORE_PROVEN_ROLLBACK_OPEN",
+      "p1_rpo_rto": "PARTIAL_RTO_PROVEN_RPO_LOW_CONFIDENCE",
+      "p1_off_host_backup": "OPEN",
       "p1_sqlite_crash_concurrency": "PARTIAL"
     }
   }
