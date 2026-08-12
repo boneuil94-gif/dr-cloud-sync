@@ -90,13 +90,28 @@ def test_v3_scorecard_is_the_strict_source_of_truth():
     assert data["version"] == 3
     assert data["global_score"] == data["global_progress_percent"] == 58
     assert data["remaining_percent"] == 42
-    assert data["evidence_date"] == "2026-08-10"
+    assert data["evidence_date"] == "2026-08-12"
     assert scores["Purchases"] == 63
     assert scores["Finance"] == 61
     assert scores["Stock"] == 67
     assert scores["Qonto"] == 78
     assert scores["Social"] == 22
     assert 75.93 not in scores.values() and 100 not in scores.values()
+
+def test_production_recovery_proof_closes_backup_p0_without_inventing_scores():
+    data = RoadmapService(ROADMAP).load()
+    proof = data["production_recovery_gameday_2026_08_12"]
+    assert proof["result"] == "PRODUCTION_DATA_PROVEN"
+    assert proof["app_boot"] == "APP_BOOT_OK"
+    assert proof["health"] == "HEALTH_OK"
+    assert proof["priorities"]["p0_backup_restorable"] == "CLOSED_PROVEN"
+    assert proof["priorities"]["p1_rollback_recovery"] == "PARTIAL_RESTORE_PROVEN_ROLLBACK_OPEN"
+    assert proof["scores"]["global_strict"] == {"before": 58, "after": 58}
+    assert proof["scores"]["production_maturity"] == {"before": 49, "after": 49}
+    assert proof["scores"]["deployment"] == {"before": 68, "after": 68}
+    assert proof["rollback"] == "NOT_REQUESTED"
+    assert proof["schema_compatibility"] == "UNKNOWN"
+    assert proof["backup_location"] == "BACKUP_ON_HOST_ONLY"
 
 def test_dimensions_are_audited_facts_not_a_module_average():
     data = RoadmapService(ROADMAP).load()
