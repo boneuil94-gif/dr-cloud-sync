@@ -253,7 +253,11 @@ class InventoryApp:
             Path(os.environ["DRCLOUD_REHYDRATION_SNAPSHOT"]) if os.environ.get("DRCLOUD_REHYDRATION_SNAPSHOT") else packaged_historical_snapshot(),
             self.backup_service.root,
             environment=settings.environment if settings else "development",
-            safe_mode=settings.safe_mode if settings else True)
+            safe_mode=settings.safe_mode if settings else True,
+            catalogue_path=Path(os.environ.get(
+                "INVENTORY_CATALOGUE", str(service.repo.path.parent / "catalogue.json"))),
+            mapping_report_path=Path(os.environ.get(
+                "INVENTORY_MAPPING_REPORT", str(service.repo.path.parent / "catalogue-report.json"))))
 
     def global_schema_diagnostic(self):
         from .sumup import SCHEMA as SUMUP_SCHEMA
