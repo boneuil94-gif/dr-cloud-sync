@@ -39,6 +39,8 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
 
       - name: Stage and execute the isolated recovery drill
+        id: recovery
+        continue-on-error: true
         env:
           OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
           OVH_SSH_PORT: ${{ secrets.OVH_SSH_PORT }}
@@ -54,6 +56,7 @@ jobs:
             "chmod 700 '$remote_script'; status=0; '$remote_script' '$GAMEDAY_MODE' || status=\$?; rm -f -- '$remote_script'; exit \$status"
 
       - name: Download only the sanitized evidence
+        if: always()
         env:
           OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
           OVH_SSH_PORT: ${{ secrets.OVH_SSH_PORT }}
@@ -81,9 +84,20 @@ jobs:
           PY
 
       - name: Upload sanitized production recovery evidence
+        if: always() && hashFiles('recovery_evidence_production.json') != ''
         uses: actions/upload-artifact@v4
         with:
           name: drcloud-production-recovery-evidence-${{ github.run_id }}
           path: recovery_evidence_production.json
           if-no-files-found: error
           retention-days: 30
+
+      - name: Enforce recovery result
+        if: always()
+        env:
+          RECOVERY_OUTCOME: ${{ steps.recovery.outcome }}
+        run: |
+          test "$RECOVERY_OUTCOME" = success
+          if [ "${{ inputs.mode }}" = full ]; then
+            python -c 'import json; assert json.load(open("recovery_evidence_production.json"))["rollback"]["result"] == "ROLLBACK_PROVEN"'
+          fi

@@ -27,14 +27,30 @@ work="$(mktemp -d -t drcloud-recovery-gameday.XXXXXX)"
 container="drcloud-recovery-${$}"
 network="drcloud-recovery-${$}"
 recovery_volume="drcloud-recovery-data-${$}"
+rollback_volume="drcloud-rollback-data-${$}"
+rollback_network="drcloud-rollback-${$}"
+n_container="drcloud-rollback-n-${$}"
+n1_container="drcloud-rollback-n1-${$}"
+n1_image="drcloud-recovery-n1-${$}"
+worktree=""
 cleanup() {
   local status=$?
   docker rm -f "$container" >/dev/null 2>&1 || true
   docker network rm "$network" >/dev/null 2>&1 || true
+  docker rm -f "$n_container" "$n1_container" >/dev/null 2>&1 || true
+  docker network rm "$rollback_network" >/dev/null 2>&1 || true
   # Only remove volumes created for an isolated Game Day run.  Never pass an
   # unchecked name to `docker volume rm`, even during best-effort cleanup.
   if [[ "$recovery_volume" =~ ^drcloud-recovery-data-[0-9]+$ ]]; then
     docker volume rm -f "$recovery_volume" >/dev/null 2>&1 || true
+  fi
+  if [[ "$rollback_volume" =~ ^drcloud-rollback-data-[0-9]+$ ]]; then
+    docker volume rm -f "$rollback_volume" >/dev/null 2>&1 || true
+  fi
+  [[ "$n1_image" =~ ^drcloud-recovery-n1-[0-9]+$ ]] && docker image rm -f "$n1_image" >/dev/null 2>&1 || true
+  if [[ -n "$worktree" && "$worktree" == "$work/n-minus-1-src" ]]; then
+    git -C "$repo" worktree remove --force "$worktree" >/dev/null 2>&1 || true
+    git -C "$repo" worktree prune >/dev/null 2>&1 || true
   fi
   rm -rf -- "$work"
   [[ ! -e "$work" ]] || status=1
@@ -241,21 +257,21 @@ import json,sys
 keys=("started_at","backup_selected_at","restore_completed_at","integrity_completed_at","app_started_at","health_ok_at","business_validation_completed_at")
 json.dump(dict(zip(keys,sys.argv[2:])),open(sys.argv[1],"w"))
 PY
-rollback_result="NOT_REQUESTED"
-n="$(cat "$DRCLOUD_DEPLOYMENT_STATE_DIR/last-successful-commit" 2>/dev/null || true)"
-n_minus_1=""
-if [[ "$mode" == "full" ]]; then
-  # A single current marker is not history.  Never substitute HEAD^: without
-  # two ordered known-good markers, the isolated rollback must remain unproven.
-  history="$DRCLOUD_DEPLOYMENT_STATE_DIR/successful-commit-history"
-  if [[ -f "$history" ]]; then
-    n_minus_1="$(tail -n 2 "$history" | head -n 1)"
-  fi
-  rollback_result="ROLLBACK_NOT_PROVEN"
-fi
+# Never substitute HEAD^: only chronological successful deployment markers qualify.
+production_container="$(docker compose ps -q drcloud-os)"
+# The full proof is deliberately separate from restore-only and operates only
+# on its own second volume.  It sets fail-closed evidence fields.
+source "$repo/deploy/ovh/recovery-rollback.sh"
+rollback_facts="$work/rollback.json"
+"$PYTHON_BIN" - "$rollback_facts" "$rollback_result" "$rollback_reason" "$n" "$n_minus_1" "$n_health" "$n1_health" "$n_return_health" "$schema_compatibility" "$data_loss_check" <<'PY'
+import json,sys
+keys=("result","reason","n","n_minus_1","n_health","n_minus_1_health","n_return_health","schema_compatibility","data_loss_check")
+d=dict(zip(keys,sys.argv[2:])); d["n"]=d["n"] or None; d["n_minus_1"]=d["n_minus_1"] or None
+json.dump(d,open(sys.argv[1],"w"))
+PY
 
 report="$DRCLOUD_DEPLOYMENT_STATE_DIR/recovery_evidence_production.json"
-"$PYTHON_BIN" - "$selection" "$timings" "$phases" "$report" "$mode" "$rollback_result" "$n" "$n_minus_1" <<'PY'
+"$PYTHON_BIN" - "$selection" "$timings" "$phases" "$report" "$mode" "$rollback_result" "$n" "$n_minus_1" "$rollback_facts" <<'PY'
 import datetime,json,re,sys
 sel=json.load(open(sys.argv[1])); facts=json.load(open(sys.argv[2])); phases=json.load(open(sys.argv[3])); out=sys.argv[4]
 parse=lambda x: datetime.datetime.fromisoformat(x.replace("Z","+00:00"))
@@ -270,8 +286,7 @@ report={"schema_version":1,"environment":"production","evidence_level":"PRODUCTI
         "integrity_duration":duration("restore_completed_at","integrity_completed_at"),"application_boot_duration":duration("integrity_completed_at","app_started_at"),
         "health_duration":duration("app_started_at","health_ok_at"),"business_validation_duration":duration("health_ok_at","business_validation_completed_at"),
         "observed_rto_seconds":rto,"observed_rto_human":f"{int(rto)}s"},
- "rollback":{"evidence_level":"OVH_EQUIVALENT_ROLLBACK" if sys.argv[6]=="ROLLBACK_PROVEN" else "NOT_EXECUTED","environment":"OVH_EQUIVALENT_STAGING","result":sys.argv[6],"n":sys.argv[7] or None,"n_minus_1":sys.argv[8] or None,
-             "schema_compatibility":"UNKNOWN" if sys.argv[6]!="ROLLBACK_PROVEN" else "COMPATIBLE"},
+ "rollback":{"evidence_level":"OVH_EQUIVALENT_ROLLBACK" if sys.argv[6]=="ROLLBACK_PROVEN" else "NOT_PROVEN","environment":"OVH_EQUIVALENT_STAGING",**(json.load(open(sys.argv[9])) if len(sys.argv)>9 else {"result":sys.argv[6],"n":sys.argv[7] or None,"n_minus_1":sys.argv[8] or None,"schema_compatibility":"UNKNOWN"})},
  "safety":{"safe_mode":True,"external_provider_auth":"NONE","production_database_target":False,"production_volume_mounted":False,"network":"INTERNAL_ONLY","network_exposure":"NONE","production_port_published":False}}
 forbidden=("password","secret","token","credential","api_key","private_key","authorization")
 def scan(v):
@@ -287,3 +302,7 @@ open(out+".tmp","w").write(json.dumps(report,indent=2,sort_keys=True)+"\n")
 import os; os.chmod(out+".tmp",0o600); os.replace(out+".tmp",out)
 PY
 echo "PRODUCTION_DATA_PROVEN"
+if [[ "$mode" == "full" && "$rollback_result" != "ROLLBACK_PROVEN" ]]; then
+  echo "${rollback_reason:-ROLLBACK_NOT_PROVEN}" >&2
+  exit 1
+fi

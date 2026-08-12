@@ -48,7 +48,7 @@ def test_host_python_calls_always_use_selected_runtime():
     text = SCRIPT.read_text()
     assert 'PYTHON_BIN="$(command -v python3 || command -v python || true)"' in text
     assert not re.search(r"(?m)^\s*(?:if\s+)?python(?:\s|$)", text)
-    assert text.count('"$PYTHON_BIN"') == 7
+    assert text.count('"$PYTHON_BIN"') == 8
 
 
 def test_workflow_is_dispatch_only_and_restore_only_by_default():
@@ -180,7 +180,7 @@ def test_report_sanitization_and_unknown_n_minus_one_are_explicit():
         assert key in text
     assert "ROLLBACK_NOT_PROVEN" in text
     assert "Never substitute HEAD^" in text or "Never substitute" in text
-    assert 'history="$DRCLOUD_DEPLOYMENT_STATE_DIR/successful-commit-history"' in text
+    assert 'history="$DRCLOUD_DEPLOYMENT_STATE_DIR/successful-commit-history"' in (text + (ROOT / 'deploy/ovh/recovery-rollback.sh').read_text())
     assert '"type":"TEMPORARY_DOCKER_VOLUME"' in text
     assert '"restored_database_copy":True' in text
     assert '"runtime_user":"drcloud"' in text
@@ -280,3 +280,52 @@ def test_recovery_report_rejects_sensitive_value_patterns(tmp_path, unsafe_value
     assert result.returncode != 0
     assert "credential pattern" in result.stderr
     assert not path.exists()
+
+ROLLBACK_SCRIPT = ROOT / "deploy/ovh/recovery-rollback.sh"
+DEPLOYMENT_STATE = ROOT / "deploy/ovh/deployment-state.sh"
+
+
+def test_deployment_state_records_ordered_deduplicated_known_good_history(tmp_path):
+    state = tmp_path / ".deployment-state"
+    state.mkdir(mode=0o755)
+    user = subprocess.run(["id", "-un"], text=True, capture_output=True, check=True).stdout.strip()
+    group = subprocess.run(["id", "-gn"], text=True, capture_output=True, check=True).stdout.strip()
+    env = {**os.environ, "DRCLOUD_DEPLOY_USER": user, "DRCLOUD_DEPLOY_GROUP": group}
+    commits = ["a" * 40, "b" * 40, "b" * 40, "c" * 40]
+    for commit in commits:
+        subprocess.run([DEPLOYMENT_STATE, state, commit], env=env, check=True)
+    history = state / "successful-commit-history"
+    assert history.read_text().splitlines() == ["a" * 40, "b" * 40, "c" * 40]
+    assert (state / "last-successful-commit").read_text().strip() == "c" * 40
+    assert history.stat().st_mode & 0o777 == 0o444
+    publisher = DEPLOYMENT_STATE.read_text()
+    assert "mktemp" in publisher and 'mv -f -- "$history_tmp"' in publisher
+    assert "HEAD^" not in publisher
+
+
+def test_full_rollback_is_real_isolated_n_n1_n_and_fail_closed():
+    main = SCRIPT.read_text()
+    rollback = ROLLBACK_SCRIPT.read_text()
+    assert 'rollback_reason="ROLLBACK_HISTORY_INSUFFICIENT"' in rollback
+    assert "refs/remotes/origin/main" in rollback and "merge-base --is-ancestor" in rollback
+    assert 'git -C "$repo" worktree add --detach' in rollback
+    assert 'n1_image="drcloud-recovery-n1-${$}"' in main
+    assert '--tag "$n1_image"' in rollback and '--tag drcloud-os:local' not in rollback
+    assert 'rollback_volume="drcloud-rollback-data-${$}"' in main
+    assert "drcloud-data" not in rollback
+    phases = [rollback.index('rollback_health "$n_container" N'), rollback.index('rollback_health "$n1_container" N_MINUS_1'), rollback.index('rollback_health "$n_container" N_RETURN')]
+    assert phases == sorted(phases)
+    assert "ROLLBACK_SCHEMA_INCOMPATIBLE" in rollback
+    assert "ROLLBACK_DATA_LOSS_DETECTED" in rollback
+    assert 'rollback_result="ROLLBACK_PROVEN"' in rollback
+    assert 'rollback_result" != "ROLLBACK_PROVEN"' in main
+
+
+def test_full_cleanup_and_failure_evidence_upload_contract():
+    main = SCRIPT.read_text(); workflow = WORKFLOW.read_text()
+    for value in ('"$n_container" "$n1_container"', '"$rollback_network"', '"$rollback_volume"', '"$n1_image"', 'worktree remove --force', 'rm -rf -- "$work"'):
+        assert value in main
+    assert "continue-on-error: true" in workflow
+    assert workflow.count("if: always()") >= 2
+    assert "steps.recovery.outcome" in workflow
+    assert 'ROLLBACK_PROVEN' in workflow
