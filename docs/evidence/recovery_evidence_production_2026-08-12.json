@@ -1,0 +1,83 @@
+{
+  "backup": {
+    "backup_id": "drcloud-os-backup-20260812T100414Z-7fd3a5f285574b2a82aad8111e78a119",
+    "created_at": "2026-08-12T10:04:15.518639Z",
+    "location_classification": "BACKUP_ON_HOST_ONLY",
+    "result": "PRODUCTION_BACKUP_VALID"
+  },
+  "environment": "production",
+  "evidence_level": "PRODUCTION_DATA_RESTORE",
+  "mode": "restore-only",
+  "restore": {
+    "app_boot": "APP_BOOT_OK",
+    "completed_at": "2026-08-12T10:06:20Z",
+    "data_max_at": null,
+    "data_min_at": null,
+    "database_size": 70647808,
+    "evidence_level": "PRODUCTION_DATA_RESTORE",
+    "foreign_key_check": "OK",
+    "health": "HEALTH_OK",
+    "index_count": 223,
+    "integrity_check": "ok",
+    "observed_rpo_human": "117s",
+    "observed_rpo_seconds": 117.378,
+    "observed_rto_seconds": 19.0,
+    "quick_check": "ok",
+    "result": "PRODUCTION_DATA_PROVEN",
+    "rpo_confidence": "LOW",
+    "rpo_method": "backup_created_at",
+    "schema_fingerprint": "e08caf09c71a8f6aed1febe0f3cfae000c80f0465666cc0946d65b5b24f3c4cb",
+    "table_count": 124,
+    "table_counts": {
+      "bank_transactions": 2729,
+      "crm_customers": 0,
+      "purchase_orders": 0,
+      "sale_events": 960,
+      "sales": 790,
+      "stock_movements": 0,
+      "sumup_payouts": 228,
+      "sumup_transactions": 10967
+    }
+  },
+  "rollback": {
+    "environment": "OVH_EQUIVALENT_STAGING",
+    "evidence_level": "NOT_EXECUTED",
+    "n": "dfe525ac4e1f7ef08357dad9bc1e3a588d9bf51a",
+    "n_minus_1": null,
+    "result": "NOT_REQUESTED",
+    "schema_compatibility": "UNKNOWN"
+  },
+  "rto": {
+    "app_started_at": "2026-08-12T10:06:14Z",
+    "application_boot_duration": 2.0,
+    "backup_selected_at": "2026-08-12T10:06:11Z",
+    "backup_selection_duration": 10.0,
+    "business_validation_completed_at": "2026-08-12T10:06:20Z",
+    "business_validation_duration": 0,
+    "database_restore_duration": 1.0,
+    "health_duration": 6.0,
+    "health_ok_at": "2026-08-12T10:06:20Z",
+    "integrity_completed_at": "2026-08-12T10:06:12Z",
+    "integrity_duration": 0,
+    "observed_rto_human": "19s",
+    "observed_rto_seconds": 19.0,
+    "restore_completed_at": "2026-08-12T10:06:12Z",
+    "started_at": "2026-08-12T10:06:01Z"
+  },
+  "safety": {
+    "external_provider_auth": "NONE",
+    "network": "INTERNAL_ONLY",
+    "network_exposure": "NONE",
+    "production_database_target": false,
+    "production_port_published": false,
+    "production_volume_mounted": false,
+    "safe_mode": true
+  },
+  "schema_version": 1,
+  "storage": {
+    "production_volume_mounted": false,
+    "restored_database_copy": true,
+    "runtime_user": "drcloud",
+    "type": "TEMPORARY_DOCKER_VOLUME"
+  }
+}
