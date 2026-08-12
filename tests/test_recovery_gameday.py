@@ -321,6 +321,100 @@ def test_full_rollback_is_real_isolated_n_n1_n_and_fail_closed():
     assert 'rollback_result" != "ROLLBACK_PROVEN"' in main
 
 
+def _rollback_facts_function_source():
+    text = ROLLBACK_SCRIPT.read_text()
+    start = text.index("rollback_facts() {")
+    return text[start:text.index("\n}\n\n[[", start) + 2]
+
+
+def _capture_rollback_facts(tmp_path, payload):
+    docker = tmp_path / "docker"
+    docker.write_text("""#!/bin/bash
+set -eu
+[[ "$1" == exec ]]
+shift
+if [[ "${1:-}" != -i ]]; then
+  cat >/dev/null
+  exit 0
+fi
+shift 2
+cat >/dev/null
+cat "$ROLLBACK_FACT_FIXTURE"
+""")
+    docker.chmod(0o755)
+    fixture = tmp_path / "fixture.json"
+    fixture.write_text(payload)
+    destination = tmp_path / "facts.json"
+    command = _rollback_facts_function_source() + '\nrollback_facts container "$1"\n'
+    result = subprocess.run(
+        ["bash", "-c", command, "rollback-facts-test", destination],
+        env={**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}",
+             "PYTHON_BIN": subprocess.check_output(["which", "python"], text=True).strip(),
+             "ROLLBACK_FACT_FIXTURE": str(fixture)},
+        text=True, capture_output=True, check=False,
+    )
+    return result, destination
+
+
+def _valid_rollback_snapshot(count=3, fingerprint="stable-pks"):
+    return {
+        "quick_check": "ok", "integrity_check": "ok", "foreign_key_check": "OK",
+        "schema_fingerprint": "stable-schema", "table_counts": {"sales": count},
+        "primary_key_fingerprint": {"sales": fingerprint},
+    }
+
+
+def test_rollback_fact_capture_attaches_docker_stdin_and_publishes_valid_json(tmp_path):
+    result, destination = _capture_rollback_facts(tmp_path, json.dumps(_valid_rollback_snapshot()))
+    assert result.returncode == 0, result.stderr
+    assert json.loads(destination.read_text()) == _valid_rollback_snapshot()
+    assert 'docker exec -i "$1" python -' in ROLLBACK_SCRIPT.read_text()
+
+
+@pytest.mark.parametrize("payload", ["", "not-json"])
+def test_rollback_fact_capture_rejects_empty_or_invalid_json(tmp_path, payload):
+    result, destination = _capture_rollback_facts(tmp_path, payload)
+    assert result.returncode != 0
+    assert not destination.exists()
+    assert not list(tmp_path.glob("facts.json.tmp.*"))
+
+
+def _run_rollback_comparison(tmp_path, snapshots):
+    text = ROLLBACK_SCRIPT.read_text()
+    marker = '"$PYTHON_BIN" - "$before" "$middle" "$returned" <<\'PY\''
+    source = text[text.index(marker):].split("\n", 1)[1].split("\nPY\n", 1)[0]
+    paths = []
+    for index, snapshot in enumerate(snapshots):
+        path = tmp_path / f"snapshot-{index}.json"
+        path.write_text(json.dumps(snapshot))
+        paths.append(path)
+    return subprocess.run(["python", "-", *paths], input=source, text=True,
+                          capture_output=True, check=False)
+
+
+def test_valid_identical_rollback_snapshots_pass(tmp_path):
+    snapshot = _valid_rollback_snapshot()
+    result = _run_rollback_comparison(tmp_path, [snapshot, snapshot, snapshot])
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("changed", [
+    _valid_rollback_snapshot(count=2),
+    _valid_rollback_snapshot(fingerprint="changed-pks"),
+])
+def test_real_row_loss_or_primary_key_change_is_detected(tmp_path, changed):
+    baseline = _valid_rollback_snapshot()
+    result = _run_rollback_comparison(tmp_path, [baseline, changed, baseline])
+    assert result.returncode == 1
+
+
+def test_invalid_snapshot_is_capture_failure_not_data_loss_classification():
+    rollback = ROLLBACK_SCRIPT.read_text()
+    assert 'comparison_status == 2' in rollback
+    assert 'rollback_reason="ROLLBACK_FACT_CAPTURE_FAILED"' in rollback
+    assert 'comparison_status == 2 )); then\n    data_loss_check="NOT_EXECUTED"' in rollback
+
+
 def test_full_cleanup_and_failure_evidence_upload_contract():
     main = SCRIPT.read_text(); workflow = WORKFLOW.read_text()
     for value in ('"$n_container" "$n1_container"', '"$rollback_network"', '"$rollback_volume"', '"$n1_image"', 'worktree remove --force', 'rm -rf -- "$work"'):

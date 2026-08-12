@@ -28,7 +28,9 @@ rollback_health() {
   echo "${phase}_HEALTH_TIMEOUT" >&2; return 1
 }
 rollback_facts() {
-  docker exec "$1" python - > "$2" <<'PY'
+  local destination="$2" temporary
+  temporary="$(mktemp "${destination}.tmp.XXXXXX")" || return 1
+  if ! docker exec -i "$1" python - > "$temporary" <<'PY'
 import hashlib,json,sqlite3
 allowed=("bank_transactions","sumup_transactions","sumup_payouts","sales","sale_events","crm_customers","purchase_orders","stock_movements")
 with sqlite3.connect("file:/data/drcloud.db?mode=ro",uri=True) as db:
@@ -50,6 +52,23 @@ with sqlite3.connect("file:/data/drcloud.db?mode=ro",uri=True) as db:
  if q!="ok" or i!="ok" or fk: raise SystemExit("database integrity failed")
  print(json.dumps(result,sort_keys=True))
 PY
+  then
+    rm -f -- "$temporary"
+    return 1
+  fi
+  if [[ ! -s "$temporary" ]] || ! "$PYTHON_BIN" - "$temporary" <<'PY'
+import json,sys
+required={"quick_check","integrity_check","foreign_key_check","schema_fingerprint","table_counts","primary_key_fingerprint"}
+with open(sys.argv[1], encoding="utf-8") as source:
+ data=json.load(source)
+if not isinstance(data,dict) or not required.issubset(data):
+ raise SystemExit("rollback fact snapshot is missing required keys")
+PY
+  then
+    rm -f -- "$temporary"
+    return 1
+  fi
+  mv -f -- "$temporary" "$destination"
 }
 
 [[ "$mode" == full ]] || return 0
@@ -78,25 +97,55 @@ if [[ -z "$rollback_reason" ]]; then
 fi
 before="$work/rollback-before.json"; middle="$work/rollback-middle.json"; returned="$work/rollback-return.json"
 if [[ -z "$rollback_reason" ]]; then
-  rollback_start "$n_container" "$n_image_id" && rollback_health "$n_container" N && rollback_facts "$n_container" "$before" && n_health="HEALTH_OK" || rollback_reason="ROLLBACK_N_HEALTH_FAILED"
+  if rollback_start "$n_container" "$n_image_id" && rollback_health "$n_container" N; then
+    n_health="HEALTH_OK"
+    rollback_facts "$n_container" "$before" || rollback_reason="ROLLBACK_FACT_CAPTURE_FAILED"
+  else
+    rollback_reason="ROLLBACK_N_HEALTH_FAILED"
+  fi
   docker rm -f "$n_container" >/dev/null 2>&1 || true
 fi
 if [[ -z "$rollback_reason" ]]; then
-  rollback_start "$n1_container" "$n1_image" && rollback_health "$n1_container" N_MINUS_1 && rollback_facts "$n1_container" "$middle" && { n1_health="HEALTH_OK"; schema_compatibility="COMPATIBLE"; } || { rollback_reason="ROLLBACK_SCHEMA_INCOMPATIBLE"; schema_compatibility="INCOMPATIBLE"; }
+  if rollback_start "$n1_container" "$n1_image" && rollback_health "$n1_container" N_MINUS_1; then
+    n1_health="HEALTH_OK"; schema_compatibility="COMPATIBLE"
+    rollback_facts "$n1_container" "$middle" || rollback_reason="ROLLBACK_FACT_CAPTURE_FAILED"
+  else
+    rollback_reason="ROLLBACK_SCHEMA_INCOMPATIBLE"; schema_compatibility="INCOMPATIBLE"
+  fi
   docker rm -f "$n1_container" >/dev/null 2>&1 || true
 fi
 if [[ -z "$rollback_reason" ]]; then
-  rollback_start "$n_container" "$n_image_id" && rollback_health "$n_container" N_RETURN && rollback_facts "$n_container" "$returned" && n_return_health="HEALTH_OK" || rollback_reason="ROLLBACK_N_RETURN_HEALTH_FAILED"
+  if rollback_start "$n_container" "$n_image_id" && rollback_health "$n_container" N_RETURN; then
+    n_return_health="HEALTH_OK"
+    rollback_facts "$n_container" "$returned" || rollback_reason="ROLLBACK_FACT_CAPTURE_FAILED"
+  else
+    rollback_reason="ROLLBACK_N_RETURN_HEALTH_FAILED"
+  fi
   docker rm -f "$n_container" >/dev/null 2>&1 || true
 fi
 if [[ -z "$rollback_reason" ]]; then
-  "$PYTHON_BIN" - "$before" "$middle" "$returned" <<'PY' && { data_loss_check="PASS"; rollback_result="ROLLBACK_PROVEN"; } || { data_loss_check="FAIL"; rollback_reason="ROLLBACK_DATA_LOSS_DETECTED"; }
+  comparison_status=0
+  "$PYTHON_BIN" - "$before" "$middle" "$returned" <<'PY' || comparison_status=$?
 import json,sys
-before,middle,returned=(json.load(open(p)) for p in sys.argv[1:])
+required={"quick_check","integrity_check","foreign_key_check","schema_fingerprint","table_counts","primary_key_fingerprint"}
+try:
+ before,middle,returned=(json.load(open(p)) for p in sys.argv[1:])
+ if any(not isinstance(snapshot,dict) or not required.issubset(snapshot) for snapshot in (before,middle,returned)):
+  raise ValueError("invalid rollback fact snapshot")
+except (OSError,ValueError,TypeError,json.JSONDecodeError) as error:
+ print(f"rollback fact validation failed: {error}",file=sys.stderr)
+ raise SystemExit(2)
 for later in (middle,returned):
  for table,count in before["table_counts"].items():
   if later["table_counts"].get(table,-1)<count: raise SystemExit("row count decreased")
   if later["primary_key_fingerprint"].get(table)!=before["primary_key_fingerprint"].get(table): raise SystemExit("business primary keys changed")
 if returned["schema_fingerprint"]!=before["schema_fingerprint"]: raise SystemExit("N schema not restored")
 PY
+  if (( comparison_status == 0 )); then
+    data_loss_check="PASS"; rollback_result="ROLLBACK_PROVEN"
+  elif (( comparison_status == 2 )); then
+    data_loss_check="NOT_EXECUTED"; rollback_reason="ROLLBACK_FACT_CAPTURE_FAILED"
+  else
+    data_loss_check="FAIL"; rollback_reason="ROLLBACK_DATA_LOSS_DETECTED"
+  fi
 fi
