@@ -198,7 +198,10 @@ def main(argv: list[str] | None = None) -> int:
         observations=historical_observations(args.snapshot, repository.all())
         service=CatalogueRehydrationService(repository, backup=lambda: backup(
           settings.database, Path(os.environ.get("DRCLOUD_BACKUP_DIR", settings.data_dir / "backups")),
-          environment=settings.environment, safe_mode=settings.safe_mode))
+          environment=settings.environment, safe_mode=settings.safe_mode,
+          catalogue=Path(os.environ.get("INVENTORY_CATALOGUE", settings.data_dir / "catalogue.json")),
+          mapping_report=Path(os.environ.get(
+              "INVENTORY_MAPPING_REPORT", settings.data_dir / "catalogue-report.json"))))
         preview=service.preview(observations)
         args.report.parent.mkdir(parents=True,exist_ok=True)
         args.report.write_text(json.dumps(preview,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")

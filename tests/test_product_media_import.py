@@ -6,8 +6,9 @@ from PIL import Image
 
 from dr_cloud_sync.domain import Product
 from dr_cloud_sync.media import LocalMediaStorage, ProductMediaService, SQLiteProductMediaRepository
-from dr_cloud_sync.media_import import ProductMediaImportService, combination_exclusivity
-from dr_cloud_sync.backup_service import BackupUnavailable
+from dr_cloud_sync.media_import import (PrestaShopMediaProvider, ProductMediaImportService,
+                                        combination_exclusivity)
+from dr_cloud_sync.backup_service import BACKUP_INCOMPLETE_RUNTIME_STATE, BackupUnavailable
 from dr_cloud_sync.repositories import SQLiteOSRepository
 
 
@@ -32,11 +33,35 @@ class FullFakePrestaShop(FakePrestaShop):
 def setup(tmp_path: Path, client, products):
     tmp_path.mkdir(parents=True,exist_ok=True)
     db=tmp_path/"drcloud.db"; catalogue=SQLiteOSRepository(db,products)
+    catalogue_path=tmp_path/"catalogue.json"
+    catalogue_path.write_text(json.dumps({"mappings":[{
+        "drcloud_product_key":product.drcloud_product_key,
+        "prestashop_key":product.prestashop_key,
+    } for product in products]}),encoding="utf-8")
+    mapping_report_path=tmp_path/"catalogue-report.json"
+    mapping_report_path.write_text(json.dumps({"ready_for_inventory":True}),encoding="utf-8")
     media=ProductMediaService(SQLiteProductMediaRepository(db),LocalMediaStorage(tmp_path/"media"/"products"),catalogue,catalogue)
-    return ProductMediaImportService(db,client,media,catalogue),media
+    return ProductMediaImportService(db,client,media,catalogue,
+        catalogue_path=catalogue_path,mapping_report_path=mapping_report_path),media
 
 
 def assoc(*ids): return {"associations":{"images":[{"id":value} for value in ids]}}
+
+
+def test_provider_resolves_runtime_backup_paths_from_environment(tmp_path):
+    database=tmp_path/"data"/"drcloud.db"
+    configured_catalogue=tmp_path/"runtime"/"inventory.json"
+    configured_report=tmp_path/"runtime"/"report.json"
+    provider=PrestaShopMediaProvider(database,None,None,environ={
+        "INVENTORY_CATALOGUE":str(configured_catalogue),
+        "INVENTORY_MAPPING_REPORT":str(configured_report),
+    })
+    assert provider.catalogue_path==configured_catalogue
+    assert provider.mapping_report_path==configured_report
+
+    fallback=PrestaShopMediaProvider(database,None,None,environ={})
+    assert fallback.catalogue_path==database.parent/"catalogue.json"
+    assert fallback.mapping_report_path==database.parent/"catalogue-report.json"
 
 
 def test_hyper_max_explicit_combination_associations_and_priority(tmp_path):
@@ -96,6 +121,53 @@ def test_backup_is_verified_before_download_and_failure_is_fail_closed(tmp_path)
     assert client.downloads==[] and media.primary(product.drcloud_product_key) is None
     job=importer.jobs.list_recent(1)[0]
     assert job.status.value=="FAILED" and "backup unavailable" in (job.error_message or "")
+
+
+def test_media_mutation_creates_app_restorable_backup_with_checksums(tmp_path):
+    products=[Product("drc:1:10","1:10",1,10,1,"A"),
+              Product("drc:1:11","1:11",1,11,2,"A")]
+    client=FakePrestaShop([{"id":1,**assoc(1,2,3)}],[
+        {"id":10,"id_product":1,**assoc(1,2)},
+        {"id":11,"id_product":1,**assoc(1,3)}])
+    importer,_=setup(tmp_path,client,products)
+
+    result=importer.apply()
+    bundle=tmp_path/"backups"/result["summary"]["backup_id"]
+    metadata=json.loads((bundle/"metadata.json").read_text(encoding="utf-8"))
+    files={item["path"]:item for item in metadata["files"]}
+
+    assert metadata["required_runtime_files"]==[
+        "drcloud.db","catalogue.json","catalogue-report.json"]
+    assert {"drcloud.db","catalogue.json","catalogue-report.json"} <= files.keys()
+    assert all(files[name]["sha256"] for name in metadata["required_runtime_files"])
+    assert importer.backup_service.verify(bundle)["backup_class"]=="APP_RESTORABLE"
+
+
+def test_media_mutation_fails_closed_when_a_runtime_file_is_missing(tmp_path):
+    for missing in ("catalogue.json","catalogue-report.json"):
+        case=tmp_path/missing.removesuffix(".json")
+        products=[Product("drc:1:10","1:10",1,10,1,"A"),
+                  Product("drc:1:11","1:11",1,11,2,"A")]
+        client=FakePrestaShop([{"id":1,**assoc(1,2,3)}],[
+            {"id":10,"id_product":1,**assoc(1,2)},
+            {"id":11,"id_product":1,**assoc(1,3)}])
+        importer,media=setup(case,client,products)
+        (case/missing).unlink()
+        business_before=importer._business_fingerprint()
+        media_before=media.repository.db.execute(
+            "SELECT * FROM product_media ORDER BY media_id").fetchall()
+
+        try:
+            importer.apply()
+        except BackupUnavailable as exc:
+            assert str(exc)==BACKUP_INCOMPLETE_RUNTIME_STATE
+        else:
+            raise AssertionError(f"mutation accepted without {missing}")
+
+        assert client.downloads==[]
+        assert media.repository.db.execute(
+            "SELECT * FROM product_media ORDER BY media_id").fetchall()==media_before
+        assert importer._business_fingerprint()==business_before
 
 
 def test_apply_repreviews_protects_new_primary_and_audits_result(tmp_path):

@@ -39,6 +39,10 @@ class PrestaShopMediaProvider:
         self.secret_ref=self.environ.get("PRESTASHOP_SECRET_REF") or "prestashop.production"
         self.secrets=EnvironmentSecretProvider(self.environ,{self.secret_ref:"PRESTASHOP_API_KEY"})
         self.backup_service=backup_service or BackupService(Path(database).parent / "backups")
+        self.catalogue_path=Path(self.environ.get(
+            "INVENTORY_CATALOGUE", str(self.database.parent / "catalogue.json")))
+        self.mapping_report_path=Path(self.environ.get(
+            "INVENTORY_MAPPING_REPORT", str(self.database.parent / "catalogue-report.json")))
 
     def status(self) -> dict[str, Any]:
         key=self.secrets.resolve(self.secret_ref)
@@ -75,6 +79,8 @@ class PrestaShopMediaProvider:
                 client=self.client_factory(url,self.secrets.resolve(self.secret_ref),timeout=timeout,retries=2)
             self._service=ProductMediaImportService(self.database,client,self.media,self.catalogue,
                 backup_service=self.backup_service,
+                catalogue_path=self.catalogue_path,
+                mapping_report_path=self.mapping_report_path,
                 environment=self.environ.get("DRCLOUD_ENV", "development"),
                 safe_mode=self.environ.get("DRCLOUD_SAFE_MODE", "true").lower() in {"1","true","yes","on"})
         return self._service
@@ -148,10 +154,15 @@ class ProductMediaImportService:
     """Resolve explicit identities, then download only deterministic candidates."""
     def __init__(self, database: Path, client: PrestaShopClient,
                  media: ProductMediaService, catalogue, *, backup_service=None,
+                 catalogue_path: Path | None = None,
+                 mapping_report_path: Path | None = None,
                  environment="development", safe_mode=True) -> None:
         self.database=Path(database); self.client=client; self.media=media; self.catalogue=catalogue
         self.jobs=SqliteJobRepository(self.database)
         self.backup_service=backup_service or BackupService(self.database.parent / "backups")
+        self.catalogue_path=Path(catalogue_path) if catalogue_path is not None else self.database.parent / "catalogue.json"
+        self.mapping_report_path=(Path(mapping_report_path) if mapping_report_path is not None
+                                  else self.database.parent / "catalogue-report.json")
         self.environment=environment; self.safe_mode=safe_mode
 
     def preview(self) -> dict[str, Any]:
@@ -336,7 +347,8 @@ class ProductMediaImportService:
         def operation():
             # This verified, official bundle is the mutation gate. Failure escapes before any download.
             backup=self.backup_service.create(self.database,reason="PRESTASHOP_MEDIA_IMPORT",
-                environment=self.environment,safe_mode=self.safe_mode,application=application_metadata())
+                environment=self.environment,safe_mode=self.safe_mode,application=application_metadata(),
+                catalogue=self.catalogue_path,mapping_report=self.mapping_report_path)
             if shutil.disk_usage(self.media.storage.root).free < MIN_FREE_BYTES:
                 raise MediaError("Espace disque insuffisant avant import média")
             identities=sorted((p.drcloud_product_key,p.product_id,p.combination_id) for p in self.catalogue.all())
@@ -452,7 +464,8 @@ class ProductMediaImportService:
             raise ValueError("Ce produit possède déjà une image PRIMARY protégée")
         item,image_id=self.manual_candidate(product_key,image_id)
         backup=self.backup_service.create(self.database,reason="PRESTASHOP_MEDIA_MANUAL_RESOLUTION",
-            environment=self.environment,safe_mode=self.safe_mode,application=application_metadata())
+            environment=self.environment,safe_mode=self.safe_mode,application=application_metadata(),
+            catalogue=self.catalogue_path,mapping_report=self.mapping_report_path)
         identities=sorted((p.drcloud_product_key,p.product_id,p.combination_id) for p in self.catalogue.all())
         business_before=self._business_fingerprint()
         protected_keys=set(self.media.repository.primaries())

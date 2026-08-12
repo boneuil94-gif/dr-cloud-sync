@@ -28,9 +28,12 @@ class AdminCatalogueRehydration:
     """Persist reports and schedule PREVIEW/APPLY_SAFE without blocking HTTP."""
 
     def __init__(self, database: Path, snapshot: Path, backup_root: Path, *,
-                 environment: str, safe_mode: bool):
+                 environment: str, safe_mode: bool, catalogue_path: Path | None = None,
+                 mapping_report_path: Path | None = None):
         self.database, self.snapshot, self.backup_root = database, snapshot, backup_root
         self.environment, self.safe_mode = environment, safe_mode
+        self.catalogue_path = catalogue_path or database.parent / "catalogue.json"
+        self.mapping_report_path = mapping_report_path or database.parent / "catalogue-report.json"
         self.jobs = SqliteJobRepository(database)
         self._lock = Lock()
         with sqlite3.connect(database) as db:
@@ -151,7 +154,8 @@ class AdminCatalogueRehydration:
                 raise RehydrationConflict("Analyse obsolète; le catalogue a changé, relancez une analyse")
             service = CatalogueRehydrationService(repository, backup=lambda: backup(
                 self.database, self.backup_root, environment=self.environment,
-                safe_mode=self.safe_mode, reason="CATALOGUE_REHYDRATION_APPLY_SAFE"))
+                safe_mode=self.safe_mode, reason="CATALOGUE_REHYDRATION_APPLY_SAFE",
+                catalogue=self.catalogue_path, mapping_report=self.mapping_report_path))
             result = service.apply_safe(observations, actor=actor)
             result["backup"] = Path(result["backup"]).name
             result["invariants"] = {"product_count": True, "identities": True,
