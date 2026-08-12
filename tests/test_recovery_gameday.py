@@ -1,7 +1,10 @@
+import json
 import os
 from pathlib import Path
 import re
 import subprocess
+
+import pytest
 
 
 ROOT = Path(__file__).parents[1]
@@ -188,3 +191,92 @@ def test_full_environment_is_explicitly_isolated():
     assert "OVH_EQUIVALENT_STAGING" in text
     assert "--read-only" in text and "--cap-drop ALL" in text
     assert "production_volume_mounted\":False" in text
+
+
+def _report_generator_source():
+    """Return the Python heredoc that builds and sanitizes recovery evidence."""
+    text = SCRIPT.read_text()
+    marker = 'report="$DRCLOUD_DEPLOYMENT_STATE_DIR/recovery_evidence_production.json"'
+    block = text[text.index(marker):]
+    return block.split("<<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+
+
+def _run_report_generator(tmp_path, source=None):
+    source = source or _report_generator_source()
+    selection = tmp_path / "selection.json"
+    timings = tmp_path / "timings.json"
+    phases = tmp_path / "phases.json"
+    report = tmp_path / "recovery_evidence_production.json"
+    selection.write_text('{"backup_id":"drcloud-os-backup-test","created_at":"2026-08-12T00:00:00Z"}')
+    timings.write_text('{"integrity_check":"ok"}')
+    phases.write_text("""{
+      "started_at":"2026-08-12T00:00:00Z",
+      "backup_selected_at":"2026-08-12T00:00:01Z",
+      "restore_completed_at":"2026-08-12T00:00:02Z",
+      "integrity_completed_at":"2026-08-12T00:00:03Z",
+      "app_started_at":"2026-08-12T00:00:04Z",
+      "health_ok_at":"2026-08-12T00:00:05Z",
+      "business_validation_completed_at":"2026-08-12T00:00:06Z"
+    }""")
+    result = subprocess.run(
+        ["python", "-", selection, timings, phases, report, "restore-only", "NOT_REQUESTED", "", ""],
+        input=source,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return result, report
+
+
+def test_normal_recovery_report_passes_sanitizer_and_is_written(tmp_path):
+    result, path = _run_report_generator(tmp_path)
+    assert result.returncode == 0, result.stderr
+    report = json.loads(path.read_text())
+    assert report["restore"]["result"] == "PRODUCTION_DATA_PROVEN"
+    assert 'echo "PRODUCTION_DATA_PROVEN"' in SCRIPT.read_text()
+
+
+def test_external_provider_auth_none_is_accepted(tmp_path):
+    result, path = _run_report_generator(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(path.read_text())["safety"]["external_provider_auth"] == "NONE"
+
+
+def test_all_generated_recovery_evidence_keys_pass_the_forbidden_key_audit(tmp_path):
+    result, path = _run_report_generator(tmp_path)
+    assert result.returncode == 0, result.stderr
+    report = json.loads(path.read_text())
+    forbidden = ("password", "secret", "token", "credential", "api_key", "private_key", "authorization")
+
+    def audit(value):
+        if isinstance(value, dict):
+            assert all(not any(word in key.lower() for word in forbidden) for key in value)
+            for child in value.values():
+                audit(child)
+        elif isinstance(value, list):
+            for child in value:
+                audit(child)
+
+    audit(report)
+
+
+@pytest.mark.parametrize("forbidden_key", ["password", "secret", "token", "credential", "api_key"])
+def test_recovery_report_rejects_forbidden_evidence_keys(tmp_path, forbidden_key):
+    source = _report_generator_source().replace(
+        "scan(report)", f'report["{forbidden_key}"]="NONE"; scan(report)'
+    )
+    result, path = _run_report_generator(tmp_path, source)
+    assert result.returncode != 0
+    assert "forbidden evidence key" in result.stderr
+    assert not path.exists()
+
+
+@pytest.mark.parametrize("unsafe_value", ["Bearer abc123", "-----BEGIN PRIVATE KEY-----"])
+def test_recovery_report_rejects_sensitive_value_patterns(tmp_path, unsafe_value):
+    source = _report_generator_source().replace(
+        "scan(report)", f'report["message"]={unsafe_value!r}; scan(report)'
+    )
+    result, path = _run_report_generator(tmp_path, source)
+    assert result.returncode != 0
+    assert "credential pattern" in result.stderr
+    assert not path.exists()
