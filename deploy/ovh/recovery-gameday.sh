@@ -272,7 +272,7 @@ report={"schema_version":1,"environment":"production","evidence_level":"PRODUCTI
         "observed_rto_seconds":rto,"observed_rto_human":f"{int(rto)}s"},
  "rollback":{"evidence_level":"OVH_EQUIVALENT_ROLLBACK" if sys.argv[6]=="ROLLBACK_PROVEN" else "NOT_EXECUTED","environment":"OVH_EQUIVALENT_STAGING","result":sys.argv[6],"n":sys.argv[7] or None,"n_minus_1":sys.argv[8] or None,
              "schema_compatibility":"UNKNOWN" if sys.argv[6]!="ROLLBACK_PROVEN" else "COMPATIBLE"},
- "safety":{"safe_mode":True,"external_credentials":"NONE","production_database_target":False,"production_volume_mounted":False,"network":"INTERNAL_ONLY","network_exposure":"NONE","production_port_published":False}}
+ "safety":{"safe_mode":True,"external_provider_auth":"NONE","production_database_target":False,"production_volume_mounted":False,"network":"INTERNAL_ONLY","network_exposure":"NONE","production_port_published":False}}
 forbidden=("password","secret","token","credential","api_key","private_key","authorization")
 def scan(v):
  if isinstance(v,dict):
