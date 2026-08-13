@@ -36,11 +36,12 @@ Le score global **58/100** n'est pas la moyenne naïve des fichiers : il privil�
 
 Configuration par environnement et secret references, lifecycle applicatif, contraintes SQLite, migrations testées, logs/audits, health, scheduler, retry et clés d'idempotence sont **IMPLEMENTED/TESTED**. Le batch `RUNNING` a un index unique et les jobs persistent leurs runs. Limites : migrations distribuées, absence de preuve de reprise après crash, politique de retry non uniformisée, SQLite locking/concurrence multi-worker non éprouvés, pas de traces distribuées ni métriques de durée/mémoire/SLO. La fonction `FINANCE` et plusieurs refresh retournent explicitement `rows_imported: 0`, ce qui limite l'observabilité métier.
 
-## 5. Production et déploiement — 66/100
+## 5. Production et déploiement — 79/100 (re-score formel du 13 août 2026)
 
 - **IMPLEMENTED/TESTED statiquement** : CI PR/main (pytest, compileall, `node --check`, shell syntax, Compose, image), déploiement du SHA CI exact vers OVH, Caddy/HTTPS, health/check, migrations au démarrage, secrets hors Git, scripts backup/restore et état de déploiement.
-- **NON PROUVÉ ICI** : dernier commit effectivement servi, certificat/health public, exécution migration production, restauration d'une sauvegarde, RPO/RTO, rollback exercé, monitoring externe/alertes et rotation des secrets.
-- Le test Compose est le seul skip local faute de Docker Compose. La présence de runbooks n'est donc pas une preuve de recovery.
+- **PROUVÉ** : health/HTTPS et SHA public (preuve du 10 août), restauration isolée d'une sauvegarde contenant des données production, intégrité SQLite, démarrage/health, RTO de 21 s, puis rollback OVH-equivalent N → N-1 → N avec schéma compatible et contrôle de perte de données `PASS` (Game Day #9).
+- **NON PROUVÉ** : backup chiffré hors VPS, restauration depuis une copie réellement off-host, monitoring externe/alertes, SLO opérationnel, rotation des secrets et répétition périodique du Game Day. Le RPO de 63 221,99 s est de confiance `LOW` et fondé sur `backup_created_at`, pas sur une borne métier.
+- Décomposition Audit V2 : code/architecture **17/20**, wiring **18/20**, tests **17/20**, preuve production **19/25**, observabilité **4/10**, documentation **4/5**, soit **79/100**. Les 19 points de production créditent seulement les preuves datées ci-dessus; les limites non prouvées ne reçoivent aucun crédit.
 
 ## 6. Authentication / Security — 74/100
 
@@ -160,3 +161,9 @@ Architecture, setup/déploiement, providers, migrations/domaines, KPI finance, r
 ## Addendum de preuves — Production Truth & Recovery Pack
 
 Le 10 août 2026 à 13:48:07Z, `/health` public a répondu 200/ok et exposé `6798ab3f156e7c644d45d331f2586998baecf317`, identique au SHA main/déployé attendu. HTTPS et la redirection 308 sont prouvés; CSP, frame, nosniff et Referrer-Policy sont présents, HSTS absent. Cette preuve remplace uniquement les mentions « commit/health public non testé » : Production maturity **47 → 49**, Deployment **66 → 68**, global strict **58 → 58**. Backup/restore/rollback/RPO/RTO, données privées et funnel restent `NOT_PROVEN`. Voir `PRODUCTION_TRUTH.md` et la capture JSON datée.
+
+## Addendum — re-score formel Recovery Game Day #9 (13 août 2026)
+
+Le run GitHub Actions #9 (`31685249526`) au SHA `35fa1fef1b8d687c4da342120f69f3f62cb502ef` remplace les constats historiques « restauration/rollback non exercés », « compatibilité UNKNOWN » et « RTO non mesuré ». Deployment passe formellement de **68 à 79** selon la décomposition de la section 5. Les dimensions Production maturity **49**, Observability **61** et Test quality **76** restent volontairement inchangées : la baseline ne persiste pas de barème assez fin pour recalculer ces dimensions transversales de manière reproductible, et le drill ne remplace ni monitoring externe, ni E2E navigateur, ni charge, ni réconciliation aux providers.
+
+Aucune règle d'agrégation globale reproductible n'est définie par cet audit au-delà de l'indication qualitative selon laquelle le global « privilégie » fonctionnement et maturité opérationnelle. Par conséquent le global reste **58** avec la décision `GLOBAL_SCORE_UNCHANGED_NO_REPRODUCIBLE_AGGREGATION`. Un succès GitHub n'est jamais crédité seul : seuls ses artefacts assainis, datés et vérifiables peuvent fermer un constat ou alimenter un axe.
