@@ -1,0 +1,96 @@
+name: DrCloud OS encrypted offsite backup
+
+on:
+  workflow_dispatch:
+  # Operational cadence: edit this UTC cron through a reviewed PR. A scheduler
+  # invocation is transport automation, never restoration evidence.
+  schedule:
+    - cron: "17 2 * * 1"
+
+permissions:
+  contents: read
+concurrency:
+  group: drcloud-os-offsite-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check out reviewed main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.OVH_SSH_PRIVATE_KEY }}
+          SSH_HOST_KEYS: ${{ secrets.OVH_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/drcloud_deploy
+          printf '%s\n' "$SSH_HOST_KEYS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/drcloud_deploy ~/.ssh/known_hosts
+      - name: Stage and run with ephemeral material
+        id: offsite
+        continue-on-error: true
+        env:
+          OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
+          OVH_SSH_PORT: ${{ secrets.OVH_SSH_PORT }}
+          OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
+          DRCLOUD_RESTIC_IMAGE: ${{ vars.DRCLOUD_RESTIC_IMAGE }}
+          OFFSITE_RESTIC_REPOSITORY: ${{ vars.OFFSITE_RESTIC_REPOSITORY }}
+          OFFSITE_S3_REGION: ${{ vars.OFFSITE_S3_REGION }}
+          OFFSITE_S3_ENDPOINT: ${{ vars.OFFSITE_S3_ENDPOINT }}
+          OFFSITE_RESTIC_PASSWORD: ${{ secrets.OFFSITE_RESTIC_PASSWORD }}
+          OFFSITE_S3_ACCESS_KEY_ID: ${{ secrets.OFFSITE_S3_ACCESS_KEY_ID }}
+          OFFSITE_S3_SECRET_ACCESS_KEY: ${{ secrets.OFFSITE_S3_SECRET_ACCESS_KEY }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import os,shlex
+          names=("DRCLOUD_RESTIC_IMAGE","OFFSITE_RESTIC_REPOSITORY","OFFSITE_S3_REGION","OFFSITE_S3_ENDPOINT","OFFSITE_RESTIC_PASSWORD","OFFSITE_S3_ACCESS_KEY_ID","OFFSITE_S3_SECRET_ACCESS_KEY")
+          with open("offsite-runtime.env","w") as f:
+              for n in names: f.write(f"export {n}={shlex.quote(os.environ.get(n,''))}\n")
+          PY
+          chmod 600 offsite-runtime.env
+          remote_script="/tmp/drcloud-offsite-backup-${RUN_ID}.sh"
+          remote_env="/tmp/drcloud-offsite-runtime-${RUN_ID}.env"
+          cleanup_remote() { ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" "$OVH_SSH_USER@$OVH_SSH_HOST" "rm -f -- '$remote_script' '$remote_env'" >/dev/null 2>&1 || true; rm -f offsite-runtime.env; }
+          trap cleanup_remote EXIT INT TERM
+          scp -q -i ~/.ssh/drcloud_deploy -P "${OVH_SSH_PORT:-22}" deploy/ovh/offsite-backup.sh "$OVH_SSH_USER@$OVH_SSH_HOST:$remote_script"
+          scp -q -i ~/.ssh/drcloud_deploy -P "${OVH_SSH_PORT:-22}" offsite-runtime.env "$OVH_SSH_USER@$OVH_SSH_HOST:$remote_env"
+          rm -f offsite-runtime.env
+          ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" "$OVH_SSH_USER@$OVH_SSH_HOST" "bash -s" -- "$remote_script" "$remote_env" <<'REMOTE'
+          set -euo pipefail
+          script="$1"; runtime="$2"
+          cleanup() { rm -f -- "$script"; command -v shred >/dev/null && shred -u -- "$runtime" || rm -f -- "$runtime"; }
+          trap cleanup EXIT INT TERM
+          chmod 700 "$script"; chmod 600 "$runtime"; source "$runtime"
+          "$script"
+          cleanup; trap - EXIT INT TERM
+          test ! -e "$runtime" && test ! -e "$script"
+          REMOTE
+          cleanup_remote; trap - EXIT INT TERM
+      - name: Download sanitized status only
+        if: always()
+        env:
+          OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
+          OVH_SSH_PORT: ${{ secrets.OVH_SSH_PORT }}
+          OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
+        run: scp -q -i ~/.ssh/drcloud_deploy -P "${OVH_SSH_PORT:-22}" "$OVH_SSH_USER@$OVH_SSH_HOST:/opt/drcloud-os/deploy/ovh/.deployment-state/offsite_backup_status.json" offsite_backup_status.json
+      - name: Upload sanitized status
+        if: always() && hashFiles('offsite_backup_status.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: drcloud-offsite-backup-status-${{ github.run_id }}
+          path: offsite_backup_status.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Enforce remote proof
+        if: always()
+        env:
+          STEP_OUTCOME: ${{ steps.offsite.outcome }}
+        run: |
+          test "$STEP_OUTCOME" = success
+          python -c 'import json; d=json.load(open("offsite_backup_status.json")); assert d["last_result"]=="OFFSITE_REMOTE_CHECK_PROVEN" and d["remote_check"]=="PROVEN"'

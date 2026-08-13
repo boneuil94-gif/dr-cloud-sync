@@ -269,7 +269,14 @@ def test_every_production_compose_caller_prepares_the_deployment_environment():
     root = Path(__file__).parents[1]
     scripts = list((root / "deploy/ovh").glob("*.sh"))
     compose_callers = [path for path in scripts if "docker compose" in path.read_text()]
-    assert {path.name for path in compose_callers} == {"backup.sh", "check.sh", "deploy.sh", "recovery-gameday.sh"}
+    assert {path.name for path in compose_callers} == {
+        "backup.sh",
+        "check.sh",
+        "deploy.sh",
+        "offsite-backup.sh",
+        "offsite-recovery-gameday.sh",
+        "recovery-gameday.sh",
+    }
     for path in compose_callers:
         text = path.read_text()
         assert "deployment-environment.sh" in text
