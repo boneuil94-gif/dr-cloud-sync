@@ -90,7 +90,7 @@ def test_v3_scorecard_is_the_strict_source_of_truth():
     assert data["version"] == 3
     assert data["global_score"] == data["global_progress_percent"] == 58
     assert data["remaining_percent"] == 42
-    assert data["evidence_date"] == "2026-08-12"
+    assert data["evidence_date"] == "2026-08-13"
     assert scores["Purchases"] == 63
     assert scores["Finance"] == 61
     assert scores["Stock"] == 67
@@ -112,6 +112,34 @@ def test_production_recovery_proof_closes_backup_p0_without_inventing_scores():
     assert proof["rollback"] == "NOT_REQUESTED"
     assert proof["schema_compatibility"] == "UNKNOWN"
     assert proof["backup_location"] == "BACKUP_ON_HOST_ONLY"
+
+def test_gameday_9_formal_rescore_records_proven_rollback_without_overcredit():
+    data = RoadmapService(ROADMAP).load()
+    proof = data["production_recovery_gameday_2026_08_13"]
+    assert proof["run_number"] == 9
+    assert proof["run_id"] == 31685249526
+    assert proof["rollback"] == "ROLLBACK_PROVEN"
+    assert proof["schema_compatibility"] == "COMPATIBLE"
+    assert proof["data_loss_check"] == "PASS"
+    assert proof["rpo_confidence"] == "LOW"
+    assert proof["priorities"]["p0_backup_restorable"] == "CLOSED_PROVEN"
+    assert proof["priorities"]["p1_rollback_recovery"] == "CLOSED_PROVEN"
+    assert proof["priorities"]["p1_off_host_backup"] == "OPEN"
+    assert proof["scores"]["global_strict"] == {"before": 58, "after": 58}
+    assert proof["score_policy_reason"] == "GLOBAL_SCORE_UNCHANGED_NO_REPRODUCIBLE_AGGREGATION"
+    assert proof["rescore_methodology"]["deployment"] == {
+        "code_architecture": 17, "wiring": 18, "tests": 17,
+        "production_proof": 19, "observability": 4,
+        "documentation": 4, "total": 79,
+    }
+    current_blockers = "\n".join(data["blockers"])
+    assert "rollback N→N-1 non exercé" not in current_blockers
+    assert "compatibilité schéma UNKNOWN" not in current_blockers
+
+    module_scores = {module["name"]: module["score"] for module in data["modules"]}
+    assert module_scores["Deployment"] == 79
+    assert 75.93 not in module_scores.values()
+    assert 100 not in module_scores.values()
 
 def test_dimensions_are_audited_facts_not_a_module_average():
     data = RoadmapService(ROADMAP).load()

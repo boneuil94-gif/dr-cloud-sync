@@ -11,8 +11,8 @@
     "test_quality": 76,
     "ux": 60
   },
-  "evidence_date": "2026-08-12",
-  "methodology": "Score strict audité; aucune moyenne naïve des modules. Code, wiring, tests, production, observabilité et documentation sont évalués séparément. Les nouvelles preuves mettent à jour les statuts factuels; aucun score numérique n'est relevé sans re-score formel Audit V2.",
+  "evidence_date": "2026-08-13",
+  "methodology": "Score strict audité selon six axes: code/architecture 20 %, wiring 20 %, tests 20 %, preuve production 25 %, observabilité 10 %, documentation 5 %. Aucune moyenne naïve des modules. Le global reste inchangé sans règle d’agrégation globale reproductible persistée.",
   "modules": [
     {
       "id": "architecture",
@@ -37,11 +37,11 @@
     {
       "id": "deployment",
       "name": "Deployment",
-      "score": 68,
+      "score": 79,
       "status": "PARTIAL",
-      "justification": "CI/CD au SHA exact, health/HTTPS publics et restauration production-data isolée prouvés",
-      "blocker": "rollback N→N-1, backup hors hôte et monitoring/alerting non prouvés",
-      "next_step": "exercer le Game Day full avec rollback et externaliser les backups",
+      "justification": "CI/CD au SHA exact, health/HTTPS publics, restauration de données production et rollback N→N-1→N OVH-equivalent prouvés",
+      "blocker": "backup chiffré hors VPS, monitoring externe/alerting, SLO, rotation secrets et répétition périodique du DR non prouvés",
+      "next_step": "externaliser et restaurer une copie chiffrée off-host, puis automatiser alerting/SLO et Game Days périodiques",
       "evidence_level": "PRODUCTION_PROVEN"
     },
     {
@@ -228,7 +228,6 @@
   "priorities": [
     "P0 — prouver état secrets/bootstrap production",
     "P1 — externaliser les backups hors hôte et définir rétention/rotation",
-    "P1 — exercer rollback N→N-1 et confirmer compatibilité schéma",
     "P1 — améliorer la mesure RPO avec data_max_at plutôt que backup_created_at",
     "P1 — mesurer couverture sources et funnel financier",
     "P1 — tester SQLite multi-worker",
@@ -236,7 +235,6 @@
     "P1 — clarifier et brancher les sous-sources SumUp"
   ],
   "blockers": [
-    "rollback N→N-1 non exercé et compatibilité schéma UNKNOWN",
     "backup encore BACKUP_ON_HOST_ONLY",
     "état secrets/bootstrap production non prouvé",
     "couverture production des connecteurs inconnue",
@@ -248,11 +246,26 @@
     "date": "2026-08-10",
     "scope": "isolated-local-synthetic",
     "scores": {
-      "global_strict": {"before": 58, "after": 58},
-      "production_maturity": {"before": 49, "after": 49},
-      "deployment": {"before": 68, "after": 68},
-      "core": {"before": 72, "after": 72},
-      "observability": {"before": 61, "after": 61}
+      "global_strict": {
+        "before": 58,
+        "after": 58
+      },
+      "production_maturity": {
+        "before": 49,
+        "after": 49
+      },
+      "deployment": {
+        "before": 68,
+        "after": 68
+      },
+      "core": {
+        "before": 72,
+        "after": 72
+      },
+      "observability": {
+        "before": 61,
+        "after": 61
+      }
     },
     "evidence": [
       "recovery_evidence.json",
@@ -273,12 +286,30 @@
     "backup_status": "PRODUCTION_BACKUP_MISSING",
     "evidence": "recovery_evidence_production.json",
     "scores": {
-      "global_strict": {"before": 58, "after": 58},
-      "production_maturity": {"before": 49, "after": 49},
-      "deployment": {"before": 68, "after": 68},
-      "core": {"before": 72, "after": 72},
-      "observability": {"before": 61, "after": 61},
-      "tests": {"before": 76, "after": 76}
+      "global_strict": {
+        "before": 58,
+        "after": 58
+      },
+      "production_maturity": {
+        "before": 49,
+        "after": 49
+      },
+      "deployment": {
+        "before": 68,
+        "after": 68
+      },
+      "core": {
+        "before": 72,
+        "after": 72
+      },
+      "observability": {
+        "before": 61,
+        "after": 61
+      },
+      "tests": {
+        "before": 76,
+        "after": 76
+      }
     },
     "why": "No OVH access or mounted production backup; no synthetic substitution and no score increase.",
     "priorities": {
@@ -325,12 +356,30 @@
       "artifact drcloud-production-recovery-evidence-31585890450"
     ],
     "scores": {
-      "global_strict": {"before": 58, "after": 58},
-      "production_maturity": {"before": 49, "after": 49},
-      "deployment": {"before": 68, "after": 68},
-      "core": {"before": 72, "after": 72},
-      "observability": {"before": 61, "after": 61},
-      "tests": {"before": 76, "after": 76}
+      "global_strict": {
+        "before": 58,
+        "after": 58
+      },
+      "production_maturity": {
+        "before": 49,
+        "after": 49
+      },
+      "deployment": {
+        "before": 68,
+        "after": 68
+      },
+      "core": {
+        "before": 72,
+        "after": 72
+      },
+      "observability": {
+        "before": 61,
+        "after": 61
+      },
+      "tests": {
+        "before": 76,
+        "after": 76
+      }
     },
     "score_policy": "Scores intentionally unchanged until a formal Audit V2 re-score; the new production proof closes factual blockers without inventing numeric credit.",
     "priorities": {
@@ -339,6 +388,89 @@
       "p1_rollback_recovery": "PARTIAL_RESTORE_PROVEN_ROLLBACK_OPEN",
       "p1_rpo_rto": "PARTIAL_RTO_PROVEN_RPO_LOW_CONFIDENCE",
       "p1_off_host_backup": "OPEN",
+      "p1_sqlite_crash_concurrency": "PARTIAL"
+    }
+  },
+  "production_recovery_gameday_2026_08_13": {
+    "scope": "production-data-isolated-restore-and-ovh-equivalent-full-rollback",
+    "run_number": 9,
+    "run_id": 31685249526,
+    "head_sha": "35fa1fef1b8d687c4da342120f69f3f62cb502ef",
+    "n": "35fa1fef1b8d687c4da342120f69f3f62cb502ef",
+    "n_minus_1": "578d70e94f835207d8c3c087ffd36ac4027c4ff2",
+    "result": "PRODUCTION_DATA_PROVEN",
+    "rollback": "ROLLBACK_PROVEN",
+    "schema_compatibility": "COMPATIBLE",
+    "data_loss_check": "PASS",
+    "backup_status": "PRODUCTION_BACKUP_VALID",
+    "backup_location": "BACKUP_ON_HOST_ONLY",
+    "observed_rto_seconds": 21.0,
+    "observed_rpo_seconds": 63221.99,
+    "rpo_confidence": "LOW",
+    "rpo_method": "backup_created_at",
+    "safety": {
+      "safe_mode": true,
+      "external_provider_auth": "NONE",
+      "network": "INTERNAL_ONLY",
+      "network_exposure": "NONE",
+      "production_database_target": false,
+      "production_volume_mounted": false,
+      "production_port_published": false
+    },
+    "evidence": [
+      "docs/evidence/recovery_evidence_production_2026-08-13.json",
+      "docs/PRODUCTION_RECOVERY_GAME_DAY_2026-08-13.md",
+      "GitHub Actions DrCloud OS Recovery Game Day #9 (run 31685249526)"
+    ],
+    "scores": {
+      "global_strict": {
+        "before": 58,
+        "after": 58
+      },
+      "production_maturity": {
+        "before": 49,
+        "after": 49
+      },
+      "deployment": {
+        "before": 68,
+        "after": 79
+      },
+      "observability": {
+        "before": 61,
+        "after": 61
+      },
+      "tests": {
+        "before": 76,
+        "after": 76
+      }
+    },
+    "rescore_methodology": {
+      "weights": {
+        "code_architecture": 20,
+        "wiring": 20,
+        "tests": 20,
+        "production_proof": 25,
+        "observability": 10,
+        "documentation": 5
+      },
+      "deployment": {
+        "code_architecture": 17,
+        "wiring": 18,
+        "tests": 17,
+        "production_proof": 19,
+        "observability": 4,
+        "documentation": 4,
+        "total": 79
+      },
+      "global_policy": "GLOBAL_SCORE_UNCHANGED_NO_REPRODUCIBLE_AGGREGATION"
+    },
+    "score_policy_reason": "GLOBAL_SCORE_UNCHANGED_NO_REPRODUCIBLE_AGGREGATION",
+    "priorities": {
+      "p0_backup_restorable": "CLOSED_PROVEN",
+      "p1_rollback_recovery": "CLOSED_PROVEN",
+      "p1_rpo_rto": "PARTIAL_RTO_PROVEN_RPO_LOW_CONFIDENCE",
+      "p1_off_host_backup": "OPEN",
+      "p0_secrets_bootstrap": "OPEN",
       "p1_sqlite_crash_concurrency": "PARTIAL"
     }
   }

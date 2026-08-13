@@ -1,0 +1,60 @@
+{
+  "backup": {
+    "location_classification": "BACKUP_ON_HOST_ONLY",
+    "result": "PRODUCTION_BACKUP_VALID"
+  },
+  "environment": "production",
+  "evidence_level": "PRODUCTION_DATA_RESTORE",
+  "mode": "full",
+  "restore": {
+    "app_boot": "APP_BOOT_OK",
+    "data_max_at": null,
+    "database_size": 70877184,
+    "evidence_level": "PRODUCTION_DATA_RESTORE",
+    "foreign_key_check": "OK",
+    "health": "HEALTH_OK",
+    "index_count": 223,
+    "integrity_check": "ok",
+    "observed_rpo_seconds": 63221.99,
+    "observed_rto_seconds": 21.0,
+    "quick_check": "ok",
+    "result": "PRODUCTION_DATA_PROVEN",
+    "rpo_confidence": "LOW",
+    "rpo_method": "backup_created_at",
+    "table_count": 124,
+    "table_counts": {
+      "bank_transactions": 2730,
+      "sale_events": 960,
+      "sales": 790,
+      "sumup_payouts": 228,
+      "sumup_transactions": 10978
+    }
+  },
+  "rollback": {
+    "data_loss_check": "PASS",
+    "environment": "OVH_EQUIVALENT_STAGING",
+    "evidence_level": "OVH_EQUIVALENT_ROLLBACK",
+    "n": "35fa1fef1b8d687c4da342120f69f3f62cb502ef",
+    "n_health": "HEALTH_OK",
+    "n_minus_1": "578d70e94f835207d8c3c087ffd36ac4027c4ff2",
+    "n_minus_1_health": "HEALTH_OK",
+    "n_return_health": "HEALTH_OK",
+    "result": "ROLLBACK_PROVEN",
+    "schema_compatibility": "COMPATIBLE"
+  },
+  "run": {
+    "head_sha": "35fa1fef1b8d687c4da342120f69f3f62cb502ef",
+    "run_id": 31685249526,
+    "run_number": 9
+  },
+  "safety": {
+    "external_provider_auth": "NONE",
+    "network": "INTERNAL_ONLY",
+    "network_exposure": "NONE",
+    "production_database_target": false,
+    "production_port_published": false,
+    "production_volume_mounted": false,
+    "safe_mode": true
+  },
+  "schema_version": 1
+}
