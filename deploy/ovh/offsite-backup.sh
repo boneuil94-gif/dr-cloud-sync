@@ -17,6 +17,20 @@ work="$(mktemp -d -t drcloud-offsite.XXXXXX)"
 cleanup() { local rc=$?; rm -rf -- "$work"; exit "$rc"; }
 trap cleanup EXIT INT TERM
 
+# Run Restic as the unprivileged staging owner.  `docker compose cp` creates
+# local files for the invoking user, so even preserved 0600 modes remain
+# readable without granting access to the user's group or to other host users.
+restic_uid="$(id -u)"
+restic_gid="$(id -g)"
+prepare_restic_source() {
+  local source="$1"
+  [[ -d "$source" ]] || return 1
+  [[ -z "$(find "$source" -xdev ! -type d ! -type f -print -quit)" ]] || return 1
+  [[ -z "$(find "$source" -xdev ! -user "$restic_uid" -print -quit)" ]] || return 1
+  find "$source" -xdev -type d -exec chmod 700 {} + || return 1
+  find "$source" -xdev -type f -exec chmod 600 {} + || return 1
+}
+
 status_file="${DRCLOUD_OFFSITE_STATUS_FILE:-$DRCLOUD_DEPLOYMENT_STATE_DIR/offsite_backup_status.json}"
 attempt="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 write_status() {
@@ -39,6 +53,9 @@ PY
 }
 fail() { write_status "$1" "${2:-}" "${3:-UNKNOWN}"; echo "$1" >&2; exit 1; }
 
+[[ "$restic_uid" =~ ^[0-9]+$ && "$restic_gid" =~ ^[0-9]+$ ]] && (( restic_uid > 0 )) \
+  || fail OFFSITE_RESTIC_IDENTITY_INVALID
+
 required=(DRCLOUD_RESTIC_IMAGE OFFSITE_RESTIC_REPOSITORY OFFSITE_RESTIC_PASSWORD OFFSITE_S3_ACCESS_KEY_ID OFFSITE_S3_SECRET_ACCESS_KEY OFFSITE_S3_REGION)
 for name in "${required[@]}"; do [[ -n "${!name:-}" ]] || fail OFFSITE_NOT_CONFIGURED; done
 [[ "$DRCLOUD_RESTIC_IMAGE" == *@sha256:* ]] || fail RESTIC_IMAGE_NOT_IMMUTABLE
@@ -46,7 +63,7 @@ for name in "${required[@]}"; do [[ -n "${!name:-}" ]] || fail OFFSITE_NOT_CONFI
 
 restic() {
   docker run --rm --network bridge --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m \
-    --cap-drop ALL --security-opt no-new-privileges \
+    --user "$restic_uid:$restic_gid" --cap-drop ALL --security-opt no-new-privileges \
     --mount "type=bind,src=$work/source,dst=/source,readonly" \
     -e RESTIC_REPOSITORY -e RESTIC_PASSWORD -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
     -e AWS_DEFAULT_REGION -e AWS_REGION -e RESTIC_CACHE_DIR=/tmp/restic-cache \
@@ -97,6 +114,8 @@ for name in required:
  if len(raw)!=e.get("size") or hashlib.sha256(raw).hexdigest()!=e.get("sha256"): raise SystemExit(1)
  json.load(open(p)) if name.endswith(".json") else None
 PY
+
+prepare_restic_source "$work/source" || fail OFFSITE_BACKUP_SOURCE_INVALID
 
 if ! restic snapshots --json >/dev/null 2>&1; then
   # init is safe only for a genuinely absent repository; other errors remain failures.
