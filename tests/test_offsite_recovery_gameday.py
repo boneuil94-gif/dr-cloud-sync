@@ -65,3 +65,12 @@ def test_all_recovery_phase_failures_are_terminal():
     ):
         assert result in SCRIPT
     assert "set -Eeuo pipefail" in SCRIPT
+
+
+def test_restore_staging_is_private_and_writable_by_unprivileged_restic():
+    assert 'restic_uid="$(id -u)"; restic_gid="$(id -g)"' in SCRIPT
+    assert 'chmod 700 "$restore"' in SCRIPT
+    assert '--user "$restic_uid:$restic_gid"' in SCRIPT
+    assert '--mount "type=bind,src=$restore,dst=/restore"' in SCRIPT
+    assert "OFFSITE_RESTORE_STAGING_INVALID" in SCRIPT
+    assert "OFFSITE_RESTIC_IDENTITY_INVALID" in SCRIPT

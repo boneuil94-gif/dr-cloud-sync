@@ -1,4 +1,9 @@
+import os
 from pathlib import Path
+import shutil
+import subprocess
+
+import pytest
 
 
 ROOT = Path(__file__).parents[1]
@@ -60,3 +65,79 @@ def test_network_auth_interruption_missing_snapshot_and_corruption_fail_closed()
     assert 'restic snapshots --json --tag "$backup_id"' in SCRIPT
     assert 'restic check --read-data-subset=' in SCRIPT
     assert SCRIPT.count("fail OFFSITE_REMOTE_CHECK_FAILED") >= 3
+
+
+def test_staging_permissions_are_normalized_for_unprivileged_restic():
+    assert 'restic_uid="$(id -u)"' in SCRIPT
+    assert 'restic_gid="$(id -g)"' in SCRIPT
+    assert "OFFSITE_RESTIC_IDENTITY_INVALID" in SCRIPT
+    assert '--user "$restic_uid:$restic_gid"' in SCRIPT
+    assert '! -user "$restic_uid"' in SCRIPT
+    assert '-type d -exec chmod 700 {} +' in SCRIPT
+    assert '-type f -exec chmod 600 {} +' in SCRIPT
+    assert '--mount "type=bind,src=$work/source,dst=/source,readonly"' in SCRIPT
+
+
+def _local_container_image():
+    if not shutil.which("docker"):
+        return None
+    try:
+        subprocess.run(
+            ["docker", "info"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    requested = os.environ.get("DRCLOUD_RESTIC_TEST_IMAGE")
+    candidates = [requested] if requested else []
+    candidates += ["alpine:3.20", "busybox:latest"]
+    for image in candidates:
+        inspected = subprocess.run(
+            ["docker", "image", "inspect", image],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if inspected.returncode == 0:
+            return image
+    return None
+
+
+def test_private_staging_is_readable_from_hardened_unprivileged_container(tmp_path):
+    image = _local_container_image()
+    if image is None:
+        pytest.skip("Docker daemon and a local Alpine/BusyBox test image are required")
+    if os.getuid() == 0:
+        pytest.skip("The integration test requires an unprivileged host user")
+
+    source = tmp_path / "source"
+    media = source / "media"
+    media.mkdir(parents=True, mode=0o700)
+    expected = {
+        "drcloud.db": "database",
+        "catalogue.json": "catalogue",
+        "catalogue-report.json": "report",
+        "metadata.json": "metadata",
+        "media/cover.jpg": "media",
+    }
+    for relative, contents in expected.items():
+        path = source / relative
+        path.write_text(contents)
+        path.chmod(0o600)
+    source.chmod(0o700)
+    media.chmod(0o700)
+
+    common = [
+        "docker", "run", "--rm", "--network", "none", "--read-only",
+        "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+        "--mount", f"type=bind,src={source},dst=/source,readonly",
+        "--entrypoint", "/bin/sh", image, "-ec",
+    ]
+    read_all = "test -r /source; find /source -type f -exec cat {} \\; >/dev/null"
+
+    # Emulate the image's former, mismatched non-root identity: private staging
+    # is correctly unreadable to it, reproducing the production failure.
+    old = common[:8] + ["--user", "65532:65532"] + common[8:]
+    assert subprocess.run(old + [read_all], capture_output=True).returncode != 0
+
+    # The script now explicitly maps Restic to the unprivileged staging owner.
+    current = common[:8] + ["--user", f"{os.getuid()}:{os.getgid()}"] + common[8:]
+    subprocess.run(current + [read_all], check=True)

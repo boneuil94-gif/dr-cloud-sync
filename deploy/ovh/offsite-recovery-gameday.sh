@@ -16,7 +16,13 @@ for name in "${required[@]}"; do [[ -n "${!name:-}" ]] || { echo OFFSITE_NOT_CON
 [[ "$DRCLOUD_RESTIC_IMAGE" =~ ^[^[:space:]]+@sha256:[a-fA-F0-9]{64}$ ]] || { echo RESTIC_IMAGE_NOT_IMMUTABLE >&2; exit 1; }
 
 work="$(mktemp -d -t drcloud-offsite-recovery.XXXXXX)"
+restic_uid="$(id -u)"; restic_gid="$(id -g)"
+[[ "$restic_uid" =~ ^[0-9]+$ && "$restic_gid" =~ ^[0-9]+$ ]] && (( restic_uid > 0 )) \
+  || { echo OFFSITE_RESTIC_IDENTITY_INVALID >&2; exit 1; }
 restore="$work/remote-restore"; mkdir -m 700 "$restore"
+# Restic uses the unprivileged staging owner's identity, leaving the writable
+# restore destination inaccessible to the owner's group and other host users.
+chmod 700 "$restore" || { echo OFFSITE_RESTORE_STAGING_INVALID >&2; exit 1; }
 [[ -z "$(find "$restore" -mindepth 1 -print -quit)" ]] || { echo OFFSITE_RESTORE_DESTINATION_NOT_EMPTY >&2; exit 1; }
 container="drcloud-offsite-recovery-${$}"; network="drcloud-offsite-recovery-${$}"; volume="drcloud-offsite-recovery-data-${$}"
 cleanup() {
@@ -33,7 +39,7 @@ export AWS_DEFAULT_REGION="$OFFSITE_S3_REGION" AWS_REGION="$OFFSITE_S3_REGION"
 [[ -z "${OFFSITE_S3_ENDPOINT:-}" ]] || export AWS_ENDPOINT_URL="$OFFSITE_S3_ENDPOINT"
 restic() {
   docker run --rm --network bridge --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m \
-    --cap-drop ALL --security-opt no-new-privileges \
+    --user "$restic_uid:$restic_gid" --cap-drop ALL --security-opt no-new-privileges \
     --mount "type=bind,src=$restore,dst=/restore" \
     -e RESTIC_REPOSITORY -e RESTIC_PASSWORD -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
     -e AWS_DEFAULT_REGION -e AWS_REGION -e RESTIC_CACHE_DIR=/tmp/restic-cache \
