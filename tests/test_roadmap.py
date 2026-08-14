@@ -137,9 +137,30 @@ def test_gameday_9_formal_rescore_records_proven_rollback_without_overcredit():
     assert "compatibilité schéma UNKNOWN" not in current_blockers
 
     module_scores = {module["name"]: module["score"] for module in data["modules"]}
-    assert module_scores["Deployment"] == 79
+    assert module_scores["Deployment"] == 84
     assert 75.93 not in module_scores.values()
     assert 100 not in module_scores.values()
+
+def test_offsite_dr_proof_formally_closes_on_host_only_blocker():
+    data = RoadmapService(ROADMAP).load()
+    proof = data["production_offsite_dr_2026_08_13"]
+    assert proof["evidence_level"] == "OFFSITE_ENCRYPTED_BACKUP_RESTORE"
+    assert proof["backup"]["run_id"] == 31716317021
+    assert proof["backup"]["offsite_upload"] == "OFFSITE_UPLOAD_PROVEN"
+    assert proof["backup"]["location_classification"] == "OFF_HOST_OBJECT_STORAGE"
+    assert proof["recovery"]["run_id"] == 31718824913
+    assert proof["recovery"]["restore_result"] == "OFFSITE_RESTORE_PROVEN"
+    assert proof["safety"]["local_backup_used_for_restore"] is False
+    assert proof["priorities"]["p1_off_host_backup"] == "CLOSED_PRODUCTION_PROVEN"
+    assert proof["recovery"]["rpo_confidence"] == "LOW"
+    assert proof["scores"]["global_strict"] == {"before": 58, "after": 58}
+    assert proof["scores"]["deployment"] == {"before": 79, "after": 84}
+    assert proof["rescore_methodology"]["deployment"] == {
+        "code_architecture": 17, "wiring": 19, "tests": 17,
+        "production_proof": 23, "observability": 4,
+        "documentation": 4, "total": 84,
+    }
+    assert "BACKUP_ON_HOST_ONLY" not in "\n".join(data["blockers"])
 
 def test_dimensions_are_audited_facts_not_a_module_average():
     data = RoadmapService(ROADMAP).load()

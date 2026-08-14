@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "environment": "production",
+  "evidence_level": "OFFSITE_ENCRYPTED_BACKUP_RESTORE",
+  "backup_workflow": {
+    "workflow": "DrCloud OS encrypted offsite backup",
+    "run_id": 31716317021,
+    "run_number": 2,
+    "head_sha": "2abb562469f40a9c20c8eeb875f86c1b06e83489",
+    "conclusion": "SUCCESS",
+    "encryption": "RESTIC_CLIENT_SIDE_ENCRYPTED",
+    "location_classification": "OFF_HOST_OBJECT_STORAGE",
+    "offsite_upload": "OFFSITE_UPLOAD_PROVEN",
+    "remote_check": "PROVEN",
+    "remote_check_evidence": "OFFSITE_REMOTE_CHECK_PROVEN",
+    "source_result": "PRODUCTION_BACKUP_VALID"
+  },
+  "recovery_workflow": {
+    "workflow": "DrCloud OS remote-only recovery Game Day",
+    "run_id": 31718824913,
+    "run_number": 1,
+    "head_sha": "2abb562469f40a9c20c8eeb875f86c1b06e83489",
+    "conclusion": "SUCCESS",
+    "remote": {
+      "snapshot_available": true,
+      "integrity": "PASS"
+    },
+    "restore": {
+      "result": "OFFSITE_RESTORE_PROVEN",
+      "app_boot": "APP_BOOT_OK",
+      "health": "HEALTH_OK",
+      "quick_check": "ok",
+      "integrity_check": "ok",
+      "foreign_key_check": "OK"
+    },
+    "safety": {
+      "local_backup_used_for_restore": false,
+      "production_volume_mounted": false,
+      "production_port_published": false,
+      "network": "INTERNAL_ONLY",
+      "safe_mode": true,
+      "cloud_material_persisted": false,
+      "external_provider_auth": "NONE"
+    },
+    "timing": {
+      "observed_restore_seconds": 13,
+      "observed_rpo_seconds": 12829.331,
+      "rpo_basis": "backup_created_at_proxy",
+      "rpo_confidence": "LOW"
+    }
+  },
+  "closed_blocker": "BACKUP_ON_HOST_ONLY",
+  "open_limits": [
+    "RPO_BUSINESS_FRESHNESS_LOW_CONFIDENCE",
+    "EXTERNAL_MONITORING_ALERTING_NOT_PROVEN",
+    "SLO_NOT_PROVEN",
+    "SECRET_ROTATION_NOT_PROVEN",
+    "PERIODIC_DR_REPETITION_NOT_PROVEN"
+  ]
+}
