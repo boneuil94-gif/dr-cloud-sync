@@ -92,10 +92,39 @@ def test_sanitizer_accepts_generated_evidence(tmp_path):
     checked=subprocess.run([SCRIPT,"--sanitize",out],text=True,capture_output=True)
     assert checked.returncode==0 and json.loads(checked.stdout)["result"]=="PRODUCTION_BOOTSTRAP_PROVEN"
 
-def test_tracked_secret_value_is_rejected_without_echo(tmp_path):
-    result,_,repo,values=fixture(tmp_path)
-    (repo/"safe.txt").write_text(values["QONTO_CREDENTIAL"])
+def rerun_fixture(tmp_path, repo):
     # Re-run using the original fixture environment assembled from its paths.
     env={**os.environ,"DRCLOUD_PROOF_ENV_FILE":str(tmp_path/"runtime.env"),"DRCLOUD_PROOF_REPO":str(repo),"DRCLOUD_PROOF_DATABASE":str(tmp_path/"db.sqlite"),"DRCLOUD_PROOF_OUTPUT":str(tmp_path/"x.json"),"PATH":f"{tmp_path/'bin'}:{os.environ['PATH']}"}
-    result=subprocess.run([SCRIPT],env=env,text=True,capture_output=True)
-    assert result.stderr.strip()=="PRODUCTION_SECRET_LEAK_DETECTED" and values["QONTO_CREDENTIAL"] not in result.stderr
+    return subprocess.run([SCRIPT],env=env,text=True,capture_output=True)
+
+@pytest.mark.parametrize("key",[
+    "PRESTASHOP_PAID_STATE_IDS",
+    "DRCLOUD_ADMIN_USERNAME",
+    "SUMUP_MERCHANT_CODE",
+])
+def test_tracked_non_secret_configuration_is_not_treated_as_a_leak(tmp_path,key):
+    _,_,repo,values=fixture(tmp_path)
+    (repo/"safe.txt").write_text(values[key])
+    result=rerun_fixture(tmp_path,repo)
+    assert result.returncode==0 and result.stderr=="" and result.stdout==""
+
+@pytest.mark.parametrize("key",[
+    "QONTO_CREDENTIAL",
+    "DRCLOUD_ADMIN_PASSWORD",
+    "DRCLOUD_SECRET_KEY",
+])
+def test_tracked_secret_value_is_rejected_without_echo(tmp_path,key):
+    _,_,repo,values=fixture(tmp_path)
+    (repo/"safe.txt").write_text(values[key])
+    result=rerun_fixture(tmp_path,repo)
+    assert result.returncode==1
+    assert result.stderr.strip()=="PRODUCTION_SECRET_LEAK_DETECTED"
+    assert result.stdout==""
+    assert all(value not in result.stderr for value in values.values())
+
+def test_trivial_classified_secret_fails_closed_without_scanning_or_echo(tmp_path):
+    result,_,_,values=fixture(tmp_path,env_change={"QONTO_CREDENTIAL":"test"})
+    assert result.returncode==1
+    assert result.stderr.strip()=="PRODUCTION_SECRET_MATERIAL_INVALID"
+    assert result.stdout==""
+    assert all(value not in result.stderr for value in values.values())

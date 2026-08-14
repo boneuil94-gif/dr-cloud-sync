@@ -11,6 +11,15 @@ import datetime as dt, hashlib, hmac, json, os, pathlib, re, sqlite3, stat, subp
 
 FORBIDDEN = ("password", "secret", "token", "credential", "api_key", "private_key", "authorization")
 ALLOWED_CREDENTIAL_VALUE = {"PASS", "NOT_APPLICABLE"}
+REQUIRED_CONFIGURATION = (
+    "DRCLOUD_SECRET_KEY", "DRCLOUD_ADMIN_USERNAME", "DRCLOUD_ADMIN_PASSWORD",
+    "PRESTASHOP_API_KEY", "PRESTASHOP_PAID_STATE_IDS", "SHOPCAISSE_API_KEY",
+    "QONTO_CREDENTIAL", "SUMUP_API_KEY", "SUMUP_MERCHANT_CODE",
+)
+ACTUAL_SECRET_MATERIAL = (
+    "DRCLOUD_SECRET_KEY", "DRCLOUD_ADMIN_PASSWORD", "PRESTASHOP_API_KEY",
+    "SHOPCAISSE_API_KEY", "QONTO_CREDENTIAL", "SUMUP_API_KEY",
+)
 
 def sanitize_evidence(value):
     def walk(item):
@@ -89,6 +98,18 @@ def command(*args, input_text=None):
         return subprocess.run(args,input=input_text,text=True,capture_output=True,check=True).stdout
     except (OSError,subprocess.CalledProcessError): fail("PRODUCTION_RUNTIME_CHECK_FAILED")
 
+def secret_values_for_leak_scan(env):
+    values=[]
+    for key in ACTUAL_SECRET_MATERIAL:
+        value=env[key]
+        # A classified production secret must have enough entropy-bearing
+        # material to scan safely. Fail closed rather than turning a trivial
+        # value into an effectively repository-wide substring search.
+        if len(value.encode()) < 8 or value.strip().lower() in {"password", "secret", "changeme", "test", "admin"}:
+            fail("PRODUCTION_SECRET_MATERIAL_INVALID")
+        values.append(value.encode())
+    return values
+
 def inspect_database_container(compose):
     program=r'''import hashlib,hmac,json,os,sqlite3
 +db=sqlite3.connect("file:/data/drcloud.db?mode=ro",uri=True);db.row_factory=sqlite3.Row
@@ -122,14 +143,12 @@ def main():
            "PRESTASHOP_API_URL":"https://dr-cloudshop.com/api","SUMUP_API_URL":"https://api.sumup.com"}
     for key,want in exact.items():
         if env.get(key) != want: fail("PRODUCTION_ENV_FILE_INVALID")
-    required=("DRCLOUD_SECRET_KEY","DRCLOUD_ADMIN_USERNAME","DRCLOUD_ADMIN_PASSWORD","PRESTASHOP_API_KEY",
-              "PRESTASHOP_PAID_STATE_IDS","SHOPCAISSE_API_KEY","QONTO_CREDENTIAL","SUMUP_API_KEY","SUMUP_MERCHANT_CODE")
-    for key in required:
+    for key in REQUIRED_CONFIGURATION:
         if not env.get(key): fail("PRODUCTION_CRITICAL_SECRET_MISSING")
         if env[key].strip().upper() in {"CHANGE_ME","NOT_CONFIGURED"}: fail("PRODUCTION_PLACEHOLDER_DETECTED")
     repo=pathlib.Path(os.environ.get("DRCLOUD_PROOF_REPO","/opt/drcloud-os"))
     tracked=command("git","-C",str(repo),"ls-files","-z").split("\0")
-    critical=[env[k].encode() for k in required if env.get(k)]
+    critical=secret_values_for_leak_scan(env)
     for rel in tracked:
         if not rel: continue
         try: content=(repo/rel).read_bytes()
