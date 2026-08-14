@@ -37,11 +37,11 @@
     {
       "id": "deployment",
       "name": "Deployment",
-      "score": 79,
+      "score": 84,
       "status": "PARTIAL",
-      "justification": "CI/CD au SHA exact, health/HTTPS publics, restauration de données production et rollback N→N-1→N OVH-equivalent prouvés",
-      "blocker": "backup chiffré hors VPS, monitoring externe/alerting, SLO, rotation secrets et répétition périodique du DR non prouvés",
-      "next_step": "externaliser et restaurer une copie chiffrée off-host, puis automatiser alerting/SLO et Game Days périodiques",
+      "justification": "CI/CD au SHA exact, health/HTTPS publics, rollback OVH-equivalent et backup Restic chiffré off-host restauré en mode remote-only prouvés",
+      "blocker": "RPO business de confiance LOW, monitoring externe/alerting, SLO, rotation secrets et répétition périodique du DR non prouvés",
+      "next_step": "fiabiliser le RPO métier, puis automatiser alerting/SLO, rotation des secrets et Game Days périodiques",
       "evidence_level": "PRODUCTION_PROVEN"
     },
     {
@@ -227,7 +227,6 @@
   ],
   "priorities": [
     "P0 — prouver état secrets/bootstrap production",
-    "P1 — externaliser les backups hors hôte et définir rétention/rotation",
     "P1 — améliorer la mesure RPO avec data_max_at plutôt que backup_created_at",
     "P1 — mesurer couverture sources et funnel financier",
     "P1 — tester SQLite multi-worker",
@@ -235,7 +234,6 @@
     "P1 — clarifier et brancher les sous-sources SumUp"
   ],
   "blockers": [
-    "backup encore BACKUP_ON_HOST_ONLY",
     "état secrets/bootstrap production non prouvé",
     "couverture production des connecteurs inconnue",
     "funnel SALE→PAYMENT→SUMUP→PAYOUT→QONTO non mesuré",
@@ -472,6 +470,116 @@
       "p1_off_host_backup": "OPEN",
       "p0_secrets_bootstrap": "OPEN",
       "p1_sqlite_crash_concurrency": "PARTIAL"
+    }
+  },
+  "production_offsite_dr_2026_08_13": {
+    "scope": "encrypted-offsite-backup-and-remote-only-restore",
+    "evidence_level": "OFFSITE_ENCRYPTED_BACKUP_RESTORE",
+    "head_sha": "2abb562469f40a9c20c8eeb875f86c1b06e83489",
+    "backup": {
+      "workflow": "DrCloud OS encrypted offsite backup",
+      "run_id": 31716317021,
+      "run_number": 2,
+      "conclusion": "SUCCESS",
+      "encryption": "RESTIC_CLIENT_SIDE_ENCRYPTED",
+      "location_classification": "OFF_HOST_OBJECT_STORAGE",
+      "offsite_upload": "OFFSITE_UPLOAD_PROVEN",
+      "remote_check": "PROVEN",
+      "source_result": "PRODUCTION_BACKUP_VALID"
+    },
+    "recovery": {
+      "workflow": "DrCloud OS remote-only recovery Game Day",
+      "run_id": 31718824913,
+      "run_number": 1,
+      "conclusion": "SUCCESS",
+      "snapshot_available": true,
+      "remote_integrity": "PASS",
+      "restore_result": "OFFSITE_RESTORE_PROVEN",
+      "app_boot": "APP_BOOT_OK",
+      "health": "HEALTH_OK",
+      "quick_check": "ok",
+      "integrity_check": "ok",
+      "foreign_key_check": "OK",
+      "observed_restore_seconds": 13,
+      "observed_rpo_seconds": 12829.331,
+      "rpo_basis": "backup_created_at_proxy",
+      "rpo_confidence": "LOW"
+    },
+    "safety": {
+      "local_backup_used_for_restore": false,
+      "production_volume_mounted": false,
+      "production_port_published": false,
+      "network": "INTERNAL_ONLY",
+      "safe_mode": true,
+      "cloud_material_persisted": false,
+      "external_provider_auth": "NONE"
+    },
+    "closed_blocker": "BACKUP_ON_HOST_ONLY",
+    "open_limits": [
+      "RPO_BUSINESS_FRESHNESS_LOW_CONFIDENCE",
+      "EXTERNAL_MONITORING_ALERTING_NOT_PROVEN",
+      "SLO_NOT_PROVEN",
+      "SECRET_ROTATION_NOT_PROVEN",
+      "PERIODIC_DR_REPETITION_NOT_PROVEN"
+    ],
+    "evidence": [
+      "docs/evidence/offsite_dr_evidence_production_2026-08-13.json",
+      "GitHub Actions DrCloud OS encrypted offsite backup #2 (run 31716317021)",
+      "GitHub Actions DrCloud OS remote-only recovery Game Day #1 (run 31718824913)"
+    ],
+    "scores": {
+      "global_strict": {
+        "before": 58,
+        "after": 58
+      },
+      "production_maturity": {
+        "before": 49,
+        "after": 49
+      },
+      "deployment": {
+        "before": 79,
+        "after": 84
+      },
+      "observability": {
+        "before": 61,
+        "after": 61
+      },
+      "tests": {
+        "before": 76,
+        "after": 76
+      }
+    },
+    "rescore_methodology": {
+      "weights": {
+        "code_architecture": 20,
+        "wiring": 20,
+        "tests": 20,
+        "production_proof": 25,
+        "observability": 10,
+        "documentation": 5
+      },
+      "deployment": {
+        "code_architecture": 17,
+        "wiring": 19,
+        "tests": 17,
+        "production_proof": 23,
+        "observability": 4,
+        "documentation": 4,
+        "total": 84
+      },
+      "global_policy": "GLOBAL_SCORE_UNCHANGED_NO_REPRODUCIBLE_AGGREGATION"
+    },
+    "score_policy_reason": "GLOBAL_SCORE_UNCHANGED_NO_REPRODUCIBLE_AGGREGATION",
+    "priorities": {
+      "p0_backup_restorable": "CLOSED_PROVEN",
+      "p1_rollback_recovery": "CLOSED_PROVEN",
+      "p1_off_host_backup": "CLOSED_PRODUCTION_PROVEN",
+      "p1_rpo_rto": "PARTIAL_RTO_PROVEN_RPO_LOW_CONFIDENCE",
+      "p0_secrets_bootstrap": "OPEN",
+      "p1_external_monitoring_alerting": "OPEN",
+      "p1_slo": "OPEN",
+      "p1_secret_rotation": "OPEN",
+      "p1_periodic_dr_repetition": "OPEN"
     }
   }
 }
