@@ -1,0 +1,68 @@
+name: DrCloud OS production bootstrap proof
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: drcloud-os-production-bootstrap-proof
+  cancel-in-progress: false
+
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check out reviewed main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Configure dedicated SSH identity
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.OVH_SSH_PRIVATE_KEY }}
+          OVH_SSH_KNOWN_HOSTS: ${{ secrets.OVH_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/drcloud_deploy
+          printf '%s\n' "$OVH_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/drcloud_deploy ~/.ssh/known_hosts
+      - name: Transfer proof program only
+        env:
+          HOST: ${{ secrets.OVH_SSH_HOST }}
+          PORT: ${{ secrets.OVH_SSH_PORT }}
+          USER: ${{ secrets.OVH_SSH_USER }}
+        run: scp -q -i ~/.ssh/drcloud_deploy -P "${PORT:-22}" deploy/ovh/production-bootstrap-proof.sh "$USER@$HOST:/tmp/drcloud-production-bootstrap-proof.sh"
+      - name: Run read-only production proof
+        env:
+          HOST: ${{ secrets.OVH_SSH_HOST }}
+          PORT: ${{ secrets.OVH_SSH_PORT }}
+          USER: ${{ secrets.OVH_SSH_USER }}
+        run: |
+          ssh -i ~/.ssh/drcloud_deploy -p "${PORT:-22}" "$USER@$HOST" \
+            'umask 077; cd /opt/drcloud-os; DRCLOUD_PROOF_OUTPUT=/tmp/production_bootstrap_evidence.json bash /tmp/drcloud-production-bootstrap-proof.sh >/dev/null; status=$?; rm -f /tmp/drcloud-production-bootstrap-proof.sh; exit $status'
+          scp -q -i ~/.ssh/drcloud_deploy -P "${PORT:-22}" "$USER@$HOST:/tmp/production_bootstrap_evidence.json" production_bootstrap_evidence.json
+          ssh -i ~/.ssh/drcloud_deploy -p "${PORT:-22}" "$USER@$HOST" 'rm -f /tmp/production_bootstrap_evidence.json'
+      - name: Sanitize evidence
+        run: |
+          deploy/ovh/production-bootstrap-proof.sh --sanitize production_bootstrap_evidence.json > sanitized.json
+          cmp -s <(python -m json.tool production_bootstrap_evidence.json) <(python -m json.tool sanitized.json)
+      - name: Upload sanitized evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-bootstrap-evidence
+          path: production_bootstrap_evidence.json
+          retention-days: 30
+      - name: Enforce proof
+        run: |
+          python - <<'PY'
+          import json
+          d=json.load(open('production_bootstrap_evidence.json'))
+          assert d['result']=='PRODUCTION_BOOTSTRAP_PROVEN'
+          assert d['runtime']['health']=='HEALTH_OK' and d['runtime']['commit_match'] is True
+          e=d['environment']; assert e['critical_secret_presence']=='PROVEN'
+          assert e['placeholders_absent'] is True and e['tracked_git_secret_leak'] is False
+          a=d['bootstrap_admin']; assert a['account_present'] is True and a['unique'] is True and a['active'] is True
+          assert a['admin_authorization']=='PROVEN' and a['password_storage']=='HASHED'
+          assert a['plaintext_password_stored'] is False and a['credential_verification'] in ('PASS','NOT_APPLICABLE')
+          PY
