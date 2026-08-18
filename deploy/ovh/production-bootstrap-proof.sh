@@ -2,6 +2,19 @@
 set -Eeuo pipefail
 umask 077
 
+# The proof can be copied to /tmp by the workflow, so anchor deployment
+# configuration to the deployed repository rather than to this script's path.
+# Do not expose diagnostics from the sourced helper: only this stable code is
+# permitted in proof logs.
+if [[ "${1:-}" != "--sanitize" ]]; then
+  proof_repo="${DRCLOUD_PROOF_REPO:-/opt/drcloud-os}"
+  if ! source "$proof_repo/deploy/ovh/deployment-environment.sh" >/dev/null 2>&1; then
+    printf '%s\n' 'PRODUCTION_COMPOSE_ENV_UNAVAILABLE' >&2
+    exit 1
+  fi
+  unset proof_repo
+fi
+
 # This program deliberately has one output: a sanitized JSON document.  All
 # inspection (including error handling) happens in Python so secret values can
 # never be expanded into a shell command line or diagnostic.
@@ -126,8 +139,12 @@ def inspect_database_container(compose):
 +  elif not hmac.compare_digest(got,bytes.fromhex(d)):code="BOOTSTRAP_CREDENTIAL_VERIFICATION_FAILED"
 + except Exception:code="BOOTSTRAP_PASSWORD_STORAGE_INVALID"
 +print(json.dumps({"code":code}))'''.replace("\n+","\n")
-    try: code=json.loads(command(*compose,"exec","-T","drcloud-os","python","-c",program))["code"]
-    except Exception: fail("BOOTSTRAP_DATABASE_UNAVAILABLE")
+    # A failed Compose invocation retains its orchestration error.  Only a
+    # successful exec with an unusable inspection response is classified as a
+    # database-inspection failure.
+    raw=command(*compose,"exec","-T","drcloud-os","python","-c",program)
+    try: code=json.loads(raw)["code"]
+    except (json.JSONDecodeError, KeyError, TypeError): fail("BOOTSTRAP_DATABASE_UNAVAILABLE")
     if code!="PASS": fail(code if re.fullmatch(r"[A-Z_]+",code) else "BOOTSTRAP_DATABASE_UNAVAILABLE")
     return {"account_present":True,"unique":True,"active":True,"admin_authorization":"PROVEN","password_storage":"HASHED","plaintext_password_stored":False,"credential_verification":"PASS"}
 

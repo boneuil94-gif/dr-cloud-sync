@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import sqlite3
 import subprocess
 
@@ -16,10 +17,18 @@ def password_hash(password=FAKE_PASSWORD):
     digest=hashlib.pbkdf2_hmac("sha256",password.encode(),salt,600_000)
     return f"pbkdf2_sha256$600000${salt.hex()}${digest.hex()}"
 
-def fixture(tmp_path, *, env_change=None, mode=0o600, users=None, commit_match=True):
+def fixture(tmp_path, *, env_change=None, mode=0o600, users=None, commit_match=True,
+            container_database=False, docker_failure=False):
     repo=tmp_path/"repo"; repo.mkdir(); subprocess.run(["git","init","-q",repo],check=True)
+    ovh=repo/"deploy"/"ovh"; ovh.mkdir(parents=True)
+    shutil.copy(ROOT/"deploy/ovh/deployment-environment.sh",ovh/"deployment-environment.sh")
+    (ovh/".deployment-state").mkdir()
+    (ovh/"docker-compose.yml").write_text(
+        'services:\n  drcloud-os:\n    volumes:\n'
+        '      - ${DRCLOUD_DEPLOYMENT_STATE_DIR:?set by deploy.sh}:/run/drcloud-deployment:ro\n'
+    )
     (repo/"safe.txt").write_text("tracked public fixture\n")
-    subprocess.run(["git","-C",repo,"add","safe.txt"],check=True)
+    subprocess.run(["git","-C",repo,"add","safe.txt","deploy/ovh"],check=True)
     subprocess.run(["git","-C",repo,"-c","user.email=t@example.test","-c","user.name=Test","commit","-qm","fixture"],check=True)
     commit=subprocess.check_output(["git","-C",repo,"rev-parse","HEAD"],text=True).strip()
     values={"DRCLOUD_ENV":"production","DRCLOUD_SECRET_KEY":"fixture-app-value","DRCLOUD_ADMIN_USERNAME":"proof-admin",
@@ -40,16 +49,42 @@ def fixture(tmp_path, *, env_change=None, mode=0o600, users=None, commit_match=T
         if admin: con.execute("INSERT INTO security_user_roles VALUES(?,?)",(uid,"ADMIN"))
     con.commit(); con.close()
     bindir=tmp_path/"bin"; bindir.mkdir()
-    (bindir/"docker").write_text("#!/bin/sh\nprintf 'running-container-id\\n'\n"); (bindir/"docker").chmod(0o755)
+    docker_script = """#!/bin/sh
+if [ -z "${DRCLOUD_DEPLOYMENT_STATE_DIR:-}" ]; then
+  exit 41
+fi
+"""
+    if docker_failure:
+        docker_script += "exit 42\n"
+    else:
+        docker_script += """case " $* " in
+  *" exec "*) printf '%s\\n' '{"code":"PASS"}' ;;
+  *) printf '%s\\n' 'running-container-id' ;;
+esac
+"""
+    (bindir/"docker").write_text(docker_script); (bindir/"docker").chmod(0o755)
     health_commit=commit if commit_match else "0"*40
     (bindir/"curl").write_text(f"#!/bin/sh\nprintf '%s\\n' '{{\"status\":\"ok\",\"database\":\"ok\",\"commit\":\"{health_commit}\"}}'\n"); (bindir/"curl").chmod(0o755)
     output=tmp_path/"evidence.json"
-    env={**os.environ,"PATH":f"{bindir}:{os.environ['PATH']}","DRCLOUD_PROOF_ENV_FILE":str(env_file),"DRCLOUD_PROOF_REPO":str(repo),"DRCLOUD_PROOF_DATABASE":str(db),"DRCLOUD_PROOF_OUTPUT":str(output)}
+    env={**os.environ,"PATH":f"{bindir}:{os.environ['PATH']}","DRCLOUD_PROOF_ENV_FILE":str(env_file),"DRCLOUD_PROOF_REPO":str(repo),"DRCLOUD_PROOF_OUTPUT":str(output)}
+    env.pop("DRCLOUD_DEPLOYMENT_STATE_DIR",None)
+    if not container_database: env["DRCLOUD_PROOF_DATABASE"]=str(db)
     return subprocess.run([SCRIPT],env=env,text=True,capture_output=True), output, repo, values
 
 def test_valid_environment_and_hash_produce_safe_evidence(tmp_path):
     result,out,_,_=fixture(tmp_path)
     assert result.returncode==0 and result.stdout=="" and json.loads(out.read_text())["result"]=="PRODUCTION_BOOTSTRAP_PROVEN"
+
+def test_container_inspection_initializes_required_deployment_environment(tmp_path):
+    result,out,_,_=fixture(tmp_path,container_database=True)
+    assert result.returncode==0 and result.stderr==""
+    assert json.loads(out.read_text())["result"]=="PRODUCTION_BOOTSTRAP_PROVEN"
+
+def test_compose_failure_is_not_reported_as_database_unavailable(tmp_path):
+    result,_,_,_=fixture(tmp_path,container_database=True,docker_failure=True)
+    assert result.returncode==1
+    assert result.stderr.strip()=="PRODUCTION_RUNTIME_CHECK_FAILED"
+    assert "BOOTSTRAP_DATABASE_UNAVAILABLE" not in result.stderr
 
 @pytest.mark.parametrize(("change","code"),[
     ({"DRCLOUD_SECRET_KEY":None},"PRODUCTION_CRITICAL_SECRET_MISSING"),
