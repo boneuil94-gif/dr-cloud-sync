@@ -128,8 +128,13 @@ def backup_inventory(root: Path, *, stale_after_seconds: int = 86400) -> dict:
         if manifest.get("required_runtime_files") is not None:
             valid &= bool(runtime_complete)
         backup_class="APP_RESTORABLE" if valid and runtime_complete else "LEGACY_DB_ONLY" if valid else "INVALID"
-        rows.append({"backup_id": bundle.name, "created_at": created.isoformat().replace("+00:00", "Z"), "size_bytes": stat.st_size, "sha256": checksum, "database": str(db),
+        age=max(0,(datetime.now(timezone.utc)-created).total_seconds())
+        watermark=manifest.get("recovery_watermark") if isinstance(manifest.get("recovery_watermark"),dict) else None
+        rows.append({"backup_id": bundle.name, "created_at": created.isoformat().replace("+00:00", "Z"), "backup_age_seconds":round(age,3), "size_bytes": stat.st_size, "sha256": checksum, "database": str(db),
                      "method":manifest.get("method","UNKNOWN"), "schema_fingerprint":fingerprint,
+                     "data_max_at":manifest.get("data_max_at"),
+                     "watermark_confidence":watermark.get("confidence","UNKNOWN") if watermark else "LOW",
+                     "watermark_coverage":watermark.get("coverage") if watermark else None,
                      "quick_check":quick, "manifest_status":manifest.get("status","UNKNOWN"),
                      "status":"VALID" if valid else "INVALID", "backup_class":backup_class,
                      "runtime_files_complete":bool(runtime_complete)})

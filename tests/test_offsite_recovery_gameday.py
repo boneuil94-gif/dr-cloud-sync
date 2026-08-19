@@ -36,7 +36,7 @@ def test_isolated_safe_application_boot_and_health_probe():
 def test_sanitized_evidence_contract_and_low_confidence_proxy():
     for value in ("OFFSITE_ENCRYPTED_BACKUP_RESTORE", "OFFSITE_RESTORE_PROVEN", "APP_BOOT_OK", "HEALTH_OK", "RESTIC_CLIENT_SIDE_ENCRYPTED", "OFF_HOST_OBJECT_STORAGE"):
         assert value in SCRIPT
-    assert '"rpo_confidence":"HIGH" if data_max else "LOW"' in SCRIPT
+    assert '"rpo_confidence":comparison.get("confidence") if backup_watermark else "LOW"' in SCRIPT
     assert '"local_backup_used_for_restore":False' in SCRIPT
     assert '"cloud_material_persisted":False' in SCRIPT
     assert 'forbidden=("password","secret","token","credential"' in SCRIPT

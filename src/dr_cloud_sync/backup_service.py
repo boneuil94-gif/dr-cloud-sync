@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from .recovery_watermark import capture_recovery_watermark, validate_recovery_watermark
+
 LOG = logging.getLogger("drcloud.os.backup")
 BACKUP_UNAVAILABLE_MESSAGE = "Sauvegarde impossible : le stockage des sauvegardes n'est pas disponible."
 BACKUP_INCOMPLETE_RUNTIME_STATE = "BACKUP_INCOMPLETE_RUNTIME_STATE"
@@ -110,12 +112,16 @@ class BackupService:
                               "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
             self._sqlite_check(db_target)
             created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            watermark = capture_recovery_watermark(
+                db_target, captured_at=created_at, captured_from="BACKUP_SNAPSHOT")
             db_file = next(item for item in files if item["path"] == "drcloud.db")
             metadata = {"backup_id": backup_id, "created_at": created_at,
                         "source_database": Path(database).name,
                         "database_size": db_file["size"], "sha256": db_file["sha256"],
                         "schema_fingerprint": self._schema_fingerprint(db_target),
-                        "app_commit": (application or {}).get("commit"), "data_max_at": None,
+                        "app_commit": (application or {}).get("commit"),
+                        "data_max_at": watermark["aggregate_data_max_at"],
+                        "recovery_watermark": watermark,
                         "method": "sqlite_backup_api", "manifest_status": "VALID", "reason": reason, "status": "SUCCESS",
                         "application": application or {},
                         "required_runtime_files": list(REQUIRED_RUNTIME_FILES),
@@ -151,6 +157,10 @@ class BackupService:
             metadata = json.loads((bundle / "metadata.json").read_text(encoding="utf-8"))
             if metadata.get("status") not in {"SUCCESS", "VALID"} or metadata.get("backup_id") != bundle.name:
                 raise ValueError("invalid metadata")
+            watermark = metadata.get("recovery_watermark")
+            if watermark is not None and (not validate_recovery_watermark(watermark) or
+                    metadata.get("data_max_at") != watermark.get("aggregate_data_max_at")):
+                raise ValueError("invalid recovery watermark")
             expected = metadata.get("files")
             if not isinstance(expected, list) or not any(x.get("path") == "drcloud.db" for x in expected):
                 raise ValueError("incomplete bundle")

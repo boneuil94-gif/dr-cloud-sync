@@ -13,8 +13,9 @@ WORKFLOW = (ROOT / ".github/workflows/drcloud-os-offsite-backup.yml").read_text(
 
 def test_offsite_runs_after_unchanged_application_backup_contract():
     assert "dr-cloud-sync backup-status --json" in SCRIPT
-    assert '"$repo/deploy/ovh/backup.sh"' in SCRIPT
-    assert 'backup_class")=="APP_RESTORABLE"' in SCRIPT
+    assert "dr-cloud-sync os-backup --json" in SCRIPT
+    assert "OFFSITE_SOURCE_BACKUP_CREATION_FAILED" in SCRIPT
+    assert 'backup_class")!="APP_RESTORABLE"' in SCRIPT
     assert "required_runtime_files" in SCRIPT
 
 
