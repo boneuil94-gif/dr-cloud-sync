@@ -25,6 +25,13 @@ DURABLE_LEDGER_PROJECTIONS = {
     "shopcaisse_sales": ("sales", "sold_at", ("source", "SHOPCAISSE")),
     "prestashop_sales": ("sales", "sold_at", ("source", "PRESTASHOP")),
     "sumup_transactions": ("sumup_transactions", "timestamp", None),
+    # Purchases are handled explicitly below because both order headers and
+    # mutable order lines are durable business truth.
+    "purchases": ("purchase_orders", "updated_at", None),
+    # Stock RPO only follows movements that are actually applied. ``applied_at``
+    # is the durable business-progress timestamp; legacy rows without it remain
+    # explicitly unmeasurable rather than falling back to an earlier timestamp.
+    "stock": ("stock_movements", "applied_at", ("status", "APPLIED")),
 }
 
 # These are not independent provider feeds. They are materialised while the
@@ -78,13 +85,55 @@ def _table_columns(db: sqlite3.Connection, table: str) -> set[str]:
     return {str(row[1]) for row in db.execute(f"PRAGMA table_info({table})")}
 
 
+def _purchase_ledger_projection(db: sqlite3.Connection) -> dict | None:
+    """Project purchase progress across order headers and mutable child lines.
+
+    Both tables carry durable ``updated_at`` timestamps. Counting both tables
+    also makes line deletion visible to comparison logic; a count regression is
+    deliberately treated as unmeasurable instead of a zero-second RPO.
+    """
+    required = {
+        "purchase_orders": {"updated_at"},
+        "purchase_order_lines": {"updated_at"},
+    }
+    if any(not columns <= _table_columns(db, table) for table, columns in required.items()):
+        return None
+    try:
+        row = db.execute(
+            "SELECT COUNT(*),COUNT(updated_at),MIN(updated_at),MAX(updated_at) "
+            "FROM ("
+            "SELECT updated_at FROM purchase_orders "
+            "UNION ALL "
+            "SELECT updated_at FROM purchase_order_lines"
+            ")"
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None:
+        return None
+    count = int(row[0] or 0)
+    timestamped = int(row[1] or 0)
+    measurable = count == timestamped
+    return {
+        "records_available": count,
+        "data_min_at": row[2] if count and measurable else None,
+        "data_max_at": row[3] if count and measurable else None,
+        "watermark_origin": "DURABLE_LEDGER",
+        "watermark_table": "purchase_orders+purchase_order_lines",
+        "watermark_timestamp_column": "updated_at",
+    }
+
+
 def _durable_ledger_projection(db: sqlite3.Connection, source_id: str) -> dict | None:
     """Return count/min/max from one approved committed business ledger.
 
     ``None`` means the projection cannot be measured (missing table/columns), so
     the caller keeps the existing control-plane facts. A real empty ledger is
-    returned as count=0 and deliberately clears stale timestamps.
+    returned as count=0 and deliberately clears stale timestamps. Any matching
+    row lacking its durable timestamp makes the whole projection fail closed.
     """
+    if source_id == "purchases":
+        return _purchase_ledger_projection(db)
     definition = DURABLE_LEDGER_PROJECTIONS.get(source_id)
     if not definition:
         return None
@@ -104,7 +153,7 @@ def _durable_ledger_projection(db: sqlite3.Connection, source_id: str) -> dict |
         params = (filter_value,)
     try:
         row = db.execute(
-            f"SELECT COUNT(*),MIN({timestamp_column}),MAX({timestamp_column}) "
+            f"SELECT COUNT(*),COUNT({timestamp_column}),MIN({timestamp_column}),MAX({timestamp_column}) "
             f"FROM {table}{where_sql}",
             params,
         ).fetchone()
@@ -114,10 +163,12 @@ def _durable_ledger_projection(db: sqlite3.Connection, source_id: str) -> dict |
         return None
 
     count = int(row[0] or 0)
+    timestamped = int(row[1] or 0)
+    measurable = count == timestamped
     return {
         "records_available": count,
-        "data_min_at": row[1] if count else None,
-        "data_max_at": row[2] if count else None,
+        "data_min_at": row[2] if count and measurable else None,
+        "data_max_at": row[3] if count and measurable else None,
         "watermark_origin": "DURABLE_LEDGER",
         "watermark_table": table,
         "watermark_timestamp_column": timestamp_column,
@@ -207,8 +258,10 @@ def compare_recovery_watermarks(live: dict, backup: dict) -> dict:
     """Compare independent business progress; max per-source lag is observed RPO.
 
     Count growth without comparable timestamps is reported, never converted to
-    a zero-second RPO. NOT_CONFIGURED, DISABLED, NO_DATA and DERIVED sources are
-    neutral because a derived projection inherits its parent source's RPO.
+    a zero-second RPO. Count regression is also fail-closed because it can mean
+    a durable deletion that has no standalone timestamp. NOT_CONFIGURED,
+    DISABLED, NO_DATA and DERIVED sources are neutral because a derived
+    projection inherits its parent source's RPO.
     """
     base = {"comparable_sources": 0, "unmeasurable_sources": 0,
             "business_data_gap_seconds": None, "sync_progress_gap_seconds": None,
@@ -225,6 +278,9 @@ def compare_recovery_watermarks(live: dict, backup: dict) -> dict:
         current_count, old_count = current.get("records_available"), old.get("records_available") if old else None
         if isinstance(current_count, int) and isinstance(old_count, int):
             base["record_count_gap"] += max(0, current_count - old_count)
+            if current_count < old_count:
+                base["unmeasurable_sources"] += 1
+                continue
         current_at = _iso(current.get("data_max_at")); old_at = _iso(old.get("data_max_at")) if old else None
         if current_at and old_at:
             delta = max(0, (datetime.fromisoformat(current_at.replace("Z", "+00:00")) -
