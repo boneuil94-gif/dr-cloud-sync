@@ -70,6 +70,15 @@ with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as db:
         raise SystemExit("PRODUCTION_DATA_DATABASE_INTEGRITY_FAILED")
     tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
 
+    job_counts = {}
+    if "sync_jobs" in tables:
+        job_counts = {
+            str(source_id): int(total)
+            for source_id, total in db.execute(
+                "SELECT source_id, count(*) FROM sync_jobs GROUP BY source_id"
+            )
+        }
+
     safe_source_columns = (
         "source_id", "source_type", "provider", "status", "enabled",
         "last_success_at", "stale_after_seconds", "data_min_at", "data_max_at",
@@ -87,32 +96,45 @@ with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as db:
             for row in rows:
                 item = dict(row)
                 item["enabled"] = bool(item["enabled"])
+                item["registered_jobs"] = job_counts.get(str(item["source_id"]), 0)
                 for key in ("last_success_at", "data_min_at", "data_max_at"):
                     if item[key] is not None:
                         item[key] = canonical_time(item[key])
 
                 status = str(item.get("status") or "UNKNOWN").upper()
+                provider = str(item.get("provider") or "UNKNOWN").upper()
+                rows_imported = int(item.get("rows_imported") or 0)
                 records = item.get("records_available")
+                external_unwired = provider not in {"LOCAL", "NONE"} and item["registered_jobs"] == 0
+
                 if not item["enabled"]:
                     classification = "DISABLED"
                 elif status == "NOT_CONFIGURED":
                     classification = "NOT_CONFIGURED"
-                elif records is None:
-                    classification = "RECORD_COUNT_UNKNOWN"
-                elif int(records) <= 0:
+                elif external_unwired:
+                    classification = "UNWIRED"
+                elif status == "ERROR":
+                    classification = "ERROR"
+                elif rows_imported <= 0 and records is not None and int(records) <= 0:
                     classification = "NO_DATA"
+                elif rows_imported <= 0 and item.get("data_max_at") is None:
+                    classification = "WIRED_NO_LOCAL_DATA"
                 elif item.get("data_max_at") is None:
-                    classification = "DATA_MAX_UNKNOWN"
+                    classification = "LOCAL_ROWS_MEASURED_TIMESTAMP_UNKNOWN"
                 else:
                     classification = "LOCAL_DATA_MEASURED"
 
-                # data_sources has local durable counts, not an upstream authority
-                # total. Fresh/local presence must never be called exhaustive.
+                # rows_imported and data_max_at are local durable facts. They are
+                # not upstream authority totals, so local presence must never be
+                # promoted to exhaustive provider coverage.
                 item["classification"] = classification
-                item["coverage_status"] = (
-                    "NOT_APPLICABLE" if classification in {"DISABLED", "NOT_CONFIGURED", "NO_DATA"}
-                    else "UNKNOWN_AUTHORITY_TOTAL"
-                )
+                if classification in {"DISABLED", "NOT_CONFIGURED", "UNWIRED", "NO_DATA"}:
+                    coverage_status = "NOT_APPLICABLE"
+                elif classification == "ERROR":
+                    coverage_status = "UNAVAILABLE"
+                else:
+                    coverage_status = "UNKNOWN_AUTHORITY_TOTAL"
+                item["coverage_status"] = coverage_status
                 sources.append(item)
         else:
             source_plane = "SCHEMA_INCOMPLETE"
@@ -140,14 +162,19 @@ configured = [
     row for row in sources
     if row["enabled"] and str(row.get("status") or "").upper() != "NOT_CONFIGURED"
 ]
-local_measured = [row for row in configured if row["classification"] == "LOCAL_DATA_MEASURED"]
+wired = [row for row in configured if row["classification"] != "UNWIRED"]
+unwired = [row for row in configured if row["classification"] == "UNWIRED"]
+local_measured = [
+    row for row in wired
+    if row["classification"] in {"LOCAL_DATA_MEASURED", "LOCAL_ROWS_MEASURED_TIMESTAMP_UNKNOWN"}
+]
 unknown_authority = [
-    row for row in configured if row["coverage_status"] == "UNKNOWN_AUTHORITY_TOTAL"
+    row for row in wired if row["coverage_status"] == "UNKNOWN_AUTHORITY_TOTAL"
 ]
 known_funnel = sum(item["count"] is not None for item in funnel.values())
 
 report = {
-    "schema_version": 1,
+    "schema_version": 2,
     "environment": "production",
     "result": "PRODUCTION_DATA_PROOF_CAPTURED",
     "evidence_level": "PRODUCTION_READ_ONLY_LOCAL_LEDGER_FACTS",
@@ -157,6 +184,9 @@ report = {
         "status": source_plane,
         "source_count": len(sources),
         "configured_sources": len(configured),
+        "operationally_wired_sources": len(wired),
+        "unwired_sources": len(unwired),
+        "unwired_source_ids": [row["source_id"] for row in unwired],
         "local_data_measured_sources": len(local_measured),
         "unknown_authority_total_sources": len(unknown_authority),
         "authoritative_coverage_proven": False,
