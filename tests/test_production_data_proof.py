@@ -33,6 +33,18 @@ def test_production_data_proof_selects_only_sanitized_source_fields():
     assert "PRODUCTION_DATA_EVIDENCE_SENSITIVE_VALUE" in SCRIPT
 
 
+def test_production_data_proof_distinguishes_configuration_from_operational_wiring():
+    assert '"SELECT source_id, count(*) FROM sync_jobs GROUP BY source_id"' in SCRIPT
+    assert 'item["registered_jobs"]' in SCRIPT
+    assert 'classification = "UNWIRED"' in SCRIPT
+    assert 'classification = "LOCAL_ROWS_MEASURED_TIMESTAMP_UNKNOWN"' in SCRIPT
+    assert '"operationally_wired_sources": len(wired)' in SCRIPT
+    assert '"unwired_sources": len(unwired)' in SCRIPT
+    assert '"unwired_source_ids": [row["source_id"] for row in unwired]' in SCRIPT
+    assert 'row["classification"] != "UNWIRED"' in SCRIPT
+    assert 'classification in {"DISABLED", "NOT_CONFIGURED", "UNWIRED", "NO_DATA"}' in SCRIPT
+
+
 def test_production_data_proof_prepares_deployment_environment_before_compose():
     environment = SCRIPT.index("deployment-environment.sh")
     compose_contract = SCRIPT.index("compose_subcommand=compose")
