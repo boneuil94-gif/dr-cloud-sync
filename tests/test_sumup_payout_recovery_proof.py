@@ -45,7 +45,11 @@ def test_recovery_workflow_runs_after_successful_main_production_and_fails_close
     assert "github.event.workflow_run.conclusion == 'success'" in WORKFLOW
     assert "github.event.workflow_run.head_branch == 'main'" in WORKFLOW
     assert "github.event_name == 'workflow_dispatch'" in WORKFLOW
-    assert "ref: main" in WORKFLOW
+    assert "github.event.workflow_run.head_sha || github.sha" in WORKFLOW
+    assert "ref: main" not in WORKFLOW
+    assert "REVIEWED_SHA:" in WORKFLOW
+    assert '"head_sha": os.environ["REVIEWED_SHA"]' in WORKFLOW
+    assert "trigger_run_id" in WORKFLOW
     assert "continue-on-error: true" in WORKFLOW
     assert 'test "$RECOVERY_OUTCOME" = success' in WORKFLOW
     assert 'p["result"] == "SUMUP_PAYOUT_RECOVERY_PROVEN"' in WORKFLOW
