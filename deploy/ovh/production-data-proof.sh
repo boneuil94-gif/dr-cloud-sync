@@ -27,6 +27,17 @@ import sqlite3
 from pathlib import Path
 
 
+# These sources are materialised as a side effect of the parent transaction
+# detail import. Requiring fake independent jobs would misrepresent the provider
+# contract. A derived source is considered operationally wired only when its
+# parent has a registered Data Hub job.
+DERIVED_SOURCE_PARENTS = {
+    "sumup_fees": "sumup_transactions",
+    "sumup_refunds": "sumup_transactions",
+    "sumup_chargebacks": "sumup_transactions",
+}
+
+
 def canonical_time(value):
     if not isinstance(value, str) or not value:
         return None
@@ -96,7 +107,13 @@ with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as db:
             for row in rows:
                 item = dict(row)
                 item["enabled"] = bool(item["enabled"])
-                item["registered_jobs"] = job_counts.get(str(item["source_id"]), 0)
+                source_id = str(item["source_id"])
+                item["registered_jobs"] = job_counts.get(source_id, 0)
+                derived_from = DERIVED_SOURCE_PARENTS.get(source_id)
+                item["derived_from_source_id"] = derived_from
+                item["derived_parent_registered_jobs"] = (
+                    job_counts.get(derived_from, 0) if derived_from else 0
+                )
                 for key in ("last_success_at", "data_min_at", "data_max_at"):
                     if item[key] is not None:
                         item[key] = canonical_time(item[key])
@@ -105,12 +122,19 @@ with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as db:
                 provider = str(item.get("provider") or "UNKNOWN").upper()
                 rows_imported = int(item.get("rows_imported") or 0)
                 records = item.get("records_available")
-                external_unwired = provider not in {"LOCAL", "NONE"} and item["registered_jobs"] == 0
+                derived_wired = bool(derived_from and item["derived_parent_registered_jobs"] > 0)
+                external_unwired = (
+                    provider not in {"LOCAL", "NONE"}
+                    and item["registered_jobs"] == 0
+                    and not derived_wired
+                )
 
                 if not item["enabled"]:
                     classification = "DISABLED"
                 elif status == "NOT_CONFIGURED":
                     classification = "NOT_CONFIGURED"
+                elif derived_wired:
+                    classification = "DERIVED_FROM_SOURCE"
                 elif external_unwired:
                     classification = "UNWIRED"
                 elif status == "ERROR":
@@ -124,11 +148,14 @@ with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as db:
                 else:
                     classification = "LOCAL_DATA_MEASURED"
 
-                # rows_imported and data_max_at are local durable facts. They are
-                # not upstream authority totals, so local presence must never be
-                # promoted to exhaustive provider coverage.
+                # rows_imported and data_max_at are local durable facts. Derived
+                # projections inherit their parent's provider read, so neither
+                # local presence nor derivation proves exhaustive provider totals.
                 item["classification"] = classification
-                if classification in {"DISABLED", "NOT_CONFIGURED", "UNWIRED", "NO_DATA"}:
+                if classification in {
+                    "DISABLED", "NOT_CONFIGURED", "UNWIRED", "NO_DATA",
+                    "DERIVED_FROM_SOURCE",
+                }:
                     coverage_status = "NOT_APPLICABLE"
                 elif classification == "ERROR":
                     coverage_status = "UNAVAILABLE"
@@ -164,17 +191,19 @@ configured = [
 ]
 wired = [row for row in configured if row["classification"] != "UNWIRED"]
 unwired = [row for row in configured if row["classification"] == "UNWIRED"]
+derived = [row for row in configured if row["classification"] == "DERIVED_FROM_SOURCE"]
+direct_wired = [row for row in wired if row["classification"] != "DERIVED_FROM_SOURCE"]
 local_measured = [
-    row for row in wired
+    row for row in direct_wired
     if row["classification"] in {"LOCAL_DATA_MEASURED", "LOCAL_ROWS_MEASURED_TIMESTAMP_UNKNOWN"}
 ]
 unknown_authority = [
-    row for row in wired if row["coverage_status"] == "UNKNOWN_AUTHORITY_TOTAL"
+    row for row in direct_wired if row["coverage_status"] == "UNKNOWN_AUTHORITY_TOTAL"
 ]
 known_funnel = sum(item["count"] is not None for item in funnel.values())
 
 report = {
-    "schema_version": 2,
+    "schema_version": 3,
     "environment": "production",
     "result": "PRODUCTION_DATA_PROOF_CAPTURED",
     "evidence_level": "PRODUCTION_READ_ONLY_LOCAL_LEDGER_FACTS",
@@ -185,6 +214,9 @@ report = {
         "source_count": len(sources),
         "configured_sources": len(configured),
         "operationally_wired_sources": len(wired),
+        "directly_wired_sources": len(direct_wired),
+        "derived_sources": len(derived),
+        "derived_source_ids": [row["source_id"] for row in derived],
         "unwired_sources": len(unwired),
         "unwired_source_ids": [row["source_id"] for row in unwired],
         "local_data_measured_sources": len(local_measured),
