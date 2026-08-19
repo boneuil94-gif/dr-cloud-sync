@@ -11,7 +11,9 @@ permissions:
   issues: write
 
 concurrency:
-  group: drcloud-os-sumup-payout-recovery-proof
+  # Serialize with the production deployment workflow so /opt/drcloud-os cannot
+  # move to another SHA while this proof is running.
+  group: drcloud-os-production
   cancel-in-progress: false
 
 jobs:
