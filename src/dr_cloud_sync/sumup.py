@@ -58,6 +58,11 @@ class SumUpPayoutItem: item_id: str; payout_id: str; raw: dict
 class SumUpReader: reader_id: str; raw: dict
 
 
+# SumUp documents payout list pagination only through a bounded date range and
+# a maximum result limit of 9999. There is no documented offset/cursor parameter.
+PAYOUT_MAX_LIMIT = 9999
+
+
 def _decimal(value):
     return str(Decimal(str(value if value is not None else 0)))
 
@@ -181,24 +186,48 @@ class SumUpProvider:
         return SumUpPage(tuple(enriched), json.dumps(result) if any(result.values()) else None)
 
     def payouts(self, cursor=None, *, start_date=None, end_date=None):
-        """Read payout events in bounded, restartable windows (SumUp requires dates)."""
+        """Read payouts through documented date windows; never invent an offset.
+
+        The public SumUp contract exposes start/end dates, limit and order but no
+        payout cursor. A response at the maximum documented limit is therefore
+        ambiguous. We split multi-day windows before returning data and fail
+        closed if even one day saturates the limit rather than silently truncating.
+        """
         state = _cursor(cursor)
         today = date.today()
         start = date.fromisoformat(str(start_date or state.get("start") or (today - timedelta(days=self.window_days))))
         final = date.fromisoformat(str(end_date or state.get("final") or today))
-        window_end = min(final, date.fromisoformat(state["window_end"]) if state.get("window_end") else start + timedelta(days=self.window_days))
-        offset = int(state.get("offset", 0))
-        params = {"start_date": start.isoformat(), "end_date": window_end.isoformat(), "limit": self.page_size, "offset": offset, "format": "json"}
+        if start > final:
+            raise SumUpError("Fenêtre payouts SumUp invalide", diagnostic={"stage": "pagination", "category": "VALIDATION", "endpoint_path": self._merchant_path("payouts")})
+        configured_end = date.fromisoformat(state["window_end"]) if state.get("window_end") else start + timedelta(days=self.window_days - 1)
+        window_end = min(final, configured_end)
+        params = {
+            "start_date": start.isoformat(),
+            "end_date": window_end.isoformat(),
+            "limit": PAYOUT_MAX_LIMIT,
+            "order": "asc",
+            "format": "json",
+        }
         payload = self._get(self._merchant_path("payouts"), params, stage="payouts")
         rows = payload.get("items", payload.get("payouts", [])) if isinstance(payload, dict) else payload
         if not isinstance(rows, list):
-            raise SumUpError("Contrat payouts SumUp invalide", diagnostic={"stage": "parsing", "category": "PARSING"})
-        more = bool(payload.get("next") or payload.get("has_more") or len(rows) == self.page_size) if isinstance(payload, dict) else len(rows) == self.page_size
-        if more and rows:
-            nxt = {"start": start.isoformat(), "window_end": window_end.isoformat(), "final": final.isoformat(), "offset": offset + len(rows)}
-        elif window_end < final:
-            nxt_start = window_end  # intentional overlap at the date boundary
-            nxt = {"start": nxt_start.isoformat(), "window_end": min(final, nxt_start + timedelta(days=self.window_days)).isoformat(), "final": final.isoformat(), "offset": 0}
+            raise SumUpError("Contrat payouts SumUp invalide", diagnostic={"stage": "parsing", "category": "PARSING", "endpoint_path": self._merchant_path("payouts")})
+        if len(rows) >= PAYOUT_MAX_LIMIT:
+            if start >= window_end:
+                raise SumUpError(
+                    "Fenêtre journalière payouts SumUp saturée",
+                    diagnostic={"stage": "pagination", "category": "VALIDATION", "endpoint_path": self._merchant_path("payouts")},
+                )
+            span = (window_end - start).days
+            split_end = start + timedelta(days=max(0, span // 2))
+            if split_end >= window_end:
+                split_end = window_end - timedelta(days=1)
+            split_cursor = json.dumps({"start": start.isoformat(), "window_end": split_end.isoformat(), "final": final.isoformat()})
+            return self.payouts(split_cursor)
+        if window_end < final:
+            next_start = window_end + timedelta(days=1)
+            next_end = min(final, next_start + timedelta(days=self.window_days - 1))
+            nxt = {"start": next_start.isoformat(), "window_end": next_end.isoformat(), "final": final.isoformat()}
         else:
             nxt = None
         return SumUpPage(tuple(rows), json.dumps(nxt) if nxt else None)
@@ -353,7 +382,9 @@ class PaymentSettlementLedger:
             page = provider.payouts(cursor, **bounds); result = self.import_page(page)
             total += result["rows_imported"]; duplicates += result["duplicates"]; cursor = page.next_cursor
             if cursor is None: break
-        return {"rows_imported": total, "duplicates": duplicates, "cursor": cursor}
+        records_available = int(self.db.execute("SELECT count(*) FROM sumup_payouts").fetchone()[0])
+        return {"rows_imported": total, "duplicates": duplicates, "cursor": cursor,
+                "records_available": records_available}
 
     def rows(self): return [dict(r) for r in self.db.execute("SELECT * FROM sumup_payouts ORDER BY payout_date DESC")]
 
