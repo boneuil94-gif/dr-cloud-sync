@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "evidence_date": "2026-08-19",
+  "result": "PRODUCTION_DATA_SOURCE_SEMANTICS_PROVEN",
+  "provenance": {
+    "run_id": 32282037993,
+    "run_number": 3,
+    "head_sha": "4b4a5ea4faa9c10169a4b8650da5b8f3a4fbfd8f",
+    "conclusion": "success",
+    "artifact_id": 9376187997,
+    "artifact_sha256": "32ba63d85d4b34fcbe5556ee0d4054eb39a8ad3a34065f037fc34917dad2f792"
+  },
+  "database": {
+    "mode": "READ_ONLY",
+    "quick_check": "ok"
+  },
+  "source_control_plane": {
+    "source_count": 19,
+    "configured_sources": 13,
+    "operationally_wired_sources": 11,
+    "directly_wired_sources": 8,
+    "derived_sources": 3,
+    "derived_source_ids": [
+      "sumup_chargebacks",
+      "sumup_fees",
+      "sumup_refunds"
+    ],
+    "unwired_sources": 2,
+    "unwired_source_ids": [
+      "sumup_merchant",
+      "sumup_readers"
+    ],
+    "local_data_measured_sources": 4,
+    "unknown_authority_total_sources": 6,
+    "authoritative_coverage_proven": false,
+    "sumup_payouts_status": "ERROR"
+  },
+  "finance_funnel": {
+    "known_local_stage_counts": 5,
+    "stages": {
+      "sales": 811,
+      "payments": 753,
+      "sumup_transactions": 11110,
+      "sumup_payouts": 328,
+      "qonto_transactions": 2754
+    },
+    "authority": "LOCAL_LEDGER_COUNT",
+    "end_to_end_match_rate": null,
+    "end_to_end_status": "NOT_PROVEN"
+  },
+  "safety": {
+    "database_read_only": true,
+    "mutations": false,
+    "provider_network_calls": false,
+    "external_provider_auth": "NONE"
+  },
+  "interpretation": {
+    "derived_sumup_truth": "fees/refunds/chargebacks are transaction-detail projections owned by sumup_transactions, not independent provider jobs",
+    "direct_sumup_work_remaining": "sumup_merchant and sumup_readers remain genuine direct endpoints without registered jobs",
+    "payouts_work_remaining": "sumup_payouts is wired but currently ERROR; root cause remains to be diagnosed from sanitized operational evidence",
+    "coverage_limit": "local counts do not prove exhaustive provider totals"
+  },
+  "scores": {
+    "global_strict": {
+      "before": 58,
+      "after": 58
+    },
+    "deployment": {
+      "before": 85,
+      "after": 85
+    }
+  }
+}
