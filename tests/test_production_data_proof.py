@@ -33,6 +33,13 @@ def test_production_data_proof_selects_only_sanitized_source_fields():
     assert "PRODUCTION_DATA_EVIDENCE_SENSITIVE_VALUE" in SCRIPT
 
 
+def test_production_data_proof_prepares_deployment_environment_before_compose():
+    environment = SCRIPT.index("deployment-environment.sh")
+    compose_contract = SCRIPT.index("compose_subcommand=compose")
+    invocation = SCRIPT.index('docker "$compose_subcommand"')
+    assert environment < compose_contract < invocation
+
+
 def test_production_data_proof_workflow_is_fail_closed_and_connector_discoverable():
     assert "name: DrCloud OS production data proof" in WORKFLOW
     assert "environment: production" in WORKFLOW
