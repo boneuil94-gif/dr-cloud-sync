@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "workflow": "DrCloud OS remote-only recovery Game Day",
+    "run_id": 32263769005,
+    "run_number": 2,
+    "head_sha": "e07d762d092e7c9bd9885bc32d963a54a4a76517",
+    "conclusion": "success",
+    "artifact": "drcloud-offsite-recovery-evidence-32263769005"
+  },
+  "backup": {
+    "encryption": "RESTIC_CLIENT_SIDE_ENCRYPTED",
+    "location_classification": "OFF_HOST_OBJECT_STORAGE",
+    "offsite_upload": "OFFSITE_UPLOAD_PROVEN",
+    "source_result": "PRODUCTION_BACKUP_VALID"
+  },
+  "environment": "production",
+  "evidence_level": "OFFSITE_ENCRYPTED_BACKUP_RESTORE",
+  "remote": {
+    "integrity": "PASS",
+    "snapshot": "8d392a29e6426253466dc9b38df0a71b0796c8dcff8f9958e9802a675e77eff8",
+    "snapshot_available": true
+  },
+  "restore": {
+    "app_boot": "APP_BOOT_OK",
+    "foreign_key_check": "OK",
+    "health": "HEALTH_OK",
+    "integrity_check": "ok",
+    "quick_check": "ok",
+    "result": "OFFSITE_RESTORE_PROVEN"
+  },
+  "safety": {
+    "cloud_material_persisted": false,
+    "external_provider_auth": "NONE",
+    "live_watermark_used_for_measurement_only": true,
+    "local_backup_used_for_restore": false,
+    "network": "INTERNAL_ONLY",
+    "production_port_published": false,
+    "production_volume_mounted": false,
+    "safe_mode": true
+  },
+  "timing": {
+    "backup_watermark_available": true,
+    "business_data_gap_seconds": 0,
+    "comparable_sources": 1,
+    "completed_at": "2026-08-19T14:24:21Z",
+    "live_watermark_available": true,
+    "observed_restore_seconds": 14,
+    "observed_rpo_seconds": 0,
+    "rpo_confidence": "MEDIUM",
+    "rpo_method": "live_vs_backup_source_watermarks",
+    "started_at": "2026-08-19T14:24:07Z",
+    "sync_progress_gap_seconds": 211.950285,
+    "unmeasurable_sources": 12
+  },
+  "audit_interpretation": {
+    "rpo_proxy_replaced": true,
+    "rpo_business_fully_proven": false,
+    "reason": "Source-aware comparison is production-proven, but only one source is comparable and twelve remain unmeasurable. MEDIUM confidence must not be promoted to HIGH."
+  }
+}

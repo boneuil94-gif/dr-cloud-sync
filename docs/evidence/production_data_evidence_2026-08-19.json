@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "workflow": "DrCloud OS production data proof",
+    "run_id": 32270931772,
+    "run_number": 1,
+    "head_sha": "f8ceebcdb1324ef66b2e918055919a496166c432",
+    "conclusion": "success",
+    "artifact": "drcloud-production-data-evidence-32270931772",
+    "artifact_digest": "sha256:117188d7d19d03734acdc472dd197cd629784de3836ed246b9eb31f63ccde0eb"
+  },
+  "captured_at": "2026-08-19T15:35:19.557013Z",
+  "environment": "production",
+  "result": "PRODUCTION_DATA_PROOF_CAPTURED",
+  "evidence_level": "PRODUCTION_READ_ONLY_LOCAL_LEDGER_FACTS",
+  "database": {"mode":"READ_ONLY","quick_check":"ok"},
+  "safety": {"database_read_only":true,"external_provider_auth":"NONE","mutations":false,"provider_network_calls":false},
+  "source_control_plane": {
+    "status": "AVAILABLE",
+    "source_count": 19,
+    "configured_sources": 13,
+    "local_data_measured_sources": 0,
+    "unknown_authority_total_sources": 13,
+    "authoritative_coverage_proven": false,
+    "key_sources": {
+      "qonto": {"status":"CONNECTED","rows_imported":2751,"data_min_at":"2023-08-24T09:53:02.068000Z","data_max_at":"2026-08-19T05:24:48Z","last_success_at":"2026-08-19T15:34:10.576389Z","coverage_status":"UNKNOWN_AUTHORITY_TOTAL"},
+      "shopcaisse_sales": {"status":"CONNECTED","rows_imported":751,"data_max_at":null,"last_success_at":"2026-08-19T15:29:38.621128Z","coverage_status":"UNKNOWN_AUTHORITY_TOTAL"},
+      "prestashop_sales": {"status":"CONNECTED","rows_imported":55,"data_max_at":null,"last_success_at":"2026-08-19T15:34:10.896220Z","coverage_status":"UNKNOWN_AUTHORITY_TOTAL"},
+      "prestashop_catalog": {"status":"NOT_CONFIGURED","rows_imported":10500,"last_success_at":"2026-08-18T16:34:55.340673Z","coverage_status":"NOT_APPLICABLE"},
+      "sumup_transactions": {"status":"CONNECTED","rows_imported":11105,"data_max_at":null,"last_success_at":"2026-08-19T15:34:41.968788Z","coverage_status":"UNKNOWN_AUTHORITY_TOTAL"},
+      "sumup_payouts": {"status":"ERROR","rows_imported":0,"last_success_at":"2026-08-18T17:05:18.219569Z","coverage_status":"UNKNOWN_AUTHORITY_TOTAL"}
+    },
+    "sumup_unwired_green_candidates": ["sumup_merchant","sumup_fees","sumup_refunds","sumup_chargebacks","sumup_readers"],
+    "other_error_sources": ["marketing_intelligence"]
+  },
+  "finance_funnel": {
+    "known_local_stage_counts": 5,
+    "stages": {
+      "sales": {"authority":"LOCAL_LEDGER_COUNT","count":811},
+      "payments": {"authority":"LOCAL_LEDGER_COUNT","count":753},
+      "sumup_transactions": {"authority":"LOCAL_LEDGER_COUNT","count":11105},
+      "sumup_payouts": {"authority":"LOCAL_LEDGER_COUNT","count":328},
+      "qonto_transactions": {"authority":"LOCAL_LEDGER_COUNT","count":2751}
+    },
+    "reconciliation": {"payment_matches":null,"finance_reconciliation_matches":null},
+    "end_to_end_match_rate": null,
+    "end_to_end_status": "NOT_PROVEN"
+  },
+  "audit_interpretation": {
+    "coverage_measurement_executed": true,
+    "authoritative_provider_coverage_proven": false,
+    "finance_funnel_local_counts_measured": true,
+    "finance_funnel_reconciliation_proven": false,
+    "score_change_justified": false
+  }
+}
