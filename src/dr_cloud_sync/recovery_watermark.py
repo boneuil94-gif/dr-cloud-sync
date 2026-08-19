@@ -25,6 +25,11 @@ DURABLE_LEDGER_PROJECTIONS = {
     "shopcaisse_sales": ("sales", "sold_at", ("source", "SHOPCAISSE")),
     "prestashop_sales": ("sales", "sold_at", ("source", "PRESTASHOP")),
     "sumup_transactions": ("sumup_transactions", "timestamp", None),
+    "purchases": ("purchase_orders", "updated_at", None),
+    # Stock RPO only follows movements that are actually applied.  ``applied_at``
+    # is the durable business-progress timestamp; legacy rows without it remain
+    # explicitly unmeasurable rather than falling back to an earlier timestamp.
+    "stock": ("stock_movements", "applied_at", ("status", "APPLIED")),
 }
 
 # These are not independent provider feeds. They are materialised while the
