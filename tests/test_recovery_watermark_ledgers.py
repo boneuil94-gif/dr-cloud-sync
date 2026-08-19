@@ -67,6 +67,7 @@ def test_durable_business_ledgers_fill_source_watermarks_read_only(tmp_path):
         "measured_sources": 4,
         "missing_data_max_sources": 0,
         "durable_ledger_sources": 4,
+        "derived_sources": 0,
     }
     assert result["confidence"] == "MEDIUM"
 
