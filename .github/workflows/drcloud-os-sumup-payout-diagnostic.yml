@@ -1,0 +1,117 @@
+name: DrCloud OS SumUp payout diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - deploy/ovh/sumup-payout-diagnostic.sh
+      - .github/workflows/drcloud-os-sumup-payout-diagnostic.yml
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: drcloud-os-sumup-payout-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check out reviewed main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.OVH_SSH_PRIVATE_KEY }}
+          SSH_HOST_KEYS: ${{ secrets.OVH_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/drcloud_deploy
+          printf '%s\n' "$SSH_HOST_KEYS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/drcloud_deploy ~/.ssh/known_hosts
+
+      - name: Capture read-only sanitized diagnostic
+        id: diagnostic
+        continue-on-error: true
+        env:
+          OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
+          OVH_SSH_PORT: ${{ secrets.OVH_SSH_PORT }}
+          OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          script="/tmp/drcloud-sumup-payout-diagnostic-${RUN_ID}.sh"
+          cleanup_remote() {
+            ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" "$OVH_SSH_USER@$OVH_SSH_HOST" "rm -f -- '$script'" >/dev/null 2>&1 || true
+          }
+          trap cleanup_remote EXIT INT TERM
+          scp -q -i ~/.ssh/drcloud_deploy -P "${OVH_SSH_PORT:-22}" deploy/ovh/sumup-payout-diagnostic.sh "$OVH_SSH_USER@$OVH_SSH_HOST:$script"
+          ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" "$OVH_SSH_USER@$OVH_SSH_HOST" "chmod 700 '$script' && '$script'" > sumup_payout_diagnostic.json
+          cleanup_remote
+          trap - EXIT INT TERM
+
+      - name: Upload sanitized diagnostic
+        if: always() && hashFiles('sumup_payout_diagnostic.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: drcloud-sumup-payout-diagnostic-${{ github.run_id }}
+          path: sumup_payout_diagnostic.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce diagnostic contract
+        id: enforce
+        if: always()
+        env:
+          DIAGNOSTIC_OUTCOME: ${{ steps.diagnostic.outcome }}
+        run: |
+          test "$DIAGNOSTIC_OUTCOME" = success
+          python - <<'PY'
+          import json
+          p = json.load(open("sumup_payout_diagnostic.json"))
+          assert p["result"] == "SUMUP_PAYOUT_DIAGNOSTIC_CAPTURED"
+          assert p["source"]["source_id"] == "sumup_payouts"
+          assert p["database"] == {"mode": "READ_ONLY", "quick_check": "ok"}
+          assert p["safety"]["database_read_only"] is True
+          assert p["safety"]["provider_network_calls"] is False
+          assert p["safety"]["external_provider_auth"] == "NONE"
+          assert p["safety"]["mutations"] is False
+          PY
+
+      - name: Index this run for connector discovery
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENFORCE_OUTCOME: ${{ steps.enforce.outcome }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request
+          conclusion = "success" if os.environ.get("ENFORCE_OUTCOME") == "success" else "failure"
+          payload = {
+              "schema_version": 1,
+              "workflow": "DrCloud OS SumUp payout diagnostic",
+              "run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "run_number": int(os.environ["GITHUB_RUN_NUMBER"]),
+              "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "status": "completed",
+              "conclusion": conclusion,
+              "event": os.environ["GITHUB_EVENT_NAME"],
+              "head_branch": os.environ.get("GITHUB_REF_NAME"),
+              "head_sha": os.environ["GITHUB_SHA"],
+              "run_url": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+          }
+          body = "<!-- drcloud-run-index -->\n```json\n" + json.dumps(payload, sort_keys=True) + "\n```"
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/issues/170/comments",
+              data=json.dumps({"body": body}).encode(),
+              method="POST",
+              headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}", "Accept": "application/vnd.github+json"},
+          )
+          with urllib.request.urlopen(req, timeout=20) as response:
+              assert response.status == 201
+          PY
