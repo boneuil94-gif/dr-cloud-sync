@@ -1,7 +1,10 @@
 """Sanitised, source-aware recovery watermarks and comparisons.
 
-Only ``data_sources`` is consulted.  This deliberately excludes technical
-tables and makes the business-data contract explicit and reviewable.
+``data_sources`` defines which business sources exist and whether they are enabled.
+For a small, explicit allow-list of durable local ledgers, recovery measurement
+uses committed business timestamps/counts from the SQLite snapshot itself.  This
+avoids treating sync-control metadata as business progress while keeping the
+contract reviewable and fail-closed.
 """
 from __future__ import annotations
 
@@ -13,6 +16,16 @@ SCHEMA_VERSION = 1
 SAFE_COLUMNS = ("source_id", "source_type", "provider", "status", "enabled",
                 "last_success_at", "stale_after_seconds", "data_min_at",
                 "data_max_at", "records_available")
+
+# Explicit source -> durable local business projection. Table and column names
+# are constants, never caller-controlled SQL. A source not listed here falls
+# back to its data_sources control-plane watermark.
+DURABLE_LEDGER_PROJECTIONS = {
+    "bank": ("bank_transactions", "booked_at", None),
+    "shopcaisse_sales": ("sales", "sold_at", ("source", "SHOPCAISSE")),
+    "prestashop_sales": ("sales", "sold_at", ("source", "PRESTASHOP")),
+    "sumup_transactions": ("sumup_transactions", "timestamp", None),
+}
 
 
 def _iso(value: object) -> str | None:
@@ -45,13 +58,69 @@ def _classification(row: dict) -> str:
     return "ELIGIBLE"
 
 
+def _table_columns(db: sqlite3.Connection, table: str) -> set[str]:
+    exists = db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone()
+    if not exists:
+        return set()
+    return {str(row[1]) for row in db.execute(f"PRAGMA table_info({table})")}
+
+
+def _durable_ledger_projection(db: sqlite3.Connection, source_id: str) -> dict | None:
+    """Return count/min/max from one approved committed business ledger.
+
+    ``None`` means the projection cannot be measured (missing table/columns), so
+    the caller keeps the existing control-plane facts. A real empty ledger is
+    returned as count=0 and deliberately clears stale timestamps.
+    """
+    definition = DURABLE_LEDGER_PROJECTIONS.get(source_id)
+    if not definition:
+        return None
+    table, timestamp_column, filter_definition = definition
+    columns = _table_columns(db, table)
+    required = {timestamp_column}
+    if filter_definition:
+        required.add(filter_definition[0])
+    if not required <= columns:
+        return None
+
+    where_sql = ""
+    params: tuple[object, ...] = ()
+    if filter_definition:
+        filter_column, filter_value = filter_definition
+        where_sql = f" WHERE {filter_column}=?"
+        params = (filter_value,)
+    try:
+        row = db.execute(
+            f"SELECT COUNT(*),MIN({timestamp_column}),MAX({timestamp_column}) "
+            f"FROM {table}{where_sql}",
+            params,
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None:
+        return None
+
+    count = int(row[0] or 0)
+    return {
+        "records_available": count,
+        "data_min_at": row[1] if count else None,
+        "data_max_at": row[2] if count else None,
+        "watermark_origin": "DURABLE_LEDGER",
+        "watermark_table": table,
+        "watermark_timestamp_column": timestamp_column,
+    }
+
+
 def capture_recovery_watermark(database: Path, *, captured_at=None,
                                captured_from: str = "LIVE_DATABASE") -> dict:
-    """Read a SQLite database read-only and return only approved source fields."""
+    """Read SQLite read-only and return only approved source/business facts."""
     when = _iso(captured_at) if captured_at is not None else datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     if when is None:
         raise ValueError("captured_at must be an ISO-8601 timestamp with timezone")
     rows = []
+    projections: dict[str, dict] = {}
     table_available = False
     try:
         with sqlite3.connect(f"file:{Path(database)}?mode=ro", uri=True) as db:
@@ -64,13 +133,24 @@ def capture_recovery_watermark(database: Path, *, captured_at=None,
                     db.row_factory = sqlite3.Row
                     rows = [dict(r) for r in db.execute(
                         f"SELECT {','.join(SAFE_COLUMNS)} FROM data_sources ORDER BY source_id")]
+                    for row in rows:
+                        projection = _durable_ledger_projection(db, str(row["source_id"]))
+                        if projection is not None:
+                            projections[str(row["source_id"])] = projection
     except sqlite3.Error:
         table_available = False
+        rows = []
+        projections = {}
 
     sources = []
     for row in rows:
         clean = {key: row.get(key) for key in SAFE_COLUMNS}
         clean["enabled"] = bool(clean["enabled"])
+        projection = projections.get(str(clean["source_id"]))
+        if projection is not None:
+            clean.update(projection)
+        else:
+            clean["watermark_origin"] = "DATA_SOURCE_CONTROL_PLANE"
         clean["classification"] = _classification(clean)
         # Canonicalise valid timestamps; preserve invalid values solely so the
         # explicit INVALID_TIMESTAMP classification remains auditable.
@@ -88,7 +168,9 @@ def capture_recovery_watermark(database: Path, *, captured_at=None,
             "confidence": confidence, "table_available": table_available,
             "coverage": {"eligible_sources": len(eligible),
                          "measured_sources": len(measured),
-                         "missing_data_max_sources": missing}, "sources": sources}
+                         "missing_data_max_sources": missing,
+                         "durable_ledger_sources": len(projections)},
+            "sources": sources}
 
 
 def validate_recovery_watermark(value: object) -> bool:
@@ -106,7 +188,7 @@ def compare_recovery_watermarks(live: dict, backup: dict) -> dict:
     """Compare business progress; the maximum per-source lag is observed RPO.
 
     Count growth without comparable timestamps is reported, never converted to
-    a zero-second RPO.  NOT_CONFIGURED, DISABLED and NO_DATA sources are neutral.
+    a zero-second RPO. NOT_CONFIGURED, DISABLED and NO_DATA sources are neutral.
     """
     base = {"comparable_sources": 0, "unmeasurable_sources": 0,
             "business_data_gap_seconds": None, "sync_progress_gap_seconds": None,
