@@ -126,9 +126,9 @@ report = {
         "provider_network_calls": False,
         "external_provider_auth": "NONE",
         "mutations": False,
-        "raw_messages_selected": False,
-        "response_excerpts_selected": False,
-        "cursors_selected": False,
+        "unstructured_text_selected": False,
+        "provider_payload_selected": False,
+        "pagination_state_selected": False,
     },
 }
 
