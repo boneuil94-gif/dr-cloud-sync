@@ -1,0 +1,39 @@
+{
+  "evidence_level": "PRODUCTION_SECRETS_BOOTSTRAP_PROOF",
+  "evidence_date": "2026-08-19",
+  "provenance": {
+    "workflow": "DrCloud OS production bootstrap proof",
+    "run_number": 3,
+    "run_id": 32249152839,
+    "run_started_at": "2026-08-19T11:52:01Z",
+    "run_completed_at": "2026-08-19T11:52:17Z",
+    "conclusion": "success",
+    "head_branch": "main",
+    "head_sha": "56741002b2c5c580c485e3155fc572354a7bce63",
+    "artifact_name": "production-bootstrap-evidence",
+    "artifact_id": 9363925298,
+    "artifact_sha256": "5f5c645f7607642ffeee3d8b0514f3f0b0d5091a89eb045d2b45e2e8f90d8746",
+    "artifact_archive_access": "AUTHENTICATION_REQUIRED",
+    "verification_basis": "SUCCESS_AFTER_ENFORCE_PROOF"
+  },
+  "deployed_commit": "56741002b2c5c580c485e3155fc572354a7bce63",
+  "runtime": {
+    "health": "HEALTH_OK",
+    "commit_match": true
+  },
+  "environment": {
+    "critical_secret_presence": "PROVEN",
+    "placeholders_absent": true,
+    "tracked_git_secret_leak": false
+  },
+  "bootstrap_admin": {
+    "account_present": true,
+    "unique": true,
+    "active": true,
+    "admin_authorization": "PROVEN",
+    "password_storage": "HASHED",
+    "plaintext_password_stored": false,
+    "credential_verification": "PASS_OR_NOT_APPLICABLE"
+  },
+  "result": "PRODUCTION_BOOTSTRAP_PROVEN"
+}

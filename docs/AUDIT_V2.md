@@ -36,12 +36,13 @@ Le score global **58/100** n'est pas la moyenne naïve des fichiers : il privil�
 
 Configuration par environnement et secret references, lifecycle applicatif, contraintes SQLite, migrations testées, logs/audits, health, scheduler, retry et clés d'idempotence sont **IMPLEMENTED/TESTED**. Le batch `RUNNING` a un index unique et les jobs persistent leurs runs. Limites : migrations distribuées, absence de preuve de reprise après crash, politique de retry non uniformisée, SQLite locking/concurrence multi-worker non éprouvés, pas de traces distribuées ni métriques de durée/mémoire/SLO. La fonction `FINANCE` et plusieurs refresh retournent explicitement `rows_imported: 0`, ce qui limite l'observabilité métier.
 
-## 5. Production et déploiement — 84/100 (re-score formel du 13 août 2026)
+## 5. Production et déploiement — 85/100 (re-score formel au 19 août 2026)
 
 - **IMPLEMENTED/TESTED statiquement** : CI PR/main (pytest, compileall, `node --check`, shell syntax, Compose, image), déploiement du SHA CI exact vers OVH, Caddy/HTTPS, health/check, migrations au démarrage, secrets hors Git, scripts backup/restore et état de déploiement.
 - **PROUVÉ** : health/HTTPS et SHA public (preuve du 10 août), restauration isolée de données production, rollback OVH-equivalent N → N-1 → N, puis upload Restic chiffré côté client vers un stockage objet off-host et restauration `remote-only`. Les workflows production #2 (`31716317021`) et #1 (`31718824913`) au SHA `2abb562469f40a9c20c8eeb875f86c1b06e83489` ont conclu `SUCCESS`; le snapshot distant, son intégrité, le boot, le health et les contrôles SQLite sont prouvés.
-- **NON PROUVÉ** : monitoring externe/alertes, SLO opérationnel, rotation des secrets et répétition périodique du Game Day. Le RPO observé de 12 829,331 s est un proxy fondé sur `backup_created_at`, de confiance `LOW`, et ne prouve pas la fraîcheur métier.
-- Décomposition Audit V2 : code/architecture **17/20**, wiring **19/20**, tests **17/20**, preuve production **23/25**, observabilité **4/10**, documentation **4/5**, soit **84/100**. Le delta **+5** crédite uniquement le wiring offsite effectivement exercé (+1) et l'upload, le contrôle distant et la restauration remote-only datés (+4 en preuve production). Aucun point n'est accordé aux limites encore ouvertes.
+- **PROUVÉ le 19 août** : le workflow production bootstrap proof #3 établit en lecture seule la présence de la configuration sensible critique sans placeholder ni fuite suivie par Git, ainsi que l’existence d’un compte bootstrap durable unique, actif, autorisé administrateur et protégé par stockage haché sans conservation en clair.
+- **NON PROUVÉ** : monitoring externe/alertes, SLO opérationnel, rotation périodique des secrets et répétition périodique du Game Day. Le RPO observé de 12 829,331 s est un proxy fondé sur `backup_created_at`, de confiance `LOW`, et ne prouve pas la fraîcheur métier.
+- Décomposition Audit V2 : code/architecture **17/20**, wiring **19/20**, tests **17/20**, preuve production **24/25**, observabilité **4/10**, documentation **4/5**, soit **85/100**. Après le re-score offsite à 84, le seul delta **+1** crédite la preuve production secrets/bootstrap du run #3. Aucun point n’est accordé aux limites encore ouvertes.
 
 ## 6. Authentication / Security — 74/100
 
@@ -49,7 +50,7 @@ Configuration par environnement et secret references, lifecycle applicatif, cont
 
 | Priorité | Risque | Constat / action |
 |---|---|---|
-| P0 | Accès/données production non vérifiables | Aucun P0 exploitable confirmé dans le code ; vérifier immédiatement en production secrets, compte bootstrap, HTTPS et sauvegarde restaurable. |
+| P0 fermé | Secrets/bootstrap production | Run #3 : configuration critique présente sans placeholder ni fuite Git; compte bootstrap unique, actif, administrateur et stockage haché sans clair. |
 | P1 | Perte de données | Recovery/rollback non exercés et SQLite partagé : test de restauration + verrouillage + copie cohérente obligatoires. |
 | P1 | Exposition PII | PII CRM et exports existent ; prouver rétention, consentement, droit d'effacement, chiffrement disque et accès opérateur. |
 | P2 | Chaîne logicielle | Seulement deux dépendances runtime épinglées et Dependabot ; ajouter scan CVE/SBOM, secret scan et politique de mise à jour. |
@@ -173,3 +174,10 @@ Aucune règle d'agrégation globale reproductible n'est définie par cet audit a
 La preuve assainie `docs/evidence/offsite_dr_evidence_production_2026-08-13.json` établit `OFFSITE_UPLOAD_PROVEN`, `OFFSITE_REMOTE_CHECK_PROVEN` et `OFFSITE_RESTORE_PROVEN`. La restauration n'a utilisé aucun backup local, n'a monté aucun volume production, n'a publié aucun port production, est restée `INTERNAL_ONLY` et n'a persisté aucun matériel cloud. Le blocker historique `BACKUP_ON_HOST_ONLY` est donc formellement **fermé `PRODUCTION_PROVEN`**.
 
 Cette fermeture ne signifie pas que le DR est parfait ou complet. Restent explicitement ouverts : fraîcheur RPO business (`LOW` confidence), monitoring externe/alerting, SLO, rotation des secrets et répétition périodique du DR. Deployment passe de **79 à 84** selon la décomposition de la section 5; global strict **58**, Production maturity **49**, Observability **61** et Test quality **76** restent inchangés faute de règle transverse reproductible autorisant un autre recalcul.
+
+
+## Addendum — preuve production secrets/bootstrap #3 (19 août 2026)
+
+Le workflow **DrCloud OS production bootstrap proof** #3 (run `32249152839`) a terminé en `SUCCESS` sur `main` au SHA `56741002b2c5c580c485e3155fc572354a7bce63`, après assainissement, upload et enforcement strict. La preuve auditée est persistée dans `docs/evidence/production_bootstrap_evidence_2026-08-19.json`; l’archive GitHub elle-même demandait une authentification dans cet environnement, donc aucun timestamp interne ni choix entre `PASS` et `NOT_APPLICABLE` n’a été inventé.
+
+Le blocker `p0_secrets_bootstrap` est formellement **`CLOSED_PRODUCTION_PROVEN`**. Le re-score reproductible porte Deployment de **84 à 85**, uniquement par `production_proof` **23/25 → 24/25**. Global strict **58**, Production maturity **49**, Security **74**, Observability **61** et Test quality **76** restent inchangés faute de sous-barème transverse reproductible. Restent ouverts : RPO business `LOW` confidence, monitoring externe/alerting, SLO, rotation périodique des secrets, répétition périodique du DR, couvertures connecteurs, funnel financier et concurrence SQLite. Ni la production ni le DR ne sont déclarés parfaits.

@@ -90,7 +90,7 @@ def test_v3_scorecard_is_the_strict_source_of_truth():
     assert data["version"] == 3
     assert data["global_score"] == data["global_progress_percent"] == 58
     assert data["remaining_percent"] == 42
-    assert data["evidence_date"] == "2026-08-13"
+    assert data["evidence_date"] == "2026-08-19"
     assert scores["Purchases"] == 63
     assert scores["Finance"] == 61
     assert scores["Stock"] == 67
@@ -137,7 +137,7 @@ def test_gameday_9_formal_rescore_records_proven_rollback_without_overcredit():
     assert "compatibilité schéma UNKNOWN" not in current_blockers
 
     module_scores = {module["name"]: module["score"] for module in data["modules"]}
-    assert module_scores["Deployment"] == 84
+    assert module_scores["Deployment"] == 85
     assert 75.93 not in module_scores.values()
     assert 100 not in module_scores.values()
 
@@ -211,3 +211,36 @@ def test_dashboard_model_tolerates_missing_data_and_clamps_progress():
     script = """const {dashboardModel,clampPercent}=require('./src/dr_cloud_sync/static/dashboard.js');const empty=dashboardModel({},{});if(empty.modules.length!==0||empty.progress!==0||empty.remaining!==100)process.exit(1);const partial=dashboardModel({global_progress_percent:180,modules:[{name:'A'}]},{});if(partial.progress!==100||partial.modules.length!==1||clampPercent(-4)!==0)process.exit(2);"""
     result = subprocess.run(["node","-e",script],cwd=ROOT,capture_output=True,text=True)
     assert result.returncode == 0, result.stderr
+
+def test_production_bootstrap_proof_closes_secrets_p0_with_bounded_rescore():
+    data = RoadmapService(ROADMAP).load()
+    proof = data["production_bootstrap_proof_2026_08_19"]
+    assert data["evidence_date"] == "2026-08-19"
+    assert proof["run_number"] == 3
+    assert proof["run_id"] == 32249152839
+    assert proof["head_sha"] == "56741002b2c5c580c485e3155fc572354a7bce63"
+    assert proof["result"] == "PRODUCTION_BOOTSTRAP_PROVEN"
+    assert proof["priorities"]["p0_secrets_bootstrap"] == "CLOSED_PRODUCTION_PROVEN"
+    assert proof["scores"]["global_strict"] == {"before": 58, "after": 58}
+    assert proof["scores"]["deployment"] == {"before": 84, "after": 85}
+    assert proof["scores"]["security"] == {"before": 74, "after": 74}
+    assert proof["rescore_methodology"]["deployment"] == {
+        "code_architecture": 17, "wiring": 19, "tests": 17,
+        "production_proof": 24, "observability": 4,
+        "documentation": 4, "total": 85,
+    }
+    assert "état secrets/bootstrap production non prouvé" not in data["blockers"]
+    assert all("prouver état secrets/bootstrap" not in item for item in data["priorities"])
+    modules = {module["name"]: module["score"] for module in data["modules"]}
+    assert modules["Deployment"] == 85
+
+    evidence = json.loads((ROOT / proof["evidence"]).read_text(encoding="utf-8"))
+    assert evidence["result"] == "PRODUCTION_BOOTSTRAP_PROVEN"
+    assert evidence["provenance"]["conclusion"] == "success"
+    assert evidence["runtime"] == {"health": "HEALTH_OK", "commit_match": True}
+    assert evidence["environment"] == {
+        "critical_secret_presence": "PROVEN",
+        "placeholders_absent": True,
+        "tracked_git_secret_leak": False,
+    }
+    assert evidence["bootstrap_admin"]["credential_verification"] == "PASS_OR_NOT_APPLICABLE"
