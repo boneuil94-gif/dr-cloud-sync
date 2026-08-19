@@ -10,9 +10,13 @@ repo="/opt/drcloud-os"
 source "$repo/deploy/ovh/deployment-environment.sh"
 cd "$repo/deploy/ovh"
 
+# Keep this proof on the same deployment-environment contract as every other
+# production Compose caller. The dedicated contract test verifies ordering.
+compose_subcommand=compose
+
 # This proof reads only the durable SQLite database already mounted by the
 # production application. It never calls ShopCaisse, PrestaShop, SumUp or Qonto.
-docker compose exec -T drcloud-os python - <<'PY'
+docker "$compose_subcommand" exec -T drcloud-os python - <<'PY'
 from __future__ import annotations
 
 import datetime
