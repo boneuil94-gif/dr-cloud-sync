@@ -1,8 +1,13 @@
 from datetime import datetime, timedelta, timezone
+import hashlib
+import json
 
 import pytest
 
-from dr_cloud_sync.security import AuthorizationService, SecurityStore, sanitise
+from dr_cloud_sync.security import (
+    AuthorizationService, PBKDF2_ITERATIONS, PasswordHashPolicy, SecurityStore,
+    password_hash_policy, sanitise, verify_password,
+)
 from dr_cloud_sync.prestashop import PrestaShopClient, PrestaShopError
 from dr_cloud_sync.qonto import EnvironmentSecretProvider
 from test_os_production import configured, login, request  # noqa: F401
@@ -80,3 +85,67 @@ def test_all_declared_pages_and_api_domains_have_explicit_permissions():
     assert InventoryApp._route_permission("/api/sales/import/apply","POST")=="sales.sync"
     assert InventoryApp._route_permission("/api/security/users/x/status","POST")=="security.manage_users"
     assert InventoryApp._route_permission("/api/not-declared","GET")=="__default_deny__"
+
+
+def legacy_hash(password, salt=b"legacy-salt-1234", rounds=200_000):
+    digest=hashlib.pbkdf2_hmac("sha256",password.encode(),salt,rounds)
+    return f"pbkdf2_sha256${rounds}${salt.hex()}${digest.hex()}"
+
+
+@pytest.mark.parametrize(("encoded","policy"),[
+    (legacy_hash("fixture password"),PasswordHashPolicy.LEGACY_VALID),
+    ("cleartext password",PasswordHashPolicy.INVALID),
+    ("pbkdf2_sha256$broken",PasswordHashPolicy.INVALID),
+    ("argon2$200000$00$00",PasswordHashPolicy.INVALID),
+    ("pbkdf2_sha256$0$6c65676163792d73616c742d31323334$"+"00"*32,PasswordHashPolicy.INVALID),
+])
+def test_password_hash_policy_fails_closed(encoded,policy):
+    assert password_hash_policy(encoded) is policy
+
+
+def test_verified_legacy_hash_is_upgraded_once_without_identity_mutation(tmp_path):
+    path=tmp_path/"pre-pr-86.db"
+    store=SecurityStore(path,"root","correct-horse-battery-staple")
+    user=store.user("local-admin"); before=store.credential("local-admin")
+    old_hash=legacy_hash("historic secure password")
+    store.db.execute("UPDATE local_credentials SET password_hash=? WHERE account_id=?",(old_hash,before.account_id)); store.db.commit()
+    roles=store.roles_for("local-admin")
+
+    reopened=SecurityStore(path,"ignored-seed","different bootstrap value")
+    assert reopened.authenticate("root","historic secure password")==user
+    upgraded=reopened.credential("local-admin")
+    assert upgraded.password_hash!=old_hash
+    assert upgraded.password_hash.split("$")[2]!=old_hash.split("$")[2]
+    assert int(upgraded.password_hash.split("$")[1])>=PBKDF2_ITERATIONS
+    assert verify_password("historic secure password",upgraded.password_hash)
+    assert upgraded.password_changed_at==before.password_changed_at
+    assert upgraded.session_version==before.session_version
+    assert reopened.user("local-admin")==user
+    assert reopened.roles_for("local-admin")==roles
+
+    first_upgraded_hash=upgraded.password_hash
+    assert reopened.authenticate("root","historic secure password")
+    assert reopened.credential("local-admin").password_hash==first_upgraded_hash
+    audits=reopened.audits(action="PASSWORD_HASH_UPGRADED")
+    assert len(audits)==1
+    assert audits[0]["metadata"]=={"from_policy":"LEGACY_PBKDF2","to_policy":"CURRENT_PBKDF2"}
+    serialized=json.dumps(audits)
+    for sensitive in ("historic secure password",old_hash,old_hash.split("$")[2],old_hash.split("$")[3]):
+        assert sensitive not in serialized
+
+
+def test_failed_or_invalid_authentication_never_rewrites_hash(tmp_path):
+    store=SecurityStore(tmp_path/"security.db","root","correct-horse-battery-staple")
+    for encoded in (legacy_hash("right historic password"),"plaintext", "unknown$1$00$00"):
+        store.db.execute("UPDATE local_credentials SET password_hash=? WHERE account_id='local-admin'",(encoded,)); store.db.commit()
+        assert store.authenticate("root","wrong password") is None
+        assert store.credential("local-admin").password_hash==encoded
+    assert store.audits(action="PASSWORD_HASH_UPGRADED")==[]
+
+
+def test_current_hash_authentication_does_not_mutate_credential(tmp_path):
+    store=SecurityStore(tmp_path/"security.db","root","correct-horse-battery-staple")
+    before=store.credential("local-admin")
+    assert store.authenticate("root","correct-horse-battery-staple")
+    assert store.credential("local-admin")==before
+    assert password_hash_policy(before.password_hash) is PasswordHashPolicy.CURRENT

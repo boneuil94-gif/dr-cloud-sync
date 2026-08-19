@@ -20,7 +20,7 @@ fi
 # never be expanded into a shell command line or diagnostic.
 exec python3 - "$@" <<'PY'
 from __future__ import annotations
-import datetime as dt, hashlib, hmac, json, os, pathlib, re, sqlite3, stat, subprocess, sys
+import datetime as dt, json, os, pathlib, re, sqlite3, stat, subprocess, sys
 
 FORBIDDEN = ("password", "secret", "token", "credential", "api_key", "private_key", "authorization")
 ALLOWED_CREDENTIAL_VALUE = {"PASS", "NOT_APPLICABLE"}
@@ -70,21 +70,16 @@ def parse_env(path):
     except (OSError, UnicodeError): fail("PRODUCTION_ENV_FILE_INVALID")
     return values
 
-def valid_hash(encoded):
+def hash_policy(encoded):
     try:
         algorithm, rounds, salt, digest=encoded.split("$",3)
-        return algorithm == "pbkdf2_sha256" and int(rounds) >= 600000 and len(bytes.fromhex(salt)) >= 16 and len(bytes.fromhex(digest)) == 32
-    except (ValueError, TypeError): return False
+        rounds=int(rounds)
+        if algorithm != "pbkdf2_sha256" or rounds <= 0 or len(bytes.fromhex(salt)) < 16 or len(bytes.fromhex(digest)) != 32:
+            return "INVALID"
+        return "CURRENT" if rounds >= 600000 else "LEGACY_VALID"
+    except (AttributeError, ValueError, TypeError): return "INVALID"
 
-def verify(clear, encoded):
-    try:
-        algorithm, rounds, salt, expected=encoded.split("$",3)
-        if algorithm != "pbkdf2_sha256": return False
-        actual=hashlib.pbkdf2_hmac("sha256",clear.encode(),bytes.fromhex(salt),int(rounds))
-        return hmac.compare_digest(actual,bytes.fromhex(expected))
-    except (ValueError, TypeError): return False
-
-def inspect_database(db_path, username, password):
+def inspect_database(db_path, username):
     uri=f"file:{pathlib.Path(db_path).resolve()}?mode=ro"
     try:
         db=sqlite3.connect(uri,uri=True); db.row_factory=sqlite3.Row
@@ -100,11 +95,11 @@ def inspect_database(db_path, username, password):
     row=rows[0]
     if row["status"] != "ACTIVE": fail("BOOTSTRAP_ACCOUNT_INACTIVE")
     if not row["admin"]: fail("BOOTSTRAP_ACCOUNT_NOT_ADMIN")
-    if not valid_hash(row["password_hash"]): fail("BOOTSTRAP_PASSWORD_STORAGE_INVALID")
-    if row["password_hash"] == password: fail("BOOTSTRAP_PASSWORD_STORAGE_INVALID")
-    if not verify(password,row["password_hash"]): fail("BOOTSTRAP_CREDENTIAL_VERIFICATION_FAILED")
+    policy=hash_policy(row["password_hash"])
+    if policy == "LEGACY_VALID": fail("BOOTSTRAP_PASSWORD_HASH_LEGACY_WORK_FACTOR")
+    if policy != "CURRENT": fail("BOOTSTRAP_PASSWORD_STORAGE_INVALID")
     return {"account_present":True,"unique":True,"active":True,"admin_authorization":"PROVEN",
-            "password_storage":"HASHED","plaintext_password_stored":False,"credential_verification":"PASS"}
+            "password_storage":"HASHED","plaintext_password_stored":False,"credential_verification":"NOT_APPLICABLE"}
 
 def command(*args, input_text=None):
     try:
@@ -124,7 +119,7 @@ def secret_values_for_leak_scan(env):
     return values
 
 def inspect_database_container(compose):
-    program=r'''import hashlib,hmac,json,os,sqlite3
+    program=r'''import json,os,sqlite3
 +db=sqlite3.connect("file:/data/drcloud.db?mode=ro",uri=True);db.row_factory=sqlite3.Row
 +rows=db.execute("SELECT u.status,c.password_hash,EXISTS(SELECT 1 FROM security_user_roles ur WHERE ur.user_id=u.user_id AND ur.role_id='ADMIN') admin FROM security_users u JOIN local_credentials c ON c.account_id=u.credential_ref WHERE u.username=? COLLATE NOCASE",(os.environ.get("DRCLOUD_ADMIN_USERNAME",""),)).fetchall();db.close();code="PASS"
 +if not rows:code="BOOTSTRAP_ACCOUNT_MISSING"
@@ -133,10 +128,9 @@ def inspect_database_container(compose):
 +elif not rows[0]["admin"]:code="BOOTSTRAP_ACCOUNT_NOT_ADMIN"
 +else:
 + try:
-+  a,r,s,d=rows[0]["password_hash"].split("$",3); valid=a=="pbkdf2_sha256" and int(r)>=600000 and len(bytes.fromhex(s))>=16 and len(bytes.fromhex(d))==32
-+  got=hashlib.pbkdf2_hmac("sha256",os.environ.get("DRCLOUD_ADMIN_PASSWORD","").encode(),bytes.fromhex(s),int(r)) if valid else b""
-+  if not valid or rows[0]["password_hash"]==os.environ.get("DRCLOUD_ADMIN_PASSWORD"):code="BOOTSTRAP_PASSWORD_STORAGE_INVALID"
-+  elif not hmac.compare_digest(got,bytes.fromhex(d)):code="BOOTSTRAP_CREDENTIAL_VERIFICATION_FAILED"
++  a,r,s,d=rows[0]["password_hash"].split("$",3); r=int(r); valid=a=="pbkdf2_sha256" and r>0 and len(bytes.fromhex(s))>=16 and len(bytes.fromhex(d))==32
++  if valid and r<600000:code="BOOTSTRAP_PASSWORD_HASH_LEGACY_WORK_FACTOR"
++  elif not valid:code="BOOTSTRAP_PASSWORD_STORAGE_INVALID"
 + except Exception:code="BOOTSTRAP_PASSWORD_STORAGE_INVALID"
 +print(json.dumps({"code":code}))'''.replace("\n+","\n")
     # A failed Compose invocation retains its orchestration error.  Only a
@@ -146,7 +140,7 @@ def inspect_database_container(compose):
     try: code=json.loads(raw)["code"]
     except (json.JSONDecodeError, KeyError, TypeError): fail("BOOTSTRAP_DATABASE_UNAVAILABLE")
     if code!="PASS": fail(code if re.fullmatch(r"[A-Z_]+",code) else "BOOTSTRAP_DATABASE_UNAVAILABLE")
-    return {"account_present":True,"unique":True,"active":True,"admin_authorization":"PROVEN","password_storage":"HASHED","plaintext_password_stored":False,"credential_verification":"PASS"}
+    return {"account_present":True,"unique":True,"active":True,"admin_authorization":"PROVEN","password_storage":"HASHED","plaintext_password_stored":False,"credential_verification":"NOT_APPLICABLE"}
 
 def main():
     if len(sys.argv)==3 and sys.argv[1]=="--sanitize":
@@ -175,7 +169,11 @@ def main():
         fail("PRODUCTION_SECRET_LEAK_DETECTED")
     compose=("docker","compose","-f",str(repo/"deploy/ovh/docker-compose.yml"))
     db_path=os.environ.get("DRCLOUD_PROOF_DATABASE")
-    admin=inspect_database(db_path,env["DRCLOUD_ADMIN_USERNAME"],env["DRCLOUD_ADMIN_PASSWORD"]) if db_path else inspect_database_container(compose)
+    # The environment value seeds a missing credential only.  Once durable
+    # storage exists (and can be changed in the UI), it is no longer the
+    # authority for the current password; the read-only proof checks each fact
+    # independently and never attempts a login or mutation.
+    admin=inspect_database(db_path,env["DRCLOUD_ADMIN_USERNAME"]) if db_path else inspect_database_container(compose)
     for service in ("drcloud-os","automation-worker"):
         if not command(*compose,"ps","--quiet","--status","running",service).strip(): fail("PRODUCTION_RUNTIME_CHECK_FAILED")
     health=json.loads(command("curl","--fail","--silent","--show-error","http://127.0.0.1:8080/health"))
