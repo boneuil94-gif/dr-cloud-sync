@@ -6,12 +6,13 @@ repo="/opt/drcloud-os"
 [[ -d "$repo/.git" ]] || repo="$(git -C "$script_dir" rev-parse --show-toplevel)"
 source "$repo/deploy/ovh/deployment-environment.sh"
 cd "$repo/deploy/ovh"
+compose_subcommand=compose
 
 # Narrow production repair/proof. It only calls the documented read-only SumUp
 # payouts GET when the control plane still says ERROR. Successful imports are
 # normal idempotent local ledger writes through DataHub; no provider mutation is
 # possible from this code path.
-docker compose exec -T drcloud-os python - <<'PY'
+docker "$compose_subcommand" exec -T drcloud-os python - <<'PY'
 from __future__ import annotations
 
 import datetime
