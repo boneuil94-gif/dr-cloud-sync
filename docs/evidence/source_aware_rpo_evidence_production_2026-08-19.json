@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "evidence_date": "2026-08-19",
+  "evidence_level": "OFFSITE_ENCRYPTED_BACKUP_RESTORE_SOURCE_AWARE_RPO",
+  "provenance": {
+    "backup_workflow": "DrCloud OS encrypted offsite backup",
+    "backup_run_id": 32263186935,
+    "backup_run_number": 4,
+    "recovery_workflow": "DrCloud OS remote-only recovery Game Day",
+    "recovery_run_id": 32263769005,
+    "recovery_run_number": 2,
+    "head_sha": "e07d762d092e7c9bd9885bc32d963a54a4a76517",
+    "backup_artifact": {
+      "name": "drcloud-offsite-backup-status-32263186935",
+      "id": 9369103408,
+      "sha256": "12ecc05a579439c63ac1448571f6acd50042d26dade98acfbdfc49040d162a83"
+    },
+    "recovery_artifact": {
+      "name": "drcloud-offsite-recovery-evidence-32263769005",
+      "id": 9369324598,
+      "sha256": "50dc005d3cb6cb8526029019056f749d0d6b782a8b9fe9fa850e05436fa2a2bf"
+    }
+  },
+  "backup": {
+    "result": "OFFSITE_REMOTE_CHECK_PROVEN",
+    "remote_check": "PROVEN",
+    "location_classification": "OFF_HOST_OBJECT_STORAGE",
+    "encryption": "RESTIC_CLIENT_SIDE_ENCRYPTED",
+    "source_backup_id": "drcloud-os-backup-20260819T141815Z-3776efbb94204ca4a3622bbdaee0127c",
+    "source_backup_created_at": "2026-08-19T14:18:17.213888Z",
+    "source_backup_age_seconds_at_upload": 14.494,
+    "source_data_max_at": null,
+    "source_watermark_confidence": "UNKNOWN"
+  },
+  "recovery": {
+    "result": "OFFSITE_RESTORE_PROVEN",
+    "app_boot": "APP_BOOT_OK",
+    "health": "HEALTH_OK",
+    "remote_integrity": "PASS",
+    "quick_check": "ok",
+    "integrity_check": "ok",
+    "foreign_key_check": "OK",
+    "observed_restore_seconds": 14,
+    "rpo": {
+      "method": "live_vs_backup_source_watermarks",
+      "live_watermark_available": true,
+      "backup_watermark_available": true,
+      "comparable_sources": 1,
+      "unmeasurable_sources": 12,
+      "business_data_gap_seconds": 0,
+      "sync_progress_gap_seconds": 211.950285,
+      "observed_rpo_seconds": 0,
+      "confidence": "MEDIUM"
+    }
+  },
+  "safety": {
+    "safe_mode": true,
+    "external_provider_auth": "NONE",
+    "production_volume_mounted": false,
+    "production_port_published": false,
+    "local_backup_used_for_restore": false,
+    "live_watermark_used_for_measurement_only": true,
+    "cloud_material_persisted": false,
+    "network": "INTERNAL_ONLY"
+  },
+  "assessment": {
+    "source_aware_rpo_measurement": "PRODUCTION_PROVEN",
+    "previous_backup_created_at_proxy": "SUPERSEDED_FOR_THIS_RUN",
+    "priority_status": "PARTIAL_PRODUCTION_PROVEN",
+    "remaining_limit": "12 sources are unmeasurable, so confidence is MEDIUM and must not be promoted to HIGH",
+    "score_credit": "NONE_WITHOUT_REPRODUCIBLE_RESCORE"
+  }
+}
