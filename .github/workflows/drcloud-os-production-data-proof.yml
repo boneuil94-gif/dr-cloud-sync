@@ -1,0 +1,130 @@
+name: DrCloud OS production data proof
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/drcloud-os-production-data-proof.yml"
+      - "deploy/ovh/production-data-proof.sh"
+  schedule:
+    - cron: "47 2 * * 2"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: drcloud-os-production-data-proof
+  cancel-in-progress: false
+
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check out reviewed main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.OVH_SSH_PRIVATE_KEY }}
+          SSH_HOST_KEYS: ${{ secrets.OVH_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/drcloud_deploy
+          printf '%s\n' "$SSH_HOST_KEYS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/drcloud_deploy ~/.ssh/known_hosts
+
+      - name: Execute read-only production data proof
+        id: proof
+        continue-on-error: true
+        env:
+          OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
+          OVH_SSH_PORT: ${{ secrets.OVH_SSH_PORT }}
+          OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
+        run: |
+          set -euo pipefail
+          remote_script="/tmp/drcloud-production-data-proof-${GITHUB_RUN_ID}.sh"
+          cleanup_remote() {
+            ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" "$OVH_SSH_USER@$OVH_SSH_HOST" \
+              "rm -f -- '$remote_script'" >/dev/null 2>&1 || true
+          }
+          trap cleanup_remote EXIT INT TERM
+          scp -q -i ~/.ssh/drcloud_deploy -P "${OVH_SSH_PORT:-22}" \
+            deploy/ovh/production-data-proof.sh \
+            "$OVH_SSH_USER@$OVH_SSH_HOST:$remote_script"
+          ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" \
+            "$OVH_SSH_USER@$OVH_SSH_HOST" \
+            "chmod 700 '$remote_script' && '$remote_script'" \
+            > production_data_evidence.json
+          test -s production_data_evidence.json
+          cleanup_remote
+          trap - EXIT INT TERM
+
+      - name: Upload sanitized evidence
+        if: always() && hashFiles('production_data_evidence.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: drcloud-production-data-evidence-${{ github.run_id }}
+          path: production_data_evidence.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce captured evidence
+        id: enforce
+        if: always()
+        env:
+          PROOF_OUTCOME: ${{ steps.proof.outcome }}
+        run: |
+          set -euo pipefail
+          test "$PROOF_OUTCOME" = success
+          test -s production_data_evidence.json
+          python - <<'PY'
+          import json
+          d=json.load(open("production_data_evidence.json"))
+          assert d["result"] == "PRODUCTION_DATA_PROOF_CAPTURED"
+          assert d["environment"] == "production"
+          assert d["database"] == {"mode":"READ_ONLY","quick_check":"ok"}
+          assert d["safety"]["database_read_only"] is True
+          assert d["safety"]["mutations"] is False
+          assert d["safety"]["provider_network_calls"] is False
+          assert d["safety"]["external_provider_auth"] == "NONE"
+          assert d["source_control_plane"]["authoritative_coverage_proven"] is False
+          assert d["finance_funnel"]["end_to_end_match_rate"] is None
+          assert d["finance_funnel"]["end_to_end_status"] == "NOT_PROVEN"
+          PY
+
+      - name: Index this run for connector discovery
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROOF_OUTCOME: ${{ steps.proof.outcome }}
+          ENFORCE_OUTCOME: ${{ steps.enforce.outcome }}
+        run: |
+          python - <<'PY'
+          import datetime,json,os
+          conclusion = "success" if os.environ.get("PROOF_OUTCOME") == "success" and os.environ.get("ENFORCE_OUTCOME") == "success" else "failure"
+          row = {
+              "schema_version": 1,
+              "workflow": "DrCloud OS production data proof",
+              "run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "run_number": int(os.environ["GITHUB_RUN_NUMBER"]),
+              "run_attempt": int(os.environ.get("GITHUB_RUN_ATTEMPT", "1")),
+              "status": "completed",
+              "conclusion": conclusion,
+              "event": os.environ.get("GITHUB_EVENT_NAME"),
+              "head_branch": os.environ.get("GITHUB_REF_NAME"),
+              "head_sha": os.environ.get("GITHUB_SHA"),
+              "indexed_at": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+              "run_url": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+          }
+          body = "<!-- drcloud-run-index -->\n```json\n" + json.dumps(row, sort_keys=True) + "\n```"
+          with open("run-index-payload.json", "w", encoding="utf-8") as handle:
+              json.dump({"body": body}, handle)
+          PY
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/170/comments" \
+            --input run-index-payload.json
