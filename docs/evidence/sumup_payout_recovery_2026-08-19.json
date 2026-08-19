@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "evidence_date": "2026-08-19",
+  "result": "SUMUP_PAYOUT_RECOVERY_PROVEN",
+  "production": {
+    "run_id": 32289798227,
+    "run_number": 317,
+    "head_sha": "7e540772c1d1ff35ba40776bb77b478f4c05da2d",
+    "conclusion": "success"
+  },
+  "recovery_proof": {
+    "run_id": 32289896556,
+    "run_number": 1,
+    "run_attempt": 1,
+    "event": "workflow_run",
+    "head_sha": "7e540772c1d1ff35ba40776bb77b478f4c05da2d",
+    "conclusion": "success",
+    "artifact_id": 9379057643,
+    "artifact_sha256": "a59e977c6ae7feeb2d9725da359ad39c9a0c9b571eaf16954ca5b91902d51bb7",
+    "captured_at": "2026-08-19T18:53:27.969545Z"
+  },
+  "source": {
+    "source_id": "sumup_payouts",
+    "before_status": "ERROR",
+    "after_status": "CONNECTED",
+    "before_last_success_at": "2026-08-18T17:05:18.219569+00:00",
+    "after_last_success_at": "2026-08-19T18:53:27.962605+00:00",
+    "before_records_available": null,
+    "after_records_available": 760,
+    "before_last_run_id": 9442,
+    "after_last_run_id": 10336
+  },
+  "ledger": {
+    "before_records": 328,
+    "after_records": 760,
+    "nondecreasing": true
+  },
+  "job": {
+    "job_id": "sync_sumup_payouts",
+    "status": "SUCCEEDED"
+  },
+  "safety": {
+    "provider_method": "GET_ONLY",
+    "provider_mutations": false,
+    "local_mutations": true,
+    "idempotent_ledger_upsert": true,
+    "raw_provider_payload_in_evidence": false,
+    "credentials_in_evidence": false
+  },
+  "scope": {
+    "payout_sync_recovered": true,
+    "provider_authority_total_proven": false,
+    "end_to_end_financial_reconciliation_proven": false
+  },
+  "scores": {
+    "global_strict": {
+      "before": 58,
+      "after": 58
+    },
+    "deployment": {
+      "before": 85,
+      "after": 85
+    }
+  },
+  "score_policy_reason": "A successful production payout recovery is persisted as evidence, but it does not by itself provide a reproducible formal score increase."
+}
