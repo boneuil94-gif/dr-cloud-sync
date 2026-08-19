@@ -11,7 +11,7 @@
     "test_quality": 76,
     "ux": 60
   },
-  "evidence_date": "2026-08-13",
+  "evidence_date": "2026-08-19",
   "methodology": "Score strict audité selon six axes: code/architecture 20 %, wiring 20 %, tests 20 %, preuve production 25 %, observabilité 10 %, documentation 5 %. Aucune moyenne naïve des modules. Le global reste inchangé sans règle d’agrégation globale reproductible persistée.",
   "modules": [
     {
@@ -37,9 +37,9 @@
     {
       "id": "deployment",
       "name": "Deployment",
-      "score": 84,
+      "score": 85,
       "status": "PARTIAL",
-      "justification": "CI/CD au SHA exact, health/HTTPS publics, rollback OVH-equivalent et backup Restic chiffré off-host restauré en mode remote-only prouvés",
+      "justification": "CI/CD au SHA exact, health/HTTPS publics, rollback OVH-equivalent et backup Restic chiffré off-host restauré en mode remote-only prouvés; secrets critiques et bootstrap administrateur durable également prouvés en lecture seule",
       "blocker": "RPO business de confiance LOW, monitoring externe/alerting, SLO, rotation secrets et répétition périodique du DR non prouvés",
       "next_step": "fiabiliser le RPO métier, puis automatiser alerting/SLO, rotation des secrets et Game Days périodiques",
       "evidence_level": "PRODUCTION_PROVEN"
@@ -226,7 +226,6 @@
     }
   ],
   "priorities": [
-    "P0 — prouver état secrets/bootstrap production",
     "P1 — améliorer la mesure RPO avec data_max_at plutôt que backup_created_at",
     "P1 — mesurer couverture sources et funnel financier",
     "P1 — tester SQLite multi-worker",
@@ -234,7 +233,6 @@
     "P1 — clarifier et brancher les sous-sources SumUp"
   ],
   "blockers": [
-    "état secrets/bootstrap production non prouvé",
     "couverture production des connecteurs inconnue",
     "funnel SALE→PAYMENT→SUMUP→PAYOUT→QONTO non mesuré",
     "concurrence SQLite non prouvée",
@@ -576,6 +574,75 @@
       "p1_off_host_backup": "CLOSED_PRODUCTION_PROVEN",
       "p1_rpo_rto": "PARTIAL_RTO_PROVEN_RPO_LOW_CONFIDENCE",
       "p0_secrets_bootstrap": "OPEN",
+      "p1_external_monitoring_alerting": "OPEN",
+      "p1_slo": "OPEN",
+      "p1_secret_rotation": "OPEN",
+      "p1_periodic_dr_repetition": "OPEN"
+    }
+  },
+  "production_bootstrap_proof_2026_08_19": {
+    "evidence_level": "PRODUCTION_SECRETS_BOOTSTRAP_PROOF",
+    "run_number": 3,
+    "run_id": 32249152839,
+    "head_sha": "56741002b2c5c580c485e3155fc572354a7bce63",
+    "result": "PRODUCTION_BOOTSTRAP_PROVEN",
+    "evidence": "docs/evidence/production_bootstrap_evidence_2026-08-19.json",
+    "artifact": {
+      "name": "production-bootstrap-evidence",
+      "id": 9363925298,
+      "sha256": "5f5c645f7607642ffeee3d8b0514f3f0b0d5091a89eb045d2b45e2e8f90d8746",
+      "archive_access": "AUTHENTICATION_REQUIRED"
+    },
+    "scores": {
+      "global_strict": {
+        "before": 58,
+        "after": 58
+      },
+      "production_maturity": {
+        "before": 49,
+        "after": 49
+      },
+      "deployment": {
+        "before": 84,
+        "after": 85
+      },
+      "security": {
+        "before": 74,
+        "after": 74
+      },
+      "observability": {
+        "before": 61,
+        "after": 61
+      },
+      "tests": {
+        "before": 76,
+        "after": 76
+      }
+    },
+    "rescore_methodology": {
+      "weights": {
+        "code_architecture": 20,
+        "wiring": 20,
+        "tests": 20,
+        "production_proof": 25,
+        "observability": 10,
+        "documentation": 5
+      },
+      "deployment": {
+        "code_architecture": 17,
+        "wiring": 19,
+        "tests": 17,
+        "production_proof": 24,
+        "observability": 4,
+        "documentation": 4,
+        "total": 85
+      },
+      "global_policy": "GLOBAL_SCORE_UNCHANGED_NO_REPRODUCIBLE_AGGREGATION"
+    },
+    "score_policy_reason": "GLOBAL_SCORE_UNCHANGED_NO_REPRODUCIBLE_AGGREGATION",
+    "priorities": {
+      "p0_secrets_bootstrap": "CLOSED_PRODUCTION_PROVEN",
+      "p1_rpo_rto": "PARTIAL_RTO_PROVEN_RPO_LOW_CONFIDENCE",
       "p1_external_monitoring_alerting": "OPEN",
       "p1_slo": "OPEN",
       "p1_secret_rotation": "OPEN",
