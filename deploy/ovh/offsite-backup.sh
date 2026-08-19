@@ -33,11 +33,13 @@ prepare_restic_source() {
 
 status_file="${DRCLOUD_OFFSITE_STATUS_FILE:-$DRCLOUD_DEPLOYMENT_STATE_DIR/offsite_backup_status.json}"
 attempt="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+source_backup_id="" source_backup_created_at="" source_data_max_at=""
+source_watermark_confidence="UNKNOWN" source_backup_age_seconds_at_upload=""
 write_status() {
   local result="$1" snapshot="${2:-}" remote="${3:-UNKNOWN}" retention="${4:-RETENTION_NOT_CONFIGURED}"
-  "$PYTHON_BIN" - "$status_file" "$attempt" "$result" "$snapshot" "$remote" "$retention" <<'PY'
+  "$PYTHON_BIN" - "$status_file" "$attempt" "$result" "$snapshot" "$remote" "$retention" "$source_backup_id" "$source_backup_created_at" "$source_data_max_at" "$source_watermark_confidence" "$source_backup_age_seconds_at_upload" <<'PY'
 import json,os,sys
-p,attempt,result,snapshot,remote,retention=sys.argv[1:]
+p,attempt,result,snapshot,remote,retention,bid,created,data_max,confidence,age=sys.argv[1:]
 try: old=json.load(open(p))
 except Exception: old={}
 success=attempt if result=="OFFSITE_REMOTE_CHECK_PROVEN" else old.get("last_success_at")
@@ -46,7 +48,10 @@ d={"configured":result not in ("OFFSITE_NOT_CONFIGURED","RESTIC_IMAGE_NOT_IMMUTA
  "last_result":result,"location_classification":"OFF_HOST_OBJECT_STORAGE",
  "encryption":"RESTIC_CLIENT_SIDE_ENCRYPTED","remote_check":remote,
  "restore_proof":old.get("restore_proof","UNKNOWN"),"restore_proof_at":old.get("restore_proof_at"),
- "retention":retention}
+ "retention":retention,"source_backup_id":bid or old.get("source_backup_id"),
+ "source_backup_created_at":created or old.get("source_backup_created_at"),
+ "source_data_max_at":data_max or None,"source_watermark_confidence":confidence,
+ "source_backup_age_seconds_at_upload":float(age) if age else None}
 os.makedirs(os.path.dirname(p),exist_ok=True); tmp=p+".tmp"
 open(tmp,"w").write(json.dumps(d,indent=2,sort_keys=True)+"\n"); os.chmod(tmp,0o600); os.replace(tmp,p)
 PY
@@ -75,28 +80,23 @@ export AWS_ACCESS_KEY_ID="$OFFSITE_S3_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$OFF
 export AWS_DEFAULT_REGION="$OFFSITE_S3_REGION" AWS_REGION="$OFFSITE_S3_REGION"
 [[ -z "${OFFSITE_S3_ENDPOINT:-}" ]] || export AWS_ENDPOINT_URL="$OFFSITE_S3_ENDPOINT"
 
+# Every offsite run has its own freshly-created application snapshot.  Never
+# fall back to a previously valid bundle: creation failure is terminal.
+docker compose exec -T drcloud-os dr-cloud-sync os-backup --json >"$work/created.json" \
+  || fail OFFSITE_SOURCE_BACKUP_CREATION_FAILED
+backup_id="$($PYTHON_BIN - "$work/created.json" <<'PY'
+import json,os,sys
+d=json.load(open(sys.argv[1])); path=d.get("path",""); bid=os.path.basename(path.rstrip("/"))
+if d.get("status")!="backup-created" or not bid.startswith("drcloud-os-backup-") or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in bid): raise SystemExit(1)
+print(bid)
+PY
+)" || fail OFFSITE_SOURCE_BACKUP_CREATION_FAILED
 docker compose exec -T drcloud-os dr-cloud-sync backup-status --json >"$work/inventory.json" || fail OFFSITE_BACKUP_SOURCE_INVALID
-if ! "$PYTHON_BIN" - "$work/inventory.json" >"$work/selection" <<'PY'
+"$PYTHON_BIN" - "$work/inventory.json" "$backup_id" <<'PY' || fail OFFSITE_BACKUP_SOURCE_INVALID
 import json,sys
-d=json.load(open(sys.argv[1])); rows=[x for x in d.get("backups",[]) if x.get("status")=="VALID" and x.get("backup_class")=="APP_RESTORABLE" and x.get("runtime_files_complete") is True]
-if not rows: raise SystemExit(1)
-r=rows[0]; bid=r.get("backup_id","")
-if not bid.startswith("drcloud-os-backup-") or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in bid): raise SystemExit(1)
-print(bid)
+rows=[x for x in json.load(open(sys.argv[1])).get("backups",[]) if x.get("backup_id")==sys.argv[2]]
+if len(rows)!=1 or rows[0].get("status")!="VALID" or rows[0].get("backup_class")!="APP_RESTORABLE" or rows[0].get("runtime_files_complete") is not True: raise SystemExit(1)
 PY
-then
-  "$repo/deploy/ovh/backup.sh" >/dev/null || fail OFFSITE_BACKUP_SOURCE_INVALID
-  docker compose exec -T drcloud-os dr-cloud-sync backup-status --json >"$work/inventory.json" || fail OFFSITE_BACKUP_SOURCE_INVALID
-  "$PYTHON_BIN" - "$work/inventory.json" >"$work/selection" <<'PY' || fail OFFSITE_BACKUP_SOURCE_INVALID
-import json,sys
-rows=[x for x in json.load(open(sys.argv[1])).get("backups",[]) if x.get("status")=="VALID" and x.get("backup_class")=="APP_RESTORABLE" and x.get("runtime_files_complete") is True]
-if not rows: raise SystemExit(1)
-bid=rows[0].get("backup_id","");
-if not bid.startswith("drcloud-os-backup-") or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in bid): raise SystemExit(1)
-print(bid)
-PY
-fi
-backup_id="$(cat "$work/selection")"
 mkdir -m 700 "$work/source"
 docker compose cp -L "drcloud-os:/data/backups/$backup_id/." "$work/source/" >/dev/null || fail OFFSITE_BACKUP_SOURCE_INVALID
 
@@ -116,6 +116,18 @@ for name in required:
 PY
 
 prepare_restic_source "$work/source" || fail OFFSITE_BACKUP_SOURCE_INVALID
+
+readarray -t source_facts < <("$PYTHON_BIN" - "$work/source/metadata.json" <<'PY'
+import datetime,json,sys
+m=json.load(open(sys.argv[1])); created=m.get("created_at",""); w=m.get("recovery_watermark") or {}
+try: age=max(0,(datetime.datetime.now(datetime.timezone.utc)-datetime.datetime.fromisoformat(created.replace("Z","+00:00"))).total_seconds())
+except Exception: raise SystemExit(1)
+print(m.get("backup_id","")); print(created); print(m.get("data_max_at") or ""); print(w.get("confidence","UNKNOWN")); print(round(age,3))
+PY
+)
+source_backup_id="${source_facts[0]}"; source_backup_created_at="${source_facts[1]}"
+source_data_max_at="${source_facts[2]}"; source_watermark_confidence="${source_facts[3]}"
+source_backup_age_seconds_at_upload="${source_facts[4]}"
 
 if ! restic snapshots --json >/dev/null 2>&1; then
   # init is safe only for a genuinely absent repository; other errors remain failures.

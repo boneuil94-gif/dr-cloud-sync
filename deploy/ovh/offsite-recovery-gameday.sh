@@ -33,6 +33,10 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# Production is consulted read-only for measurement, never as restore input.
+live_watermark="$work/live-watermark.json"
+docker compose exec -T drcloud-os dr-cloud-sync recovery-watermark --json >"$live_watermark" 2>/dev/null || printf '{}\n' >"$live_watermark"
+
 export RESTIC_REPOSITORY="$OFFSITE_RESTIC_REPOSITORY" RESTIC_PASSWORD="$OFFSITE_RESTIC_PASSWORD"
 export AWS_ACCESS_KEY_ID="$OFFSITE_S3_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$OFFSITE_S3_SECRET_ACCESS_KEY"
 export AWS_DEFAULT_REGION="$OFFSITE_S3_REGION" AWS_REGION="$OFFSITE_S3_REGION"
@@ -75,7 +79,7 @@ dbp=os.path.join(root,"drcloud.db")
 with sqlite3.connect(f"file:{dbp}?mode=ro",uri=True) as db:
  quick=db.execute("pragma quick_check").fetchone()[0]; integrity=db.execute("pragma integrity_check").fetchone()[0]; foreign=list(db.execute("pragma foreign_key_check"))
 if quick!="ok" or integrity!="ok" or foreign: raise SystemExit(1)
-json.dump({"quick_check":quick,"integrity_check":integrity,"foreign_key_check":"OK","created_at":manifest.get("created_at"),"data_max_at":manifest.get("data_max_at")},open(out,"w"))
+json.dump({"quick_check":quick,"integrity_check":integrity,"foreign_key_check":"OK","created_at":manifest.get("created_at"),"data_max_at":manifest.get("data_max_at"),"recovery_watermark":manifest.get("recovery_watermark")},open(out,"w"))
 PY
 
 image="$(docker inspect --format '{{.Config.Image}}' "$(docker compose ps -q drcloud-os)")"
@@ -108,20 +112,23 @@ PY
 
 report="$DRCLOUD_DEPLOYMENT_STATE_DIR/offsite_recovery_evidence_production.json"
 ended_epoch="$(date +%s)"; completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-"$PYTHON_BIN" - "$facts" "$report" "$snapshot" "$started_at" "$completed_at" "$((ended_epoch-started_epoch))" <<'PY'
+PYTHONPATH="$repo/src${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON_BIN" - "$facts" "$report" "$snapshot" "$started_at" "$completed_at" "$((ended_epoch-started_epoch))" "$live_watermark" <<'PY'
 import datetime,json,os,re,sys
+from dr_cloud_sync.recovery_watermark import compare_recovery_watermarks
 facts=json.load(open(sys.argv[1])); out=sys.argv[2]
-data_max=facts.pop("data_max_at",None); created=facts.pop("created_at",None)
-rpo=None
-if data_max or created:
- try: rpo=max(0,(datetime.datetime.now(datetime.timezone.utc)-datetime.datetime.fromisoformat((data_max or created).replace("Z","+00:00"))).total_seconds())
+data_max=facts.pop("data_max_at",None); created=facts.pop("created_at",None); backup_watermark=facts.pop("recovery_watermark",None)
+try: live=json.load(open(sys.argv[7])); comparison=compare_recovery_watermarks(live,backup_watermark)
+except Exception: live={}; comparison={"confidence":"UNKNOWN","observed_rpo_seconds":None,"comparable_sources":0,"unmeasurable_sources":0,"business_data_gap_seconds":None,"sync_progress_gap_seconds":None}
+rpo=comparison.get("observed_rpo_seconds")
+if not backup_watermark and created:
+ try: rpo=max(0,(datetime.datetime.now(datetime.timezone.utc)-datetime.datetime.fromisoformat(created.replace("Z","+00:00"))).total_seconds())
  except Exception: pass
 d={"schema_version":1,"environment":"production","evidence_level":"OFFSITE_ENCRYPTED_BACKUP_RESTORE",
  "backup":{"source_result":"PRODUCTION_BACKUP_VALID","offsite_upload":"OFFSITE_UPLOAD_PROVEN","encryption":"RESTIC_CLIENT_SIDE_ENCRYPTED","location_classification":"OFF_HOST_OBJECT_STORAGE"},
  "remote":{"snapshot_available":True,"integrity":"PASS","snapshot":sys.argv[3]},
  "restore":{"result":"OFFSITE_RESTORE_PROVEN","app_boot":"APP_BOOT_OK","health":"HEALTH_OK",**facts},
- "timing":{"started_at":sys.argv[4],"completed_at":sys.argv[5],"observed_restore_seconds":int(sys.argv[6]),"observed_rpo_seconds":round(rpo,3) if rpo is not None else None,"rpo_basis":"business_data_max_at" if data_max else "backup_created_at_proxy","rpo_confidence":"HIGH" if data_max else "LOW"},
- "safety":{"safe_mode":True,"external_provider_auth":"NONE","production_volume_mounted":False,"production_port_published":False,"local_backup_used_for_restore":False,"cloud_material_persisted":False,"network":"INTERNAL_ONLY"}}
+ "timing":{"started_at":sys.argv[4],"completed_at":sys.argv[5],"observed_restore_seconds":int(sys.argv[6]),"live_watermark_available":bool(live.get("schema_version")),"backup_watermark_available":bool(backup_watermark),"comparable_sources":comparison.get("comparable_sources",0),"unmeasurable_sources":comparison.get("unmeasurable_sources",0),"business_data_gap_seconds":comparison.get("business_data_gap_seconds"),"sync_progress_gap_seconds":comparison.get("sync_progress_gap_seconds"),"observed_rpo_seconds":round(rpo,3) if rpo is not None else None,"rpo_method":"live_vs_backup_source_watermarks" if backup_watermark else "backup_created_at_proxy","rpo_confidence":comparison.get("confidence") if backup_watermark else "LOW"},
+ "safety":{"safe_mode":True,"external_provider_auth":"NONE","production_volume_mounted":False,"production_port_published":False,"local_backup_used_for_restore":False,"live_watermark_used_for_measurement_only":True,"cloud_material_persisted":False,"network":"INTERNAL_ONLY"}}
 forbidden=("password","secret","token","credential","api_key","private_key","authorization")
 def scan(v):
  if isinstance(v,dict):

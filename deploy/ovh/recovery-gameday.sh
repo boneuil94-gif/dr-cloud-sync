@@ -14,6 +14,7 @@ script_dir="$(cd -P -- "$(dirname "$0")" && pwd)"
 repo="/opt/drcloud-os"
 [[ -d "$repo/.git" ]] || repo="$(git -C "$script_dir" rev-parse --show-toplevel)"
 source "$repo/deploy/ovh/deployment-environment.sh"
+export PYTHONPATH="$repo/src${PYTHONPATH:+:$PYTHONPATH}"
 cd "$repo/deploy/ovh"
 
 lock_file="${DRCLOUD_RECOVERY_LOCK:-/tmp/drcloud-os-recovery-gameday.lock}"
@@ -58,6 +59,11 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# Measurement reference only: this read-only command runs before any restore
+# selection/copy and its output is never accepted as restore input.
+live_watermark="$work/live-watermark.json"
+docker compose exec -T drcloud-os dr-cloud-sync recovery-watermark --json >"$live_watermark" 2>/dev/null || printf '{}\n' >"$live_watermark"
+
 status_json="$work/backup-status.json"
 production_backup_status() {
   docker compose exec -T drcloud-os dr-cloud-sync backup-status --json >"$status_json"
@@ -80,7 +86,7 @@ if not rows:
     print("PRODUCTION_BACKUP_INVALID" if d.get("backups") else "PRODUCTION_BACKUP_MISSING",file=sys.stderr); raise SystemExit(1)
 r=rows[0]
 if not r.get("database","/").startswith("/data/backups/"): raise SystemExit("unsafe backup location")
-json.dump({k:r.get(k) for k in ("backup_id","created_at","size_bytes","sha256","schema_fingerprint","database","backup_class","runtime_files_complete")},open(sys.argv[2],"w"))
+json.dump({k:r.get(k) for k in ("backup_id","created_at","size_bytes","sha256","schema_fingerprint","database","backup_class","runtime_files_complete","data_max_at","watermark_confidence","watermark_coverage")},open(sys.argv[2],"w"))
 PY
 backup_id="$("$PYTHON_BIN" -c 'import json,sys; print(json.load(open(sys.argv[1]))["backup_id"])' "$selection")"
 backup_selected_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -101,8 +107,9 @@ chmod 600 "$work/restored-data/drcloud.db" "$work/restored-data/catalogue.json" 
 restore_completed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 timings="$work/timings.json"
-if ! "$PYTHON_BIN" - "$selection" "$work/bundle/metadata.json" "$work/restored-data" "$timings" <<'PY'
+if ! "$PYTHON_BIN" - "$selection" "$work/bundle/metadata.json" "$work/restored-data" "$timings" "$live_watermark" <<'PY'
 import datetime,hashlib,json,os,sqlite3,sys,time
+from dr_cloud_sync.recovery_watermark import compare_recovery_watermarks
 selection=json.load(open(sys.argv[1])); manifest=json.load(open(sys.argv[2])); restored=sys.argv[3]; db_path=os.path.join(restored,"drcloud.db")
 if manifest.get("backup_id") != selection["backup_id"]: raise SystemExit("manifest mismatch")
 required=["drcloud.db","catalogue.json","catalogue-report.json"]
@@ -134,16 +141,22 @@ with sqlite3.connect(f"file:{db_path}?mode=ro",uri=True) as db:
 fingerprint=hashlib.sha256(schema.encode()).hexdigest()
 if quick!="ok" or integrity!="ok" or foreign or fingerprint != selection["schema_fingerprint"] or fingerprint != manifest.get("schema_fingerprint"):
     raise SystemExit("integrity/schema validation failed")
-created=manifest.get("created_at"); now=datetime.datetime.now(datetime.timezone.utc)
-data_max=manifest.get("data_max_at")
-reference=data_max or created
-try: rpo=max(0,(now-datetime.datetime.fromisoformat(reference.replace("Z","+00:00"))).total_seconds())
-except Exception: rpo=None
+created=manifest.get("created_at"); data_max=manifest.get("data_max_at"); backup_watermark=manifest.get("recovery_watermark")
+try: live_watermark=json.load(open(sys.argv[5])); comparison=compare_recovery_watermarks(live_watermark,backup_watermark)
+except Exception: live_watermark={}; comparison={"confidence":"UNKNOWN","observed_rpo_seconds":None,"comparable_sources":0,"unmeasurable_sources":0,"business_data_gap_seconds":None,"sync_progress_gap_seconds":None}
+rpo=comparison.get("observed_rpo_seconds")
+if not backup_watermark:
+ try: rpo=max(0,(datetime.datetime.now(datetime.timezone.utc)-datetime.datetime.fromisoformat(created.replace("Z","+00:00"))).total_seconds())
+ except Exception: rpo=None
 json.dump({"integrity_check":"ok","foreign_key_check":"OK","quick_check":"ok","schema_fingerprint":fingerprint,
  "database_size":len(raw),"table_count":len(tables),"index_count":indexes,"table_counts":counts,
  "data_min_at":None,"data_max_at":data_max,"observed_rpo_seconds":round(rpo,3) if rpo is not None else None,
  "observed_rpo_human":f"{int(rpo)}s" if rpo is not None else "UNKNOWN",
- "rpo_method":"business_data_max_at" if data_max else "backup_created_at","rpo_confidence":"HIGH" if data_max else "LOW"},open(sys.argv[4],"w"))
+ "live_watermark_available":bool(live_watermark.get("schema_version")),"backup_watermark_available":bool(backup_watermark),
+ "comparable_sources":comparison.get("comparable_sources",0),"unmeasurable_sources":comparison.get("unmeasurable_sources",0),
+ "business_data_gap_seconds":comparison.get("business_data_gap_seconds"),"sync_progress_gap_seconds":comparison.get("sync_progress_gap_seconds"),
+ "rpo_method":"live_vs_backup_source_watermarks" if backup_watermark else "backup_created_at_proxy",
+ "rpo_confidence":comparison.get("confidence") if backup_watermark else "LOW"},open(sys.argv[4],"w"))
 PY
 then
   echo "RESTORE_RUNTIME_STATE_INVALID" >&2
@@ -287,7 +300,7 @@ report={"schema_version":1,"environment":"production","evidence_level":"PRODUCTI
         "health_duration":duration("app_started_at","health_ok_at"),"business_validation_duration":duration("health_ok_at","business_validation_completed_at"),
         "observed_rto_seconds":rto,"observed_rto_human":f"{int(rto)}s"},
  "rollback":{"evidence_level":"OVH_EQUIVALENT_ROLLBACK" if sys.argv[6]=="ROLLBACK_PROVEN" else "NOT_PROVEN","environment":"OVH_EQUIVALENT_STAGING",**(json.load(open(sys.argv[9])) if len(sys.argv)>9 else {"result":sys.argv[6],"n":sys.argv[7] or None,"n_minus_1":sys.argv[8] or None,"schema_compatibility":"UNKNOWN"})},
- "safety":{"safe_mode":True,"external_provider_auth":"NONE","production_database_target":False,"production_volume_mounted":False,"network":"INTERNAL_ONLY","network_exposure":"NONE","production_port_published":False}}
+ "safety":{"safe_mode":True,"external_provider_auth":"NONE","production_database_target":False,"live_database_used_for_restore":False,"live_watermark_used_for_measurement_only":True,"production_volume_mounted":False,"network":"INTERNAL_ONLY","network_exposure":"NONE","production_port_published":False}}
 forbidden=("password","secret","token","credential","api_key","private_key","authorization")
 def scan(v):
  if isinstance(v,dict):
