@@ -33,16 +33,27 @@ def test_production_data_proof_selects_only_sanitized_source_fields():
     assert "PRODUCTION_DATA_EVIDENCE_SENSITIVE_VALUE" in SCRIPT
 
 
-def test_production_data_proof_distinguishes_configuration_from_operational_wiring():
+def test_production_data_proof_distinguishes_direct_derived_and_unwired_sources():
     assert '"SELECT source_id, count(*) FROM sync_jobs GROUP BY source_id"' in SCRIPT
+    assert 'DERIVED_SOURCE_PARENTS = {' in SCRIPT
+    assert '"sumup_fees": "sumup_transactions"' in SCRIPT
+    assert '"sumup_refunds": "sumup_transactions"' in SCRIPT
+    assert '"sumup_chargebacks": "sumup_transactions"' in SCRIPT
     assert 'item["registered_jobs"]' in SCRIPT
+    assert 'item["derived_from_source_id"]' in SCRIPT
+    assert 'item["derived_parent_registered_jobs"]' in SCRIPT
+    assert 'classification = "DERIVED_FROM_SOURCE"' in SCRIPT
     assert 'classification = "UNWIRED"' in SCRIPT
     assert 'classification = "LOCAL_ROWS_MEASURED_TIMESTAMP_UNKNOWN"' in SCRIPT
     assert '"operationally_wired_sources": len(wired)' in SCRIPT
+    assert '"directly_wired_sources": len(direct_wired)' in SCRIPT
+    assert '"derived_sources": len(derived)' in SCRIPT
+    assert '"derived_source_ids": [row["source_id"] for row in derived]' in SCRIPT
     assert '"unwired_sources": len(unwired)' in SCRIPT
     assert '"unwired_source_ids": [row["source_id"] for row in unwired]' in SCRIPT
     assert 'row["classification"] != "UNWIRED"' in SCRIPT
-    assert 'classification in {"DISABLED", "NOT_CONFIGURED", "UNWIRED", "NO_DATA"}' in SCRIPT
+    assert '"DERIVED_FROM_SOURCE",' in SCRIPT
+    assert '"schema_version": 3' in SCRIPT
 
 
 def test_production_data_proof_prepares_deployment_environment_before_compose():

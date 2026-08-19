@@ -2,9 +2,9 @@
 
 ``data_sources`` defines which business sources exist and whether they are enabled.
 For a small, explicit allow-list of durable local ledgers, recovery measurement
-uses committed business timestamps/counts from the SQLite snapshot itself.  This
-avoids treating sync-control metadata as business progress while keeping the
-contract reviewable and fail-closed.
+uses committed business timestamps/counts from the SQLite snapshot itself.  Some
+source rows are explicit derived projections of a parent source; they are kept in
+evidence but never counted as independent RPO obligations.
 """
 from __future__ import annotations
 
@@ -27,6 +27,15 @@ DURABLE_LEDGER_PROJECTIONS = {
     "sumup_transactions": ("sumup_transactions", "timestamp", None),
 }
 
+# These are not independent provider feeds. They are materialised while the
+# transaction-detail sync imports ``sumup_transactions``. Counting them as
+# separate RPO sources would overstate missing coverage and imply fake jobs.
+DERIVED_SOURCE_PARENTS = {
+    "sumup_fees": "sumup_transactions",
+    "sumup_refunds": "sumup_transactions",
+    "sumup_chargebacks": "sumup_transactions",
+}
+
 
 def _iso(value: object) -> str | None:
     if not isinstance(value, str) or not value:
@@ -46,6 +55,8 @@ def _classification(row: dict) -> str:
         return "DISABLED"
     if status in {"NOT_CONFIGURED", "UNCONFIGURED"}:
         return "NOT_CONFIGURED"
+    if row.get("derived_from"):
+        return "DERIVED"
     records = row.get("records_available")
     if records is None:
         return "UNMEASURABLE"
@@ -146,11 +157,17 @@ def capture_recovery_watermark(database: Path, *, captured_at=None,
     for row in rows:
         clean = {key: row.get(key) for key in SAFE_COLUMNS}
         clean["enabled"] = bool(clean["enabled"])
-        projection = projections.get(str(clean["source_id"]))
-        if projection is not None:
-            clean.update(projection)
+        source_id = str(clean["source_id"])
+        derived_from = DERIVED_SOURCE_PARENTS.get(source_id)
+        if derived_from:
+            clean["derived_from"] = derived_from
+            clean["watermark_origin"] = "DERIVED_FROM_PARENT"
         else:
-            clean["watermark_origin"] = "DATA_SOURCE_CONTROL_PLANE"
+            projection = projections.get(source_id)
+            if projection is not None:
+                clean.update(projection)
+            else:
+                clean["watermark_origin"] = "DATA_SOURCE_CONTROL_PLANE"
         clean["classification"] = _classification(clean)
         # Canonicalise valid timestamps; preserve invalid values solely so the
         # explicit INVALID_TIMESTAMP classification remains auditable.
@@ -158,7 +175,8 @@ def capture_recovery_watermark(database: Path, *, captured_at=None,
             if clean[key] is not None and _iso(clean[key]):
                 clean[key] = _iso(clean[key])
         sources.append(clean)
-    eligible = [s for s in sources if s["classification"] not in {"DISABLED", "NOT_CONFIGURED", "NO_DATA"}]
+    ignored = {"DISABLED", "NOT_CONFIGURED", "NO_DATA", "DERIVED"}
+    eligible = [s for s in sources if s["classification"] not in ignored]
     measured = [s for s in eligible if s["classification"] == "ELIGIBLE"]
     missing = len(eligible) - len(measured)
     aggregate = max((s["data_max_at"] for s in measured), default=None)
@@ -169,7 +187,8 @@ def capture_recovery_watermark(database: Path, *, captured_at=None,
             "coverage": {"eligible_sources": len(eligible),
                          "measured_sources": len(measured),
                          "missing_data_max_sources": missing,
-                         "durable_ledger_sources": len(projections)},
+                         "durable_ledger_sources": len(projections),
+                         "derived_sources": sum(s["classification"] == "DERIVED" for s in sources)},
             "sources": sources}
 
 
@@ -185,10 +204,11 @@ def validate_recovery_watermark(value: object) -> bool:
 
 
 def compare_recovery_watermarks(live: dict, backup: dict) -> dict:
-    """Compare business progress; the maximum per-source lag is observed RPO.
+    """Compare independent business progress; max per-source lag is observed RPO.
 
     Count growth without comparable timestamps is reported, never converted to
-    a zero-second RPO. NOT_CONFIGURED, DISABLED and NO_DATA sources are neutral.
+    a zero-second RPO. NOT_CONFIGURED, DISABLED, NO_DATA and DERIVED sources are
+    neutral because a derived projection inherits its parent source's RPO.
     """
     base = {"comparable_sources": 0, "unmeasurable_sources": 0,
             "business_data_gap_seconds": None, "sync_progress_gap_seconds": None,
@@ -196,7 +216,7 @@ def compare_recovery_watermarks(live: dict, backup: dict) -> dict:
             "confidence": "UNKNOWN"}
     if not (validate_recovery_watermark(live) and validate_recovery_watermark(backup)):
         return base
-    ignored = {"DISABLED", "NOT_CONFIGURED", "NO_DATA"}
+    ignored = {"DISABLED", "NOT_CONFIGURED", "NO_DATA", "DERIVED"}
     live_sources = {s.get("source_id"): s for s in live["sources"] if s.get("classification") not in ignored}
     old_sources = {s.get("source_id"): s for s in backup["sources"] if s.get("classification") not in ignored}
     gaps, sync_gaps = [], []
