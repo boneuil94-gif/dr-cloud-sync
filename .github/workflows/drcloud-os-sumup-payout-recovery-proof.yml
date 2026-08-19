@@ -1,0 +1,123 @@
+name: DrCloud OS SumUp payout recovery proof
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["DrCloud OS Production"]
+    types: [completed]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: drcloud-os-sumup-payout-recovery-proof
+  cancel-in-progress: false
+
+jobs:
+  recovery:
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          (github.event.workflow_run.conclusion == 'success' &&
+           github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check out reviewed main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.OVH_SSH_PRIVATE_KEY }}
+          SSH_HOST_KEYS: ${{ secrets.OVH_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/drcloud_deploy
+          printf '%s\n' "$SSH_HOST_KEYS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/drcloud_deploy ~/.ssh/known_hosts
+
+      - name: Execute narrow payout recovery proof
+        id: recovery
+        continue-on-error: true
+        env:
+          OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
+          OVH_SSH_PORT: ${{ secrets.OVH_SSH_PORT }}
+          OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          script="/tmp/drcloud-sumup-payout-recovery-${RUN_ID}.sh"
+          cleanup_remote() {
+            ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" "$OVH_SSH_USER@$OVH_SSH_HOST" "rm -f -- '$script'" >/dev/null 2>&1 || true
+          }
+          trap cleanup_remote EXIT INT TERM
+          scp -q -i ~/.ssh/drcloud_deploy -P "${OVH_SSH_PORT:-22}" deploy/ovh/sumup-payout-recovery-proof.sh "$OVH_SSH_USER@$OVH_SSH_HOST:$script"
+          ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" "$OVH_SSH_USER@$OVH_SSH_HOST" "chmod 700 '$script' && '$script'" > sumup_payout_recovery_evidence.json
+          cleanup_remote
+          trap - EXIT INT TERM
+
+      - name: Upload sanitized evidence
+        if: always() && hashFiles('sumup_payout_recovery_evidence.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: drcloud-sumup-payout-recovery-${{ github.run_id }}
+          path: sumup_payout_recovery_evidence.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce recovery proof
+        id: enforce
+        if: always()
+        env:
+          RECOVERY_OUTCOME: ${{ steps.recovery.outcome }}
+        run: |
+          test "$RECOVERY_OUTCOME" = success
+          python - <<'PY'
+          import json
+          p=json.load(open("sumup_payout_recovery_evidence.json"))
+          assert p["result"] == "SUMUP_PAYOUT_RECOVERY_PROVEN"
+          assert p["source"]["source_id"] == "sumup_payouts"
+          assert p["source"]["after_status"] == "CONNECTED"
+          assert p["ledger"]["nondecreasing"] is True
+          assert p["safety"]["provider_method"] == "GET_ONLY"
+          assert p["safety"]["provider_mutations"] is False
+          assert p["safety"]["raw_provider_payload_in_evidence"] is False
+          assert p["safety"]["credentials_in_evidence"] is False
+          if p["action"] == "RETRY_EXECUTED":
+              assert p["source"]["after_last_success_at"]
+              assert p["source"]["after_records_available"] == p["ledger"]["after_records"]
+          PY
+
+      - name: Index this run for connector discovery
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ENFORCE_OUTCOME: ${{ steps.enforce.outcome }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request
+          conclusion = "success" if os.environ.get("ENFORCE_OUTCOME") == "success" else "failure"
+          payload = {
+              "schema_version": 1,
+              "workflow": "DrCloud OS SumUp payout recovery proof",
+              "run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "run_number": int(os.environ["GITHUB_RUN_NUMBER"]),
+              "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "status": "completed",
+              "conclusion": conclusion,
+              "event": os.environ["GITHUB_EVENT_NAME"],
+              "head_branch": os.environ.get("GITHUB_REF_NAME"),
+              "head_sha": os.environ["GITHUB_SHA"],
+              "run_url": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+          }
+          body = "<!-- drcloud-run-index -->\n```json\n" + json.dumps(payload, sort_keys=True) + "\n```"
+          req = urllib.request.Request(
+              f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/issues/170/comments",
+              data=json.dumps({"body": body}).encode(),
+              method="POST",
+              headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}", "Accept": "application/vnd.github+json"},
+          )
+          with urllib.request.urlopen(req, timeout=20) as response:
+              assert response.status == 201
+          PY

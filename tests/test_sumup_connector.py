@@ -4,8 +4,9 @@ from decimal import Decimal
 from urllib.error import HTTPError,URLError
 import pytest
 
-from dr_cloud_sync.sumup import (PAYOUT_COLUMNS, PaymentSettlementLedger, SumUpError,
-                                 SumUpProvider, SumUpTransactionLedger, _payout_values)
+from dr_cloud_sync.sumup import (PAYOUT_COLUMNS, PAYOUT_MAX_LIMIT, PaymentSettlementLedger,
+                                 SumUpError, SumUpProvider, SumUpTransactionLedger,
+                                 _payout_values)
 
 class Response(io.BytesIO):
  def __enter__(self):return self
@@ -122,13 +123,50 @@ def test_sensitive_card_material_is_never_persisted(tmp_path):
  raw=ledger.db.execute("select raw_json from sumup_transactions").fetchone()[0]
  assert "4111111111111111" not in raw and '123' not in raw and 'token' not in raw
 
-def test_payout_dates_are_mandatory_and_more_than_100_is_paginated():
- first={"items":[{"id":f"p{i}","date":"2026-01-01"} for i in range(100)]}
- p,calls=provider([first,{"items":[]}],page_size=100)
- page=p.payouts(start_date="2026-01-01",end_date="2026-01-31")
- assert page.next_cursor and "start_date=2026-01-01" in calls[0].full_url and "end_date=2026-01-31" in calls[0].full_url
- p.payouts(page.next_cursor)
- assert "offset=100" in calls[1].full_url
+def test_payout_contract_uses_documented_limit_order_and_no_offset():
+ p,calls=provider([[{"id":"p1","date":"2026-01-01","amount":1}]])
+ page=p.payouts(start_date="2026-01-01",end_date="2026-01-01")
+ assert len(page.rows)==1 and page.next_cursor is None
+ url=calls[0].full_url
+ assert "start_date=2026-01-01" in url and "end_date=2026-01-01" in url
+ assert f"limit={PAYOUT_MAX_LIMIT}" in url and "order=asc" in url and "format=json" in url
+ assert "offset=" not in url
+
+def test_payout_windows_advance_without_inclusive_boundary_overlap():
+ p,calls=provider([[{"id":"p1","date":"2026-01-02"}],[{"id":"p2","date":"2026-01-04"}]],window_days=2)
+ first=p.payouts(start_date="2026-01-01",end_date="2026-01-04")
+ assert "start_date=2026-01-01" in calls[0].full_url and "end_date=2026-01-02" in calls[0].full_url
+ second=p.payouts(first.next_cursor)
+ assert "start_date=2026-01-03" in calls[1].full_url and "end_date=2026-01-04" in calls[1].full_url
+ assert second.next_cursor is None and all("offset=" not in call.full_url for call in calls)
+
+def test_saturated_multi_day_payout_window_is_split_before_data_is_returned():
+ saturated=[{"id":f"p{i}","date":"2026-01-01"} for i in range(PAYOUT_MAX_LIMIT)]
+ p,calls=provider([saturated,[{"id":"safe","date":"2026-01-01"}]],window_days=4)
+ page=p.payouts(start_date="2026-01-01",end_date="2026-01-04")
+ assert [row["id"] for row in page.rows]==["safe"]
+ assert "start_date=2026-01-01" in calls[0].full_url and "end_date=2026-01-04" in calls[0].full_url
+ assert "start_date=2026-01-01" in calls[1].full_url and "end_date=2026-01-02" in calls[1].full_url
+ assert all("offset=" not in call.full_url for call in calls)
+ state=json.loads(page.next_cursor)
+ assert state["start"]=="2026-01-03" and state["final"]=="2026-01-04"
+
+def test_saturated_single_day_payout_window_fails_closed():
+ saturated=[{"id":f"p{i}","date":"2026-01-01"} for i in range(PAYOUT_MAX_LIMIT)]
+ p,calls=provider([saturated])
+ with pytest.raises(SumUpError) as caught:
+  p.payouts(start_date="2026-01-01",end_date="2026-01-01")
+ assert caught.value.diagnostic["stage"]=="pagination"
+ assert caught.value.diagnostic["category"]=="VALIDATION"
+ assert len(calls)==1 and "offset=" not in calls[0].full_url
+
+def test_payout_sync_reports_durable_records_available(tmp_path):
+ p,_=provider([[{"id":"p1","date":"2026-01-01","amount":"9.7","currency":"EUR","fee":".3","status":"SUCCESSFUL"}]])
+ ledger=PaymentSettlementLedger(tmp_path/"db.sqlite")
+ result=ledger.sync(p,start_date="2026-01-01",end_date="2026-01-01")
+ assert result["rows_imported"]==1
+ assert result["records_available"]==1
+ assert result["cursor"] is None
 
 def test_404_is_non_retryable_and_classified():
  p,_=provider([HTTPError("https://api.sumup.com",404,"missing",{},io.BytesIO())])
