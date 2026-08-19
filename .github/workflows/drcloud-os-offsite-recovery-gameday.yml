@@ -2,6 +2,9 @@ name: DrCloud OS remote-only recovery Game Day
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ["DrCloud OS encrypted offsite backup"]
+    types: [completed]
 permissions:
   contents: read
 concurrency:
@@ -9,6 +12,10 @@ concurrency:
   cancel-in-progress: false
 jobs:
   recovery:
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          (github.event.workflow_run.conclusion == 'success' &&
+           github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-latest
     environment: production
     steps:
