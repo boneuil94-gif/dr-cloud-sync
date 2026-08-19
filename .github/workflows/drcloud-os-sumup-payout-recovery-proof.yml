@@ -11,7 +11,9 @@ permissions:
   issues: write
 
 concurrency:
-  group: drcloud-os-sumup-payout-recovery-proof
+  # Serialize with the production deployment workflow so /opt/drcloud-os cannot
+  # move to another SHA while this proof is running.
+  group: drcloud-os-production
   cancel-in-progress: false
 
 jobs:
@@ -23,10 +25,12 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Check out reviewed main
+      - name: Check out exact reviewed deployment SHA
         uses: actions/checkout@v4
         with:
-          ref: main
+          # For workflow_run, the production workflow deployed this exact SHA.
+          # Manual dispatch stays pinned to the commit that started this run.
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Configure SSH
         env:
@@ -94,12 +98,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ENFORCE_OUTCOME: ${{ steps.enforce.outcome }}
+          REVIEWED_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          TRIGGER_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || '' }}
         run: |
           python - <<'PY'
           import json, os, urllib.request
           conclusion = "success" if os.environ.get("ENFORCE_OUTCOME") == "success" else "failure"
           payload = {
-              "schema_version": 1,
+              "schema_version": 2,
               "workflow": "DrCloud OS SumUp payout recovery proof",
               "run_id": int(os.environ["GITHUB_RUN_ID"]),
               "run_number": int(os.environ["GITHUB_RUN_NUMBER"]),
@@ -108,9 +114,12 @@ jobs:
               "conclusion": conclusion,
               "event": os.environ["GITHUB_EVENT_NAME"],
               "head_branch": os.environ.get("GITHUB_REF_NAME"),
-              "head_sha": os.environ["GITHUB_SHA"],
+              "head_sha": os.environ["REVIEWED_SHA"],
               "run_url": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
           }
+          trigger_run_id = os.environ.get("TRIGGER_RUN_ID")
+          if trigger_run_id:
+              payload["trigger_run_id"] = int(trigger_run_id)
           body = "<!-- drcloud-run-index -->\n```json\n" + json.dumps(payload, sort_keys=True) + "\n```"
           req = urllib.request.Request(
               f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/issues/170/comments",
