@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 import hashlib, hmac, json, re, secrets, sqlite3, uuid
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,12 @@ ROLE_PERMISSIONS = {
     "READ_ONLY": {"catalogue.read", "crm.read", "crm.customer.read", "crm.segment.read", "crm.loyalty.read", "crm.campaign.read", "stock.read", "sales.read", "purchasing.read", "marketing.read", "marketing.calendar.read", "marketing.campaigns.read", "marketing.analytics.read", "marketing.learning.read", "social.read"},
 }
 SENSITIVE = re.compile(r"(?i)(password|passwd|secret|token|api.?key|authorization|cookie|credential)")
+
+class PasswordHashPolicy(str, Enum):
+    """Classification of a stored hash without exposing any hash material."""
+    CURRENT = "CURRENT"
+    LEGACY_VALID = "LEGACY_VALID"
+    INVALID = "INVALID"
 
 @dataclass(frozen=True)
 class SettingDefinition:
@@ -71,7 +78,21 @@ def hash_password(password: str, *, salt: bytes | None = None) -> str:
     digest=hashlib.pbkdf2_hmac("sha256",password.encode(),salt,PBKDF2_ITERATIONS)
     return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt.hex()}${digest.hex()}"
 
+def password_hash_policy(encoded: str) -> PasswordHashPolicy:
+    """Classify supported PBKDF2 hashes independently of a cleartext secret."""
+    try:
+        algorithm,rounds_text,salt_text,digest_text=encoded.split("$",3)
+        rounds=int(rounds_text)
+        salt=bytes.fromhex(salt_text); digest=bytes.fromhex(digest_text)
+        if (algorithm!="pbkdf2_sha256" or rounds<=0 or len(salt)<16 or
+                len(digest)!=hashlib.sha256().digest_size):
+            return PasswordHashPolicy.INVALID
+    except (AttributeError,ValueError,TypeError):
+        return PasswordHashPolicy.INVALID
+    return PasswordHashPolicy.CURRENT if rounds>=PBKDF2_ITERATIONS else PasswordHashPolicy.LEGACY_VALID
+
 def verify_password(password: str, encoded: str) -> bool:
+    if password_hash_policy(encoded) is PasswordHashPolicy.INVALID: return False
     try:
         algorithm,rounds,salt,expected=encoded.split("$",3)
         if algorithm!="pbkdf2_sha256": return False
@@ -140,7 +161,25 @@ class SecurityStore:
         user=self.user_by_username(username)
         if not user or user["status"]!="ACTIVE": return None
         credential=self.credential(user["user_id"])
-        return user if credential and verify_password(password,credential.password_hash) else None
+        if not credential or not verify_password(password,credential.password_hash): return None
+        if password_hash_policy(credential.password_hash) is PasswordHashPolicy.LEGACY_VALID:
+            self._upgrade_verified_hash(user["user_id"],password,credential.password_hash)
+        return user
+    def _upgrade_verified_hash(self,user_id,password,verified_hash):
+        """Atomically rehash a verified legacy secret without revoking sessions.
+
+        This is a technical work-factor upgrade: ``password_changed_at`` and
+        ``session_version`` retain their user-facing semantics and are unchanged.
+        """
+        new_hash=hash_password(password)
+        with self.db:
+            cursor=self.db.execute(
+                "UPDATE local_credentials SET password_hash=? WHERE account_id=(SELECT credential_ref FROM security_users WHERE user_id=?) AND password_hash=?",
+                (new_hash,user_id,verified_hash),
+            )
+            if cursor.rowcount:
+                self.audit(user_id,"PASSWORD_HASH_UPGRADED","USER",user_id,source="security-authentication",
+                           metadata={"from_policy":"LEGACY_PBKDF2","to_policy":"CURRENT_PBKDF2"})
     def mark_login(self,user_id):
         with self.db: self.db.execute("UPDATE security_users SET last_login_at=?,updated_at=? WHERE user_id=?",(_now(),_now(),user_id))
     def create_user(self,username,display_name,password,roles,actor):
@@ -271,5 +310,5 @@ class CredentialStore:
     def __init__(self,database,bootstrap_password): self.security=SecurityStore(database,"admin",bootstrap_password)
     def get(self): return self.security.credential(ADMIN_ACCOUNT_ID)
     def verify(self,password):
-        c=self.get(); return bool(c and verify_password(password,c.password_hash))
+        return bool(self.security.authenticate("admin",password))
     def change_password(self,current_password,new_password,actor): self.security.change_password(ADMIN_ACCOUNT_ID,current_password,new_password,actor); return self.get().session_version

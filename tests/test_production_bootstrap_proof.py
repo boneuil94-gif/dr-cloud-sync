@@ -12,10 +12,10 @@ ROOT=Path(__file__).parents[1]
 SCRIPT=ROOT/"deploy/ovh/production-bootstrap-proof.sh"
 FAKE_PASSWORD="fixture-only-admin-password"
 
-def password_hash(password=FAKE_PASSWORD):
+def password_hash(password=FAKE_PASSWORD, iterations=600_000):
     salt=b"fixture-salt-123"
-    digest=hashlib.pbkdf2_hmac("sha256",password.encode(),salt,600_000)
-    return f"pbkdf2_sha256$600000${salt.hex()}${digest.hex()}"
+    digest=hashlib.pbkdf2_hmac("sha256",password.encode(),salt,iterations)
+    return f"pbkdf2_sha256${iterations}${salt.hex()}${digest.hex()}"
 
 def fixture(tmp_path, *, env_change=None, mode=0o600, users=None, commit_match=True,
             container_database=False, docker_failure=False):
@@ -74,6 +74,25 @@ esac
 def test_valid_environment_and_hash_produce_safe_evidence(tmp_path):
     result,out,_,_=fixture(tmp_path)
     assert result.returncode==0 and result.stdout=="" and json.loads(out.read_text())["result"]=="PRODUCTION_BOOTSTRAP_PROVEN"
+    assert json.loads(out.read_text())["bootstrap_admin"]["credential_verification"]=="NOT_APPLICABLE"
+
+
+def test_durable_password_may_legitimately_differ_from_bootstrap_seed(tmp_path):
+    users=[("u","proof-admin","ACTIVE","c",password_hash("changed durable password"),True)]
+    result,out,_,_=fixture(tmp_path,users=users)
+    assert result.returncode==0
+    assert json.loads(out.read_text())["bootstrap_admin"]["credential_verification"]=="NOT_APPLICABLE"
+
+
+@pytest.mark.parametrize(("encoded","code"),[
+    (password_hash(iterations=200_000),"BOOTSTRAP_PASSWORD_HASH_LEGACY_WORK_FACTOR"),
+    ("pbkdf2_sha256$broken","BOOTSTRAP_PASSWORD_STORAGE_INVALID"),
+    ("unknown$600000$00$00","BOOTSTRAP_PASSWORD_STORAGE_INVALID"),
+])
+def test_hash_policy_diagnostics_remain_fail_closed(tmp_path,encoded,code):
+    users=[("u","proof-admin","ACTIVE","c",encoded,True)]
+    result,_,_,_=fixture(tmp_path,users=users)
+    assert result.returncode==1 and result.stderr.strip()==code
 
 def test_container_inspection_initializes_required_deployment_environment(tmp_path):
     result,out,_,_=fixture(tmp_path,container_database=True)
