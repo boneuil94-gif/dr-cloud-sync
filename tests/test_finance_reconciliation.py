@@ -14,11 +14,12 @@ def _payout(db, payout_id="p1", amount="100", currency="EUR", reference="BANK RE
 
 def test_exact_reference_amount_currency_matches_one_bank_credit(tmp_path):
     path=tmp_path/'db'; ledger=BankLedger(path)
-    ledger.import_page('qonto',TransactionPage([BankTransaction('a','2026-08-20T10:00:00+00:00',100,'EUR','SumUp payout',external_transaction_id='b1',reference='  bank   ref  ')],None))
+    tx=BankTransaction('a','2026-08-20T10:00:00+00:00',100,'EUR','SumUp payout',external_transaction_id='b1',reference='  bank   ref  ')
+    ledger.import_page('qonto',TransactionPage([tx],None))
     with sqlite3.connect(path) as db: _sumup_schema(db); _payout(db)
     result=reconcile_sumup_payouts_to_bank(path)
     assert result['status']=='MEASURABLE' and result['matched']==1 and result['coverage_ratio']==1
-    assert result['rows']==[{'payout_id':'p1','status':'MATCHED','bank_transaction_id':'bank:'+ledger.fingerprint('qonto',BankTransaction('a','2026-08-20T10:00:00+00:00',100,'EUR','SumUp payout',external_transaction_id='b1',reference='  bank   ref  '))}]
+    assert result['rows']==[{'payout_id':'p1','status':'MATCHED','bank_transaction_id':'bank:'+ledger.fingerprint('qonto',tx)}]
 
 
 def test_missing_reference_never_uses_amount_only_fallback(tmp_path):
@@ -43,6 +44,16 @@ def test_multiple_exact_bank_candidates_are_ambiguous(tmp_path):
     assert result['rows'][0]['reason']=='MULTIPLE_EXACT_BANK_MATCHES'
 
 
+def test_one_bank_credit_cannot_match_multiple_payouts(tmp_path):
+    path=tmp_path/'db'; ledger=BankLedger(path)
+    ledger.import_page('qonto',TransactionPage([BankTransaction('a','2026-08-20T10:00:00+00:00',100,'EUR','one',external_transaction_id='b1',reference='BANK REF')],None))
+    with sqlite3.connect(path) as db:
+        _sumup_schema(db); _payout(db,'p1'); _payout(db,'p2')
+    result=reconcile_sumup_payouts_to_bank(path)
+    assert result['matched']==0 and result['ambiguous']==2 and result['coverage_ratio']==0
+    assert {row['reason'] for row in result['rows']}=={'BANK_CREDIT_CONTENDED'}
+
+
 def test_currency_or_amount_mismatch_stays_unresolved(tmp_path):
     path=tmp_path/'db'; ledger=BankLedger(path)
     ledger.import_page('qonto',TransactionPage([BankTransaction('a','2026-08-20T10:00:00+00:00',99,'EUR','one',external_transaction_id='b1',reference='BANK REF')],None))
@@ -51,9 +62,22 @@ def test_currency_or_amount_mismatch_stays_unresolved(tmp_path):
     assert result['matched']==0 and result['unresolved']==1 and result['rows'][0]['reason']=='NO_EXACT_BANK_MATCH'
 
 
-def test_missing_ledgers_fail_closed_and_empty_payouts_are_no_data(tmp_path):
+def test_non_finite_money_is_unresolved_not_matched_or_crashing(tmp_path):
+    path=tmp_path/'db'; ledger=BankLedger(path)
+    ledger.import_page('qonto',TransactionPage([BankTransaction('a','2026-08-20T10:00:00+00:00',100,'EUR','one',external_transaction_id='b1',reference='BANK REF')],None))
+    with sqlite3.connect(path) as db: _sumup_schema(db); _payout(db,amount='sNaN')
+    result=reconcile_sumup_payouts_to_bank(path)
+    assert result['matched']==0 and result['unresolved']==1
+    assert result['rows'][0]['reason']=='PAYOUT_AMOUNT_OR_CURRENCY_INVALID'
+
+
+def test_missing_ledgers_fail_closed_without_creating_database(tmp_path):
     missing=tmp_path/'missing.db'
     assert reconcile_sumup_payouts_to_bank(missing)['status']=='UNMEASURABLE'
+    assert not missing.exists()
+
+
+def test_empty_payouts_are_no_data(tmp_path):
     path=tmp_path/'empty.db'; BankLedger(path)
     with sqlite3.connect(path) as db: _sumup_schema(db)
     result=reconcile_sumup_payouts_to_bank(path)
