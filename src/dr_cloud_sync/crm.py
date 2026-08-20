@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 from uuid import uuid4
 
+from .crm_suppression import ensure_suppression_schema, is_suppressed
+
 CONSENT_STATES={"GRANTED","DENIED","WITHDRAWN","UNKNOWN","NOT_APPLICABLE"}
 CONSENT_CHANNELS={"EMAIL","SMS","PHONE","POSTAL","SOCIAL","PUSH"}
 QUALITY_STATES={"COMPLETE","PARTIAL","LOW_QUALITY","CONFLICT","ANONYMOUS"}
@@ -105,6 +107,7 @@ class CRMService:
         self.db.row_factory=sqlite3.Row
         with self.db:
             self.db.executescript(SCHEMA)
+            ensure_suppression_schema(self.db)
             self.db.execute("INSERT OR IGNORE INTO crm_rfm_settings VALUES(1,?,?,?)",(json.dumps(DEFAULT_RFM_CONFIG),now(),"system-default"))
             self.db.execute("INSERT OR IGNORE INTO crm_refresh_state(state_id) VALUES(1)")
 
@@ -112,6 +115,8 @@ class CRMService:
         """Idempotently ingest one explicit source identity; names never cause merging."""
         provider=provider.strip().upper(); external_id=str(external_id).strip()
         if not provider or not external_id: raise ValueError("provider and external_id are required")
+        if is_suppressed(self.db,provider,external_id):
+            return {"status":"SUPPRESSED_ERASURE","customer_id":None,"provider":provider,"external_id":None,"ingested":False}
         stamp=now(); email=normalise_email(record.get("email")); phone=normalise_phone(record.get("phone"))
         ref=self.db.execute("SELECT customer_id FROM crm_external_references WHERE provider=? AND external_id=?",(provider,external_id)).fetchone()
         customer_id=ref[0] if ref else None; method="EXTERNAL_REFERENCE"
