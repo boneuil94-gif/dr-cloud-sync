@@ -45,11 +45,16 @@ jobs:
           OFFSITE_RESTIC_PASSWORD: ${{ secrets.OFFSITE_RESTIC_PASSWORD }}
           OFFSITE_S3_ACCESS_KEY_ID: ${{ secrets.OFFSITE_S3_ACCESS_KEY_ID }}
           OFFSITE_S3_SECRET_ACCESS_KEY: ${{ secrets.OFFSITE_S3_SECRET_ACCESS_KEY }}
+          # Human-approved retention policy. The remote script validates these
+          # values before invoking `restic forget --prune`.
+          OFFSITE_RESTIC_KEEP_DAILY: "7"
+          OFFSITE_RESTIC_KEEP_WEEKLY: "4"
+          OFFSITE_RESTIC_KEEP_MONTHLY: "12"
           RUN_ID: ${{ github.run_id }}
         run: |
           python - <<'PY'
           import os,shlex
-          names=("DRCLOUD_RESTIC_IMAGE","OFFSITE_RESTIC_REPOSITORY","OFFSITE_S3_REGION","OFFSITE_S3_ENDPOINT","OFFSITE_RESTIC_PASSWORD","OFFSITE_S3_ACCESS_KEY_ID","OFFSITE_S3_SECRET_ACCESS_KEY")
+          names=("DRCLOUD_RESTIC_IMAGE","OFFSITE_RESTIC_REPOSITORY","OFFSITE_S3_REGION","OFFSITE_S3_ENDPOINT","OFFSITE_RESTIC_PASSWORD","OFFSITE_S3_ACCESS_KEY_ID","OFFSITE_S3_SECRET_ACCESS_KEY","OFFSITE_RESTIC_KEEP_DAILY","OFFSITE_RESTIC_KEEP_WEEKLY","OFFSITE_RESTIC_KEEP_MONTHLY")
           with open("offsite-runtime.env","w") as f:
               for n in names: f.write(f"export {n}={shlex.quote(os.environ.get(n,''))}\n")
           PY
