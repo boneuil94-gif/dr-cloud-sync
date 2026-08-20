@@ -1,11 +1,12 @@
 """Read-only, fail-closed reconciliation between SumUp payouts and bank credits.
 
 A payout is only MATCHED when one and only one booked bank credit has the same
-currency, exact decimal amount and exact normalized provider reference. Missing
-or ambiguous references remain explicitly unresolved; no fuzzy matching is used.
+currency, exact decimal amount and exact normalized provider reference. Missing,
+malformed or contended matches remain unresolved/ambiguous; no fuzzy matching is used.
 """
 from __future__ import annotations
 
+from collections import Counter
 from decimal import Decimal, InvalidOperation
 import sqlite3
 from pathlib import Path
@@ -18,27 +19,37 @@ def _norm_reference(value: object) -> str | None:
 
 def _money(value: object) -> Decimal | None:
     try:
-        return Decimal(str(value))
+        amount = Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError):
         return None
+    return amount if amount.is_finite() else None
+
+
+def _unmeasurable(reason: str) -> dict:
+    return {
+        "status": "UNMEASURABLE",
+        "reason": reason,
+        "payouts_total": None,
+        "matched": None,
+        "unresolved": None,
+        "ambiguous": None,
+    }
 
 
 def reconcile_sumup_payouts_to_bank(path: Path | str, *, bank_provider: str = "qonto") -> dict:
-    """Return sanitized reconciliation facts without mutating the durable ledger."""
-    db = sqlite3.connect(Path(path))
+    """Return sanitized reconciliation facts without mutating or creating a ledger."""
+    ledger_path = Path(path)
+    if not ledger_path.is_file():
+        return _unmeasurable("REQUIRED_LEDGER_MISSING")
+
+    # mode=ro enforces the function's read-only contract at SQLite level.
+    db = sqlite3.connect(f"{ledger_path.resolve().as_uri()}?mode=ro", uri=True)
     db.row_factory = sqlite3.Row
     try:
         tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         required = {"sumup_payouts", "bank_transactions"}
         if not required <= tables:
-            return {
-                "status": "UNMEASURABLE",
-                "reason": "REQUIRED_LEDGER_MISSING",
-                "payouts_total": None,
-                "matched": None,
-                "unresolved": None,
-                "ambiguous": None,
-            }
+            return _unmeasurable("REQUIRED_LEDGER_MISSING")
 
         payouts = list(db.execute(
             "SELECT payout_id, amount, currency, reference, status FROM sumup_payouts ORDER BY payout_id"
@@ -49,25 +60,23 @@ def reconcile_sumup_payouts_to_bank(path: Path | str, *, bank_provider: str = "q
             (bank_provider,),
         ))
 
-        matched = unresolved = ambiguous = 0
-        rows = []
+        provisional = []
+        single_candidate_ids = []
         for payout in payouts:
             reference = _norm_reference(payout["reference"])
             amount = _money(payout["amount"])
             currency = str(payout["currency"] or "").upper()
             if not reference:
-                unresolved += 1
-                rows.append({"payout_id": payout["payout_id"], "status": "UNRESOLVED", "reason": "PAYOUT_REFERENCE_MISSING"})
+                provisional.append({"payout_id": payout["payout_id"], "status": "UNRESOLVED", "reason": "PAYOUT_REFERENCE_MISSING"})
                 continue
             if amount is None or not currency:
-                unresolved += 1
-                rows.append({"payout_id": payout["payout_id"], "status": "UNRESOLVED", "reason": "PAYOUT_AMOUNT_OR_CURRENCY_INVALID"})
+                provisional.append({"payout_id": payout["payout_id"], "status": "UNRESOLVED", "reason": "PAYOUT_AMOUNT_OR_CURRENCY_INVALID"})
                 continue
 
             candidates = []
             for bank in credits:
                 bank_amount = _money(bank["amount"])
-                if bank_amount != amount:
+                if bank_amount is None or bank_amount != amount:
                     continue
                 if str(bank["currency"] or "").upper() != currency:
                     continue
@@ -76,14 +85,31 @@ def reconcile_sumup_payouts_to_bank(path: Path | str, *, bank_provider: str = "q
                 candidates.append(bank["transaction_id"])
 
             if len(candidates) == 1:
-                matched += 1
-                rows.append({"payout_id": payout["payout_id"], "status": "MATCHED", "bank_transaction_id": candidates[0]})
+                candidate = candidates[0]
+                single_candidate_ids.append(candidate)
+                provisional.append({"payout_id": payout["payout_id"], "status": "CANDIDATE", "bank_transaction_id": candidate})
             elif len(candidates) > 1:
+                provisional.append({"payout_id": payout["payout_id"], "status": "AMBIGUOUS", "reason": "MULTIPLE_EXACT_BANK_MATCHES"})
+            else:
+                provisional.append({"payout_id": payout["payout_id"], "status": "UNRESOLVED", "reason": "NO_EXACT_BANK_MATCH"})
+
+        contention = Counter(single_candidate_ids)
+        matched = unresolved = ambiguous = 0
+        rows = []
+        for row in provisional:
+            if row["status"] == "CANDIDATE":
+                candidate = row["bank_transaction_id"]
+                if contention[candidate] == 1:
+                    row = {"payout_id": row["payout_id"], "status": "MATCHED", "bank_transaction_id": candidate}
+                    matched += 1
+                else:
+                    row = {"payout_id": row["payout_id"], "status": "AMBIGUOUS", "reason": "BANK_CREDIT_CONTENDED"}
+                    ambiguous += 1
+            elif row["status"] == "AMBIGUOUS":
                 ambiguous += 1
-                rows.append({"payout_id": payout["payout_id"], "status": "AMBIGUOUS", "reason": "MULTIPLE_EXACT_BANK_MATCHES"})
             else:
                 unresolved += 1
-                rows.append({"payout_id": payout["payout_id"], "status": "UNRESOLVED", "reason": "NO_EXACT_BANK_MATCH"})
+            rows.append(row)
 
         total = len(payouts)
         return {
