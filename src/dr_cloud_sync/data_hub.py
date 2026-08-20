@@ -175,11 +175,14 @@ class DataHub:
                 try:
                     results.append(self.run(job["job_id"],operation))
                 except Exception:
-                    # Contain only failures that ``run`` has already persisted.
-                    # Scheduler/SQLite faults raised before that point stay visible
-                    # to the worker's outer failure handler instead of disappearing.
+                    # Contain only a failure from this invocation: run() increments
+                    # attempts when it claims a job, before executing the handler.
+                    # Stale FAILED/RETRY state from an earlier attempt must not hide
+                    # scheduler/SQLite faults raised before a fresh claim.
                     recorded=self.job(job["job_id"])
-                    if not recorded or recorded["status"] not in {SyncStatus.FAILED,SyncStatus.RETRY}:
+                    if (not recorded or
+                        recorded["status"] not in {SyncStatus.FAILED,SyncStatus.RETRY} or
+                        int(recorded["attempts"] or 0) <= int(job["attempts"] or 0)):
                         raise
                     results.append(recorded)
         return results
@@ -192,7 +195,7 @@ class DataHub:
         batch_id=str(uuid.uuid4()); started=iso(self.clock())
         with self.connect() as db:
             try:
-                db.execute("INSERT INTO data_hub_sync_batches(batch_id,started_at,status,triggered_by) VALUES(?,?,'RUNNING',?)",(batch_id,started,str(triggered_by)[:100]))
+                db.execute("INSERT INTO data_hub_sync_batches(batch_id,started_at,status,triggered_by) VALUES(?,?, 'RUNNING',?)",(batch_id,started,str(triggered_by)[:100]))
             except sqlite3.IntegrityError as exc:
                 raise BatchAlreadyRunning("BATCH_ALREADY_RUNNING") from exc
             jobs=[dict(row) for row in db.execute("""SELECT sj.*,ds.provider,ds.status AS source_status,ds.enabled
