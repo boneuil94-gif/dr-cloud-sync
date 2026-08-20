@@ -18,6 +18,10 @@ jobs:
         with:
           ref: feat/sumup-merchant-readers-jobs
           fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - name: Install focused test dependencies
+        run: pip install -e . pytest
 
       - name: Apply exact bounded source edits
         run: |
