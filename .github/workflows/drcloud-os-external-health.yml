@@ -58,13 +58,13 @@ jobs:
         run: |
           set -euo pipefail
           open_number="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$ALERT_TITLE in:title" --json number,title --jq ".[] | select(.title == env.ALERT_TITLE) | .number" | head -n1)"
-          if [[ "$PROBE_OUTCOME" != success ]]; then
+          if [[ "$PROBE_OUTCOME" = failure ]]; then
             if [[ -z "$open_number" ]]; then
               gh issue create --repo "$GITHUB_REPOSITORY" \
                 --title "$ALERT_TITLE" \
                 --body "Sanitized external health contract failed. No response body, headers, credentials or PII were captured. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
             fi
-          elif [[ -n "$open_number" ]]; then
+          elif [[ "$PROBE_OUTCOME" = success && -n "$open_number" ]]; then
             gh issue close --repo "$GITHUB_REPOSITORY" "$open_number" \
               --comment "External health contract is green again. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
           fi
