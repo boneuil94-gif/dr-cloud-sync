@@ -47,6 +47,7 @@ jobs:
 
           path.write_text(text, encoding="utf-8")
           PY
+          git rm .github/workflows/patch-sumup-direct-jobs.yml
 
       - name: Run focused tests
         run: python -m pytest -q tests/test_sumup_connector.py tests/test_sumup_direct_jobs.py
@@ -55,7 +56,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/patch-sumup-direct-jobs.yml
           git add src/dr_cloud_sync/inventory_web.py tests/test_sumup_direct_jobs.py
           git commit -m "feat: wire SumUp merchant and reader direct jobs"
           git push origin HEAD:feat/sumup-merchant-readers-jobs
