@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: drcloud-os-external-health
@@ -18,13 +19,14 @@ jobs:
     timeout-minutes: 2
     steps:
       - name: Probe public health contract
+        id: probe
+        continue-on-error: true
         env:
           HEALTH_URL: https://osdrcloud.fr/health
         run: |
           python - <<'PY'
           import json
           import os
-          import urllib.error
           import urllib.request
 
           url = os.environ["HEALTH_URL"]
@@ -46,3 +48,29 @@ jobs:
               raise SystemExit("EXTERNAL_HEALTH_CONTRACT_FAILED")
           print("EXTERNAL_HEALTH_PROVEN")
           PY
+
+      - name: Reconcile sanitized GitHub alert
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROBE_OUTCOME: ${{ steps.probe.outcome }}
+          ALERT_TITLE: "[alert] DrCloud OS external health probe failing"
+        run: |
+          set -euo pipefail
+          open_number="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$ALERT_TITLE in:title" --json number,title --jq ".[] | select(.title == env.ALERT_TITLE) | .number" | head -n1)"
+          if [[ "$PROBE_OUTCOME" != success ]]; then
+            if [[ -z "$open_number" ]]; then
+              gh issue create --repo "$GITHUB_REPOSITORY" \
+                --title "$ALERT_TITLE" \
+                --body "Sanitized external health contract failed. No response body, headers, credentials or PII were captured. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
+            fi
+          elif [[ -n "$open_number" ]]; then
+            gh issue close --repo "$GITHUB_REPOSITORY" "$open_number" \
+              --comment "External health contract is green again. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
+          fi
+
+      - name: Enforce external health
+        if: always()
+        env:
+          PROBE_OUTCOME: ${{ steps.probe.outcome }}
+        run: test "$PROBE_OUTCOME" = success
