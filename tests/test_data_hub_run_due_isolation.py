@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from dr_cloud_sync.data_hub import DataHub, JobDefinition
 
 
+# Optional provider failures must remain observable without starving core jobs.
 def test_run_due_contains_one_job_failure_and_continues_unrelated_jobs(tmp_path):
     now = datetime(2026, 8, 20, 7, 0, tzinfo=timezone.utc)
     hub = DataHub(tmp_path / "hub.sqlite", clock=lambda: now)
