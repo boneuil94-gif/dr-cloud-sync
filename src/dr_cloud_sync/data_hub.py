@@ -175,10 +175,13 @@ class DataHub:
                 try:
                     results.append(self.run(job["job_id"],operation))
                 except Exception:
-                    # ``run`` already records a sanitized FAILED run/source diagnostic.
-                    # Keep the worker cycle alive so an optional provider scope cannot
-                    # starve unrelated core synchronization jobs.
-                    results.append(self.job(job["job_id"]))
+                    # Contain only failures that ``run`` has already persisted.
+                    # Scheduler/SQLite faults raised before that point stay visible
+                    # to the worker's outer failure handler instead of disappearing.
+                    recorded=self.job(job["job_id"])
+                    if not recorded or recorded["status"] not in {SyncStatus.FAILED,SyncStatus.RETRY}:
+                        raise
+                    results.append(recorded)
         return results
     def run_all(self, operations: Mapping[str, Callable], *, triggered_by="admin", retry_failed=False):
         """Run one isolated, dependency-ordered global batch.
