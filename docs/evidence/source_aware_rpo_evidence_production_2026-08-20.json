@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "evidence_date": "2026-08-20",
+  "result": "SOURCE_AWARE_RPO_COVERAGE_IMPROVED",
+  "production": {
+    "merge_commit_sha": "5b89052e125c0ef331f2348b8a292168aeadde54",
+    "run_id": 32308459103,
+    "run_number": 326,
+    "conclusion": "success"
+  },
+  "backup": {
+    "workflow": "DrCloud OS encrypted offsite backup",
+    "run_id": 32263186935,
+    "run_number": 4,
+    "run_attempt": 5,
+    "conclusion": "success",
+    "artifact_id": 9388376283,
+    "artifact_sha256": "061bcbf254b122b1c53e1bf2b3630d27f6460a0584edb7e792f8fbfa1855296a",
+    "encryption": "RESTIC_CLIENT_SIDE_ENCRYPTED",
+    "location_classification": "OFF_HOST_OBJECT_STORAGE"
+  },
+  "recovery_proof": {
+    "workflow": "DrCloud OS remote-only recovery Game Day",
+    "run_id": 32316883038,
+    "run_number": 5,
+    "head_sha": "5b89052e125c0ef331f2348b8a292168aeadde54",
+    "conclusion": "success",
+    "artifact_id": 9388392020,
+    "artifact_sha256": "1e6e4028278c449f289eb0d2c2cd8d8d9950e3736a4825916f40956a35175e31",
+    "remote_snapshot": "1823a8640577084453de47b8b02e2625af202f165bbae8bf1ff71c200ee920e0",
+    "restore_result": "OFFSITE_RESTORE_PROVEN",
+    "integrity": "PASS",
+    "app_boot": "APP_BOOT_OK",
+    "health": "HEALTH_OK"
+  },
+  "timing": {
+    "observed_restore_seconds": 15,
+    "observed_rpo_seconds": 0,
+    "business_data_gap_seconds": 0,
+    "sync_progress_gap_seconds": 0,
+    "rpo_confidence": "MEDIUM",
+    "rpo_method": "live_vs_backup_source_watermarks",
+    "before_comparable_sources": 4,
+    "before_unmeasurable_sources": 6,
+    "after_comparable_sources": 4,
+    "after_unmeasurable_sources": 4
+  },
+  "interpretation": {
+    "coverage_improved": true,
+    "newly_removed_unmeasurable_obligations": 2,
+    "rpo_business_fully_proven": false,
+    "reason": "Fresh encrypted offsite backup and remote-only restore proof show two fewer independent unmeasurable RPO sources after durable purchase/stock ledger projections. Comparable-source count remains four and confidence remains MEDIUM; no HIGH-confidence or full-coverage claim is made."
+  },
+  "safety": {
+    "external_provider_auth": "NONE",
+    "production_volume_mounted": false,
+    "production_port_published": false,
+    "cloud_material_persisted": false,
+    "credentials_in_evidence": false
+  },
+  "scores": {
+    "global_strict": {
+      "before": 58,
+      "after": 58
+    },
+    "deployment": {
+      "before": 85,
+      "after": 85
+    }
+  }
+}
