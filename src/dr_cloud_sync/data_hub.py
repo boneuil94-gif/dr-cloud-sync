@@ -171,7 +171,14 @@ class DataHub:
             if not job["next_run_at"] or job["next_run_at"]>now: continue
             operation=operations.get(job["job_type"])
             if operation is None: results.append(self._blocked(job["job_id"],f"runtime handler missing: {job['job_type']}"))
-            else: results.append(self.run(job["job_id"],operation))
+            else:
+                try:
+                    results.append(self.run(job["job_id"],operation))
+                except Exception:
+                    # ``run`` already records a sanitized FAILED run/source diagnostic.
+                    # Keep the worker cycle alive so an optional provider scope cannot
+                    # starve unrelated core synchronization jobs.
+                    results.append(self.job(job["job_id"]))
         return results
     def run_all(self, operations: Mapping[str, Callable], *, triggered_by="admin", retry_failed=False):
         """Run one isolated, dependency-ordered global batch.
