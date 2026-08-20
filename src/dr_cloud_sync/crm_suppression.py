@@ -31,7 +31,6 @@ def ensure_suppression_schema(db: sqlite3.Connection) -> None:
 
 def suppression_digest(db: sqlite3.Connection, provider: str, external_id: str) -> str:
     """Return a database-local salted digest; the raw external id is never persisted."""
-    ensure_suppression_schema(db)
     row = db.execute(
         "SELECT suppression_salt FROM crm_privacy_config WHERE config_id=1"
     ).fetchone()
