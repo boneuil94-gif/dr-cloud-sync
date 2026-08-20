@@ -67,6 +67,7 @@ def test_anonymise_removes_direct_and_free_text_pii_without_provider_write(tmp_p
     assert result["identity_fingerprints_present"] == 0
     assert result["addresses_present"] == 0
     assert result["nonempty_interactions_present"] == 0
+    assert result["identity_links_present"] == 0
     assert result["external_provider_write"] is False
     row = crm.db.execute("SELECT * FROM crm_customers WHERE customer_id=?", (cid,)).fetchone()
     assert row["status"] == "ANONYMISED" and row["anonymised_at"] is not None
@@ -76,6 +77,7 @@ def test_anonymise_removes_direct_and_free_text_pii_without_provider_write(tmp_p
     ))
     ref = crm.db.execute("SELECT external_id,raw_identity_fingerprint FROM crm_external_references WHERE customer_id=?", (cid,)).fetchone()
     assert ref["external_id"].startswith("anonymised:") and ref["raw_identity_fingerprint"] is None
+    assert "customer@example.com" not in ref["external_id"]
     assert crm.db.execute("SELECT count(*) FROM crm_tags WHERE customer_id=?", (cid,)).fetchone()[0] == 0
     assert crm.db.execute("SELECT evidence FROM crm_consents WHERE customer_id=?", (cid,)).fetchone()[0] is None
     assert crm.db.execute("SELECT metadata_json FROM crm_activities WHERE customer_id=?", (cid,)).fetchone()[0] == "{}"
@@ -84,6 +86,57 @@ def test_anonymise_removes_direct_and_free_text_pii_without_provider_write(tmp_p
     assert crm.db.execute("SELECT snapshot_json FROM crm_merge_history WHERE merge_id='merge:1'").fetchone()[0] == '{"privacy":"REDACTED"}'
     event = privacy.events(cid)[0]
     assert event["result"] == "COMPLETED" and event["evidence"]["sales_links_preserved"] is True
+
+
+def test_erased_provider_identity_is_suppressed_before_pii_reingestion(tmp_path):
+    crm, cid = _customer(tmp_path)
+    privacy = CRMPrivacyService(crm.db)
+    privacy.anonymise(cid, actor="privacy-admin", reason="request")
+
+    result = crm.ingest_customer(
+        "PRESTASHOP",
+        "customer@example.com",
+        {"first_name": "Alice", "email": "alice@example.com", "phone": "0612345678"},
+    )
+    assert result == {
+        "status": "SUPPRESSED_ERASURE",
+        "customer_id": None,
+        "provider": "PRESTASHOP",
+        "external_id": None,
+        "ingested": False,
+    }
+    row = crm.db.execute(
+        "SELECT display_name,email_normalized,phone_normalized,anonymised_at FROM crm_customers WHERE customer_id=?",
+        (cid,),
+    ).fetchone()
+    assert row["display_name"] is None and row["email_normalized"] is None and row["phone_normalized"] is None
+    assert row["anonymised_at"] is not None
+    suppression = crm.db.execute(
+        "SELECT provider,external_id_digest FROM crm_identity_suppressions"
+    ).fetchone()
+    assert suppression["provider"] == "PRESTASHOP"
+    assert "customer@example.com" not in suppression["external_id_digest"]
+
+
+def test_anonymise_removes_duplicate_identity_links_in_both_directions(tmp_path):
+    crm, cid = _customer(tmp_path)
+    other = crm.ingest_customer("SHOPCAISSE", "other-1", {"display_name": "Bob", "email": "bob@example.com"})
+    stamp = other["created_at"]
+    with crm.db:
+        crm.db.execute(
+            "INSERT INTO crm_identities VALUES(?,?,?,?,?,?,NULL)",
+            ("identity:forward", cid, other["customer_id"], "PROBABLE", '{"email_exact":true}', stamp),
+        )
+        crm.db.execute(
+            "INSERT INTO crm_identities VALUES(?,?,?,?,?,?,NULL)",
+            ("identity:reverse", other["customer_id"], cid, "PROBABLE", '{"phone_exact":true}', stamp),
+        )
+    privacy = CRMPrivacyService(crm.db)
+    privacy.anonymise(cid, actor="privacy-admin", reason="request")
+    assert crm.db.execute(
+        "SELECT count(*) FROM crm_identities WHERE customer_id=? OR candidate_customer_id=?", (cid, cid)
+    ).fetchone()[0] == 0
+    assert crm.duplicate_candidates() == []
 
 
 def test_anonymise_is_idempotent_and_does_not_fabricate_second_event(tmp_path):
@@ -129,3 +182,25 @@ def test_transaction_failure_rolls_back_customer_anonymisation(tmp_path):
     row = crm.db.execute("SELECT email_normalized,anonymised_at FROM crm_customers WHERE customer_id=?", (cid,)).fetchone()
     assert row["email_normalized"] == "alice@example.com" and row["anonymised_at"] is None
     assert privacy.events(cid) == []
+    assert crm.db.execute("SELECT count(*) FROM crm_identity_suppressions").fetchone()[0] == 0
+
+
+def test_postcondition_failure_rolls_back_before_completion_event(tmp_path):
+    crm, cid = _customer(tmp_path)
+    privacy = CRMPrivacyService(crm.db)
+    with crm.db:
+        crm.db.execute(
+            """CREATE TRIGGER reintroduce_pii AFTER UPDATE OF display_name ON crm_customers
+            WHEN NEW.customer_id = OLD.customer_id AND NEW.status='ANONYMISED'
+            BEGIN UPDATE crm_customers SET display_name='unexpected' WHERE customer_id=NEW.customer_id; END"""
+        )
+    with pytest.raises(CRMPrivacyError, match="post-condition failed"):
+        privacy.anonymise(cid, actor="privacy-admin", reason="request")
+    row = crm.db.execute(
+        "SELECT display_name,email_normalized,anonymised_at FROM crm_customers WHERE customer_id=?", (cid,)
+    ).fetchone()
+    assert row["display_name"] == "Alice Martin"
+    assert row["email_normalized"] == "alice@example.com"
+    assert row["anonymised_at"] is None
+    assert privacy.events(cid) == []
+    assert crm.db.execute("SELECT count(*) FROM crm_identity_suppressions").fetchone()[0] == 0
