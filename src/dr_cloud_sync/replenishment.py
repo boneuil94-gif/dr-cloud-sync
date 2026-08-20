@@ -119,10 +119,14 @@ class ReplenishmentEngine:
 
     def transition(self, suggestion_id, status):
         if status not in self.STATUSES: raise ValueError("invalid suggestion status")
-        row=self.db.execute("SELECT status FROM purchase_suggestions WHERE suggestion_id=?",(suggestion_id,)).fetchone()
+        row=self.db.execute("SELECT status,confidence FROM purchase_suggestions WHERE suggestion_id=?",(suggestion_id,)).fetchone()
         if not row: raise KeyError("suggestion not found")
+        if status == row["status"]:
+            return dict(self.db.execute("SELECT * FROM purchase_suggestions WHERE suggestion_id=?",(suggestion_id,)).fetchone())
         allowed={"PROPOSED":{"REVIEWED","REJECTED"},"REVIEWED":{"APPROVED","REJECTED"},"APPROVED":{"ORDERED","REJECTED"}}
-        if status!=row[0] and status not in allowed.get(row[0],set()): raise ValueError("invalid suggestion transition")
+        if status not in allowed.get(row["status"],set()): raise ValueError("invalid suggestion transition")
+        if status in {"APPROVED","ORDERED"} and row["confidence"] != "COMPLETE":
+            raise ValueError("incomplete replenishment evidence cannot be approved or ordered")
         with self.db:self.db.execute("UPDATE purchase_suggestions SET status=?,updated_at=? WHERE suggestion_id=?",(status,_now(),suggestion_id))
         return dict(self.db.execute("SELECT * FROM purchase_suggestions WHERE suggestion_id=?",(suggestion_id,)).fetchone())
 
