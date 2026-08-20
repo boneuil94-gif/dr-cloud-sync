@@ -163,7 +163,9 @@ if [[ -n "${OFFSITE_RESTIC_KEEP_DAILY:-}" || -n "${OFFSITE_RESTIC_KEEP_WEEKLY:-}
   args=(); [[ -z "${OFFSITE_RESTIC_KEEP_DAILY:-}" ]] || args+=(--keep-daily "$OFFSITE_RESTIC_KEEP_DAILY")
   [[ -z "${OFFSITE_RESTIC_KEEP_WEEKLY:-}" ]] || args+=(--keep-weekly "$OFFSITE_RESTIC_KEEP_WEEKLY")
   [[ -z "${OFFSITE_RESTIC_KEEP_MONTHLY:-}" ]] || args+=(--keep-monthly "$OFFSITE_RESTIC_KEEP_MONTHLY")
-  restic forget --tag drcloud-os "${args[@]}" --prune >/dev/null || fail OFFSITE_RETENTION_FAILED "$snapshot" PROVEN
+  # Group only by the backed-up path so ephemeral container hostnames and the
+  # unique backup-id tag cannot split every snapshot into a one-item group.
+  restic forget --tag drcloud-os --group-by paths "${args[@]}" --prune >/dev/null || fail OFFSITE_RETENTION_FAILED "$snapshot" PROVEN
   retention=RETENTION_APPLIED
 fi
 write_status OFFSITE_REMOTE_CHECK_PROVEN "$snapshot" PROVEN "$retention"
