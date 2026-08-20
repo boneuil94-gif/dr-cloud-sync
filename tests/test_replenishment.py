@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import sqlite3
+import pytest
 
 from dr_cloud_sync.replenishment import ReplenishmentEngine
 
@@ -46,6 +47,29 @@ def test_unknowns_remain_unknown_and_partial(tmp_path):
     assert row["observed_lead_days"] is None and row["estimated_stockout_date"] is None
     assert row["known_unit_cost"] is None and row["estimated_cost"] is None
     assert row["confidence"]=="PARTIAL" and row["incoming"]==3
+
+
+def test_partial_suggestion_cannot_be_approved_or_ordered(tmp_path):
+    path=tmp_path/"guard.db"; db=database(path); db.commit(); engine=ReplenishmentEngine(path)
+    stamp=datetime.now(timezone.utc).isoformat()
+    with engine.db:
+        engine.db.execute("INSERT INTO purchase_suggestions VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            ("reorder:partial","drc:1",None,"PROPOSED",5,None,"PARTIAL","lead=UNKNOWN","{}",stamp,stamp))
+    assert engine.transition("reorder:partial","REVIEWED")["status"]=="REVIEWED"
+    with pytest.raises(ValueError,match="incomplete replenishment evidence"):
+        engine.transition("reorder:partial","APPROVED")
+    assert engine.db.execute("SELECT status FROM purchase_suggestions WHERE suggestion_id='reorder:partial'").fetchone()[0]=="REVIEWED"
+
+
+def test_complete_suggestion_can_be_approved_and_ordered(tmp_path):
+    path=tmp_path/"complete.db"; db=database(path); db.commit(); engine=ReplenishmentEngine(path)
+    stamp=datetime.now(timezone.utc).isoformat()
+    with engine.db:
+        engine.db.execute("INSERT INTO purchase_suggestions VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            ("reorder:complete","drc:1","sup:1","PROPOSED",5,"10.00","COMPLETE","observed evidence","{}",stamp,stamp))
+    engine.transition("reorder:complete","REVIEWED")
+    assert engine.transition("reorder:complete","APPROVED")["status"]=="APPROVED"
+    assert engine.transition("reorder:complete","ORDERED")["status"]=="ORDERED"
 
 
 def test_budget_and_evidence_do_not_invent_cash(tmp_path):
