@@ -90,7 +90,7 @@ def test_v3_scorecard_is_the_strict_source_of_truth():
     assert data["version"] == 3
     assert data["global_score"] == data["global_progress_percent"] == 58
     assert data["remaining_percent"] == 42
-    assert data["evidence_date"] == "2026-08-19"
+    assert data["evidence_date"] == "2026-08-20"
     assert scores["Purchases"] == 63
     assert scores["Finance"] == 61
     assert scores["Stock"] == 67
@@ -215,7 +215,7 @@ def test_dashboard_model_tolerates_missing_data_and_clamps_progress():
 def test_production_bootstrap_proof_closes_secrets_p0_with_bounded_rescore():
     data = RoadmapService(ROADMAP).load()
     proof = data["production_bootstrap_proof_2026_08_19"]
-    assert data["evidence_date"] == "2026-08-19"
+    assert data["evidence_date"] == "2026-08-20"
     assert proof["run_number"] == 3
     assert proof["run_id"] == 32249152839
     assert proof["head_sha"] == "56741002b2c5c580c485e3155fc572354a7bce63"
