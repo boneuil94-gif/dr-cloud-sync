@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS purchase_suggestions(
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_open_purchase_suggestion
  ON purchase_suggestions(product_key) WHERE status IN ('PROPOSED','REVIEWED','APPROVED');
+CREATE TABLE IF NOT EXISTS replenishment_runtime(
+ key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 
@@ -78,16 +80,13 @@ class ReplenishmentEngine:
           JOIN purchase_orders p ON p.purchase_order_id=l.purchase_order_id LEFT JOIN
           (SELECT gl.purchase_order_line_id,SUM(gl.received_quantity) received FROM goods_receipt_lines gl JOIN goods_receipts g ON g.receipt_id=gl.receipt_id WHERE g.status='APPLIED' GROUP BY gl.purchase_order_line_id) r
           ON r.purchase_order_line_id=l.line_id WHERE l.product_key=? AND p.status IN ('ORDERED','PARTIALLY_RECEIVED')""",(product_key,)).fetchone()
-        incoming=int(incoming_row["q"] or 0); available=on_hand  # no reservation ledger: never fabricate reservations
+        incoming=int(incoming_row["q"] or 0); available=on_hand
         supplier_rows=self.db.execute("""SELECT p.supplier_id,l.unit_cost FROM purchase_order_lines l JOIN purchase_orders p ON p.purchase_order_id=l.purchase_order_id
           WHERE l.product_key=? AND p.status!='CANCELLED' ORDER BY COALESCE(p.ordered_at,p.created_at) DESC""",(product_key,)).fetchall()
         supplier_id=supplier_rows[0]["supplier_id"] if supplier_rows else None
         unit_cost=next((_number(r["unit_cost"]) for r in supplier_rows if r["unit_cost"] is not None),None)
         lead=self.observed_lead_days(supplier_id) if supplier_id else None
         velocity=max(velocity7,velocity30); cover=(available/velocity if available is not None and velocity>0 else None)
-        # A stockout date is deliberately withheld when supplier lead-time is
-        # unknown: presenting it beside a reorder recommendation would imply a
-        # complete planning horizon which the evidence does not support.
         stockout=(at+timedelta(days=cover)).date().isoformat() if cover is not None and lead is not None else None
         needed=None
         if available is not None:
@@ -113,6 +112,9 @@ class ReplenishmentEngine:
                 with self.db:self.db.execute("INSERT INTO purchase_suggestions VALUES(?,?,?,?,?,?,?,?,?,?,?)",(sid,item["product_key"],item["supplier_id"],"PROPOSED",item["suggested_quantity"],item["estimated_cost"],item["confidence"],reason,json.dumps(item,sort_keys=True),stamp,stamp))
                 created.append(sid)
             except sqlite3.IntegrityError: pass
+        refreshed_at=_now()
+        with self.db:
+            self.db.execute("INSERT INTO replenishment_runtime(key,value) VALUES('last_stock_refresh_at',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(refreshed_at,))
         return {"products":snapshots,"suggestions_generated":len(created),"suggestion_ids":created}
 
     def transition(self, suggestion_id, status):
@@ -131,9 +133,10 @@ class ReplenishmentEngine:
             if p["on_hand"] is not None and p["on_hand"]<0: anomalies.append({"kind":"NEGATIVE_STOCK","product_key":p["product_key"]})
             if p["sold_30d"] and p["on_hand"] is None: anomalies.append({"kind":"SOLD_WITHOUT_KNOWN_STOCK","product_key":p["product_key"]})
         valued=[p for p in products if p["known_unit_cost"] is not None]
+        refreshed=self.db.execute("SELECT value FROM replenishment_runtime WHERE key='last_stock_refresh_at'").fetchone()
         return {"products_with_stock":sum(p["on_hand"] is not None for p in products),"products_without_stock":sum(p["on_hand"] is None for p in products),
           "products_with_cost":len(valued),"products_without_cost":len(products)-len(valued),"stock_value_coverage":(len(valued)/len(products)*100 if products else None),
           "reorder_suggestions_count":self.db.execute("SELECT count(*) FROM purchase_suggestions WHERE status IN ('PROPOSED','REVIEWED','APPROVED')").fetchone()[0],
           "suppliers_configured":self.db.execute("SELECT count(*) FROM suppliers WHERE status='ACTIVE'").fetchone()[0],
           "purchase_orders_open":self.db.execute("SELECT count(*) FROM purchase_orders WHERE status IN ('ORDERED','PARTIALLY_RECEIVED')").fetchone()[0],
-          "last_stock_refresh_at":_now(),"stock_anomalies":anomalies}
+          "last_stock_refresh_at":refreshed["value"] if refreshed else None,"stock_anomalies":anomalies}
