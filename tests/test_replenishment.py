@@ -61,6 +61,19 @@ def test_partial_suggestion_cannot_be_approved_or_ordered(tmp_path):
     assert engine.db.execute("SELECT status FROM purchase_suggestions WHERE suggestion_id='reorder:partial'").fetchone()[0]=="REVIEWED"
 
 
+def test_partial_legacy_terminal_state_retry_is_idempotent(tmp_path):
+    path=tmp_path/"legacy-terminal.db"; db=database(path); db.commit(); engine=ReplenishmentEngine(path)
+    stamp=datetime.now(timezone.utc).isoformat()
+    with engine.db:
+        engine.db.execute("INSERT INTO purchase_suggestions VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            ("reorder:legacy","drc:1",None,"APPROVED",5,None,"PARTIAL","legacy evidence","{}",stamp,stamp))
+    before=engine.db.execute("SELECT updated_at FROM purchase_suggestions WHERE suggestion_id='reorder:legacy'").fetchone()[0]
+    row=engine.transition("reorder:legacy","APPROVED")
+    assert row["status"]=="APPROVED" and row["confidence"]=="PARTIAL" and row["updated_at"]==before
+    with pytest.raises(ValueError,match="incomplete replenishment evidence"):
+        engine.transition("reorder:legacy","ORDERED")
+
+
 def test_complete_suggestion_can_be_approved_and_ordered(tmp_path):
     path=tmp_path/"complete.db"; db=database(path); db.commit(); engine=ReplenishmentEngine(path)
     stamp=datetime.now(timezone.utc).isoformat()
