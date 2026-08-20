@@ -11,7 +11,7 @@
     "test_quality": 76,
     "ux": 60
   },
-  "evidence_date": "2026-08-19",
+  "evidence_date": "2026-08-20",
   "methodology": "Score strict audité selon six axes: code/architecture 20 %, wiring 20 %, tests 20 %, preuve production 25 %, observabilité 10 %, documentation 5 %. Aucune moyenne naïve des modules. Le global reste inchangé sans règle d’agrégation globale reproductible persistée.",
   "modules": [
     {
@@ -40,8 +40,8 @@
       "score": 85,
       "status": "PARTIAL",
       "justification": "CI/CD au SHA exact, health/HTTPS publics, rollback OVH-equivalent et backup Restic chiffré off-host restauré en mode remote-only prouvés; secrets critiques et bootstrap administrateur durable également prouvés en lecture seule",
-      "blocker": "RPO business de confiance LOW, monitoring externe/alerting, SLO, rotation secrets et répétition périodique du DR non prouvés",
-      "next_step": "fiabiliser le RPO métier, puis automatiser alerting/SLO, rotation des secrets et Game Days périodiques",
+      "blocker": "RPO source-aware prouvé en production à confiance MEDIUM, mais couverture indépendante encore incomplète (4 sources comparables / 4 non mesurables); monitoring externe/alerting, SLO, rotation secrets, politique de rétention offsite et répétition périodique du DR non prouvés ou incomplets",
+      "next_step": "réduire uniquement les sources indépendantes réellement non mesurables sans inventer de timestamps, puis prouver rétention offsite, alerting/SLO, rotation des secrets et Game Days périodiques",
       "evidence_level": "PRODUCTION_PROVEN"
     },
     {
@@ -226,7 +226,7 @@
     }
   ],
   "priorities": [
-    "P1 — améliorer la mesure RPO avec data_max_at plutôt que backup_created_at",
+    "P1 — réduire les sources RPO indépendantes non mesurables avec des timestamps durables ou provider vérifiés, sans invention",
     "P1 — mesurer couverture sources et funnel financier",
     "P1 — tester SQLite multi-worker",
     "P1 — prouver le lifecycle PII/consent",
