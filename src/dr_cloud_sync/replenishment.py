@@ -78,16 +78,13 @@ class ReplenishmentEngine:
           JOIN purchase_orders p ON p.purchase_order_id=l.purchase_order_id LEFT JOIN
           (SELECT gl.purchase_order_line_id,SUM(gl.received_quantity) received FROM goods_receipt_lines gl JOIN goods_receipts g ON g.receipt_id=gl.receipt_id WHERE g.status='APPLIED' GROUP BY gl.purchase_order_line_id) r
           ON r.purchase_order_line_id=l.line_id WHERE l.product_key=? AND p.status IN ('ORDERED','PARTIALLY_RECEIVED')""",(product_key,)).fetchone()
-        incoming=int(incoming_row["q"] or 0); available=on_hand  # no reservation ledger: never fabricate reservations
+        incoming=int(incoming_row["q"] or 0); available=on_hand
         supplier_rows=self.db.execute("""SELECT p.supplier_id,l.unit_cost FROM purchase_order_lines l JOIN purchase_orders p ON p.purchase_order_id=l.purchase_order_id
           WHERE l.product_key=? AND p.status!='CANCELLED' ORDER BY COALESCE(p.ordered_at,p.created_at) DESC""",(product_key,)).fetchall()
         supplier_id=supplier_rows[0]["supplier_id"] if supplier_rows else None
         unit_cost=next((_number(r["unit_cost"]) for r in supplier_rows if r["unit_cost"] is not None),None)
         lead=self.observed_lead_days(supplier_id) if supplier_id else None
         velocity=max(velocity7,velocity30); cover=(available/velocity if available is not None and velocity>0 else None)
-        # A stockout date is deliberately withheld when supplier lead-time is
-        # unknown: presenting it beside a reorder recommendation would imply a
-        # complete planning horizon which the evidence does not support.
         stockout=(at+timedelta(days=cover)).date().isoformat() if cover is not None and lead is not None else None
         needed=None
         if available is not None:
@@ -117,10 +114,12 @@ class ReplenishmentEngine:
 
     def transition(self, suggestion_id, status):
         if status not in self.STATUSES: raise ValueError("invalid suggestion status")
-        row=self.db.execute("SELECT status FROM purchase_suggestions WHERE suggestion_id=?",(suggestion_id,)).fetchone()
+        row=self.db.execute("SELECT status,confidence FROM purchase_suggestions WHERE suggestion_id=?",(suggestion_id,)).fetchone()
         if not row: raise KeyError("suggestion not found")
         allowed={"PROPOSED":{"REVIEWED","REJECTED"},"REVIEWED":{"APPROVED","REJECTED"},"APPROVED":{"ORDERED","REJECTED"}}
-        if status!=row[0] and status not in allowed.get(row[0],set()): raise ValueError("invalid suggestion transition")
+        if status!=row["status"] and status not in allowed.get(row["status"],set()): raise ValueError("invalid suggestion transition")
+        if status in {"APPROVED","ORDERED"} and row["confidence"] != "COMPLETE":
+            raise ValueError("incomplete replenishment evidence cannot be approved or ordered")
         with self.db:self.db.execute("UPDATE purchase_suggestions SET status=?,updated_at=? WHERE suggestion_id=?",(status,_now(),suggestion_id))
         return dict(self.db.execute("SELECT * FROM purchase_suggestions WHERE suggestion_id=?",(suggestion_id,)).fetchone())
 
