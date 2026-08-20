@@ -6,6 +6,7 @@ import pytest
 from dr_cloud_sync.data_hub import DataHub, JobDefinition
 
 
+# Scheduler/database faults that happen before DataHub.run records a failure must escape.
 def test_run_due_reraises_failure_not_recorded_by_run(tmp_path, monkeypatch):
     now = datetime(2026, 8, 20, 7, 0, tzinfo=timezone.utc)
     hub = DataHub(tmp_path / "hub.sqlite", clock=lambda: now)
