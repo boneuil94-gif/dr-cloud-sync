@@ -352,7 +352,7 @@ def test_update_preserves_state_environment_through_checks_and_rollback(
     for executable in fake_bin.iterdir():
         executable.chmod(0o755)
     user = subprocess.check_output(["id", "-un"], text=True).strip()
-    group = subprocess.check_output(["id", "-gn"], text=True, capture_output=True).stdout.strip()
+    group = subprocess.check_output(["id", "-gn"], text=True).strip()
     result = subprocess.run(
         [repo / "deploy/ovh/update.sh", target], cwd=tmp_path, text=True, capture_output=True,
         env={**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}",
@@ -421,7 +421,7 @@ def test_production_workflow_provisions_existing_prestashop_secret_before_deploy
 
 def test_shopcaisse_secret_is_propagated_to_both_production_runtimes(tmp_path):
     root = Path(__file__).parents[1]
-    workflow = (root / ".github/workflows/drcloud-os-production.yml").read_text()
+    workflow = (root / ".github/workflows/drcloud-os-production.yml').read_text()
     compose = (root / "deploy/ovh/docker-compose.yml").read_text()
     installer = root / "deploy/ovh/configure-shopcaisse-env.sh"
     secret = "production-shopcaisse-secret"
