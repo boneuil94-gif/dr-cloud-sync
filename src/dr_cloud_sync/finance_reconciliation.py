@@ -33,6 +33,38 @@ def _unmeasurable(reason: str) -> dict:
         "matched": None,
         "unresolved": None,
         "ambiguous": None,
+        "coverage_ratio": None,
+        "source_evidence": None,
+    }
+
+
+def _source_evidence(payouts, credits) -> dict:
+    payout_with_reference = sum(1 for row in payouts if _norm_reference(row["reference"]))
+    bank_with_reference = sum(1 for row in credits if _norm_reference(row["reference"]))
+    bank_booked = [str(row["booked_at"]) for row in credits if row["booked_at"]]
+    bank_imported = [str(row["imported_at"]) for row in credits if row["imported_at"]]
+    payout_imported = [str(row["imported_at"]) for row in payouts if row["imported_at"]]
+    bank_total = len(credits)
+    payout_total = len(payouts)
+    return {
+        "payouts": {
+            "total": payout_total,
+            "with_reference": payout_with_reference,
+            "without_reference": payout_total - payout_with_reference,
+            "reference_coverage_ratio": (payout_with_reference / payout_total) if payout_total else None,
+            "latest_imported_at": max(payout_imported) if payout_imported else None,
+        },
+        "bank_credits": {
+            "provider": "Qonto",
+            "booked_credits_total": bank_total,
+            "with_reference": bank_with_reference,
+            "without_reference": bank_total - bank_with_reference,
+            "reference_coverage_ratio": (bank_with_reference / bank_total) if bank_total else None,
+            "booked_at_min": min(bank_booked) if bank_booked else None,
+            "booked_at_max": max(bank_booked) if bank_booked else None,
+            "latest_imported_at": max(bank_imported) if bank_imported else None,
+            "presence": "BOOKED_CREDITS_PRESENT" if bank_total else "NO_BOOKED_CREDITS",
+        },
     }
 
 
@@ -52,13 +84,14 @@ def reconcile_sumup_payouts_to_bank(path: Path | str, *, bank_provider: str = "q
             return _unmeasurable("REQUIRED_LEDGER_MISSING")
 
         payouts = list(db.execute(
-            "SELECT payout_id, amount, currency, reference, status FROM sumup_payouts ORDER BY payout_id"
+            "SELECT payout_id, amount, currency, reference, status, imported_at FROM sumup_payouts ORDER BY payout_id"
         ))
         credits = list(db.execute(
-            "SELECT transaction_id, amount, currency, reference, status FROM bank_transactions "
+            "SELECT transaction_id, amount, currency, reference, status, booked_at, imported_at FROM bank_transactions "
             "WHERE provider=? AND direction='CREDIT' AND status='BOOKED' ORDER BY transaction_id",
             (bank_provider,),
         ))
+        source_evidence = _source_evidence(payouts, credits)
 
         provisional = []
         single_candidate_ids = []
@@ -119,6 +152,7 @@ def reconcile_sumup_payouts_to_bank(path: Path | str, *, bank_provider: str = "q
             "unresolved": unresolved,
             "ambiguous": ambiguous,
             "coverage_ratio": (matched / total) if total else None,
+            "source_evidence": source_evidence,
             "rows": rows,
         }
     finally:
