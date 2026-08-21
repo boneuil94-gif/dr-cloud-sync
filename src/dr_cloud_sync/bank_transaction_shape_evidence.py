@@ -33,22 +33,23 @@ def qonto_local_transaction_shape(path: Path | str) -> dict:
         status_counts = {}
         direction_counts = {"CREDIT":0,"DEBIT":0,"OTHER":0}
         credits_with_reference = 0
+        booked_credits = 0
+        completed_credits = 0
         for row in rows:
             bucket = _status_bucket(row["status"])
             status_counts[bucket] = status_counts.get(bucket, 0) + 1
-            direction = str(row["direction"] or "").upper()
+            direction = str(row["direction"] or "").strip().upper()
             direction = direction if direction in {"CREDIT","DEBIT"} else "OTHER"
             direction_counts[direction] += 1
-            if direction == "CREDIT" and str(row["reference"] or "").strip():
-                credits_with_reference += 1
+            if direction == "CREDIT":
+                if bucket == "BOOKED":
+                    booked_credits += 1
+                elif bucket == "COMPLETED":
+                    completed_credits += 1
+                if str(row["reference"] or "").strip():
+                    credits_with_reference += 1
         total = len(rows)
         credits = direction_counts["CREDIT"]
-        booked_credits = db.execute(
-            "SELECT count(*) FROM bank_transactions WHERE lower(provider)='qonto' AND direction='CREDIT' AND status='BOOKED'"
-        ).fetchone()[0]
-        completed_credits = db.execute(
-            "SELECT count(*) FROM bank_transactions WHERE lower(provider)='qonto' AND direction='CREDIT' AND status='COMPLETED'"
-        ).fetchone()[0]
         if total == 0:
             cause = "NO_LOCAL_QONTO_TRANSACTIONS"
         elif credits == 0:
