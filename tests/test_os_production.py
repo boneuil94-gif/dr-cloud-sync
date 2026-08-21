@@ -421,7 +421,7 @@ def test_production_workflow_provisions_existing_prestashop_secret_before_deploy
 
 def test_shopcaisse_secret_is_propagated_to_both_production_runtimes(tmp_path):
     root = Path(__file__).parents[1]
-    workflow = (root / ".github/workflows/drcloud-os-production.yml').read_text()
+    workflow = (root / ".github/workflows/drcloud-os-production.yml").read_text()
     compose = (root / "deploy/ovh/docker-compose.yml").read_text()
     installer = root / "deploy/ovh/configure-shopcaisse-env.sh"
     secret = "production-shopcaisse-secret"
