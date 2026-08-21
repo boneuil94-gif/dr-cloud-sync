@@ -276,6 +276,7 @@ def test_every_production_compose_caller_prepares_the_deployment_environment():
         "offsite-backup.sh",
         "offsite-recovery-gameday.sh",
         "production-qonto-local-source-proof.sh",
+        "production-qonto-transaction-shape-proof.sh",
         "recovery-gameday.sh",
     }
     for path in compose_callers:
