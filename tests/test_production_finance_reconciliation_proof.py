@@ -8,6 +8,7 @@ WORKFLOW = (ROOT / ".github/workflows/drcloud-os-finance-reconciliation-proof.ym
 
 def test_finance_reconciliation_proof_is_read_only_aggregate_only_and_fail_closed():
     assert "reconcile_sumup_payouts_to_bank" in SCRIPT
+    assert 'bank_provider="Qonto"' in SCRIPT
     assert "mode=ro" not in SCRIPT  # read-only is enforced by the imported reconciliation service
     assert '"database_read_only": True' in SCRIPT
     assert '"mutations": False' in SCRIPT
@@ -54,6 +55,7 @@ def test_finance_reconciliation_workflow_is_pinned_to_successful_production_sha(
     assert 'test "$PROOF_OUTCOME" = success' in WORKFLOW
     assert "drcloud-finance-reconciliation-evidence-${{ github.run_id }}" in WORKFLOW
     assert "issues/170/comments" in WORKFLOW
+    assert "group: drcloud-os-production" in WORKFLOW
 
 
 def test_finance_reconciliation_proof_shell_syntax():
