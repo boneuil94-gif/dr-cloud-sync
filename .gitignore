@@ -20,3 +20,7 @@ build/
 # Runtime deployment state
 deploy/ovh/.last-successful-commit
 deploy/ovh/.deployment-state/
+
+# Generated current evidence must stay in runtime/artifacts, never as a stale root snapshot.
+/recovery_evidence_production.json
+/offsite_recovery_evidence_production.json
