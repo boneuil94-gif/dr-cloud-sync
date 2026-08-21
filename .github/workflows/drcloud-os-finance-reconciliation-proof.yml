@@ -124,8 +124,16 @@ jobs:
               assert payouts["total"] == r["payouts_total"]
               assert payouts["with_reference"] + payouts["without_reference"] == payouts["total"]
               assert bank["provider"] == "Qonto"
-              assert bank.get("with_reference") + bank.get("without_reference") == bank.get("booked_credits_total")
-              expected_presence = "BOOKED_CREDITS_PRESENT" if bank.get("booked_credits_total") else "NO_BOOKED_CREDITS"
+              eligible_total = bank.get("eligible_credits_total")
+              using_eligible_contract = eligible_total is not None
+              bank_total = eligible_total if using_eligible_contract else bank.get("booked_credits_total")
+              assert bank.get("with_reference") + bank.get("without_reference") == bank_total
+              if using_eligible_contract:
+                  expected_presence = "ELIGIBLE_CREDITS_PRESENT" if bank_total else "NO_ELIGIBLE_CREDITS"
+                  assert d["authority"]["bank_credits"] == "LOCAL_LEDGER_QONTO_ELIGIBLE_CREDITS"
+              else:
+                  expected_presence = "BOOKED_CREDITS_PRESENT" if bank_total else "NO_BOOKED_CREDITS"
+                  assert d["authority"]["bank_credits"] == "LOCAL_LEDGER_QONTO_BOOKED_CREDITS"
               assert bank["presence"] == expected_presence
           PY
 
