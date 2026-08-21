@@ -1,8 +1,10 @@
 """Read-only, fail-closed reconciliation between SumUp payouts and bank credits.
 
-A payout is only MATCHED when one and only one booked bank credit has the same
-currency, exact decimal amount and exact normalized provider reference. Missing,
-malformed or contended matches remain unresolved/ambiguous; no fuzzy matching is used.
+A payout is only MATCHED when one and only one reconciliation-eligible bank credit
+has the same currency, exact decimal amount and exact normalized provider reference.
+Missing, malformed or contended matches remain unresolved/ambiguous; no fuzzy
+matching is used. Qonto credits may be imported as BOOKED or COMPLETED; no other
+status is accepted for Qonto reconciliation.
 """
 from __future__ import annotations
 
@@ -42,6 +44,17 @@ def _timestamp(value: object) -> datetime | None:
 def _timestamp_bound(rows, field: str, selector) -> str | None:
     values = [parsed for row in rows if (parsed := _timestamp(row[field])) is not None]
     return selector(values).isoformat() if values else None
+
+
+def _eligible_credit_statuses(bank_provider: str) -> tuple[str, ...]:
+    """Return the narrow provider-specific settlement statuses allowed for matching.
+
+    Qonto's local production ledger proves credits are imported as COMPLETED while
+    the generic BankTransaction contract historically used BOOKED. Accept exactly
+    those two explicit statuses for Qonto; other providers retain BOOKED-only
+    semantics unless separately proven and reviewed.
+    """
+    return ("BOOKED", "COMPLETED") if str(bank_provider or "").strip().lower() == "qonto" else ("BOOKED",)
 
 
 def _unmeasurable(reason: str) -> dict:
@@ -100,6 +113,9 @@ def _source_evidence(
     bank_with_reference = sum(1 for row in credits if _norm_reference(row["reference"]))
     bank_total = len(credits)
     payout_total = len(payouts)
+    accepted_statuses = _eligible_credit_statuses(bank_provider)
+    booked_total = sum(1 for row in credits if str(row["status"] or "").upper() == "BOOKED")
+    completed_total = sum(1 for row in credits if str(row["status"] or "").upper() == "COMPLETED")
     return {
         "coverage_diagnosis": _coverage_diagnosis(
             payout_total=payout_total,
@@ -122,14 +138,18 @@ def _source_evidence(
         },
         "bank_credits": {
             "provider": bank_provider,
-            "booked_credits_total": bank_total,
+            "accepted_statuses": list(accepted_statuses),
+            "eligible_credits_total": bank_total,
+            "booked_credits_total": booked_total,
+            "completed_credits_total": completed_total,
             "with_reference": bank_with_reference,
             "without_reference": bank_total - bank_with_reference,
             "reference_coverage_ratio": (bank_with_reference / bank_total) if bank_total else None,
             "booked_at_min": _timestamp_bound(credits, "booked_at", min),
             "booked_at_max": _timestamp_bound(credits, "booked_at", max),
             "latest_imported_at": _timestamp_bound(credits, "imported_at", max),
-            "presence": "BOOKED_CREDITS_PRESENT" if bank_total else "NO_BOOKED_CREDITS",
+            "presence": "BOOKED_CREDITS_PRESENT" if booked_total else "NO_BOOKED_CREDITS",
+            "eligible_presence": "ELIGIBLE_CREDITS_PRESENT" if bank_total else "NO_ELIGIBLE_CREDITS",
         },
     }
 
@@ -152,10 +172,12 @@ def reconcile_sumup_payouts_to_bank(path: Path | str, *, bank_provider: str = "q
         payouts = list(db.execute(
             "SELECT payout_id, amount, currency, reference, status, imported_at FROM sumup_payouts ORDER BY payout_id"
         ))
+        accepted_statuses = _eligible_credit_statuses(bank_provider)
+        placeholders = ",".join("?" for _ in accepted_statuses)
         credits = list(db.execute(
             "SELECT transaction_id, amount, currency, reference, status, booked_at, imported_at FROM bank_transactions "
-            "WHERE provider=? AND direction='CREDIT' AND status='BOOKED' ORDER BY transaction_id",
-            (bank_provider,),
+            f"WHERE provider=? AND direction='CREDIT' AND status IN ({placeholders}) ORDER BY transaction_id",
+            (bank_provider, *accepted_statuses),
         ))
 
         provisional = []
