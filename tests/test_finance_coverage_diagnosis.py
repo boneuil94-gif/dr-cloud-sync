@@ -50,3 +50,30 @@ def test_diagnosis_keeps_exact_match_gap_when_both_reference_coverages_are_compl
     result = reconcile_sumup_payouts_to_bank(path, bank_provider="Qonto")
     assert result["matched"] == 0
     assert result["source_evidence"]["coverage_diagnosis"] == "LOCAL_EXACT_MATCH_GAP_REMAINS"
+
+
+def test_diagnosis_reports_complete_when_all_payouts_match_exactly(tmp_path):
+    path = tmp_path / "db"
+    ledger = BankLedger(path)
+    ledger.import_page("Qonto", TransactionPage([
+        BankTransaction("a", "2026-08-20T10:00:00+00:00", 100, "EUR", "credit", external_transaction_id="b1", reference="BANK REF"),
+    ], None))
+    with sqlite3.connect(path) as db:
+        _sumup_schema(db)
+        _payout(db)
+    result = reconcile_sumup_payouts_to_bank(path, bank_provider="Qonto")
+    assert result["coverage_ratio"] == 1
+    assert result["unresolved"] == 0 and result["ambiguous"] == 0
+    assert result["source_evidence"]["coverage_diagnosis"] == "LOCAL_EXACT_RECONCILIATION_COMPLETE"
+
+
+def test_non_qonto_provider_diagnosis_is_provider_neutral(tmp_path):
+    path = tmp_path / "db"
+    BankLedger(path)
+    with sqlite3.connect(path) as db:
+        _sumup_schema(db)
+        _payout(db)
+    evidence = reconcile_sumup_payouts_to_bank(path, bank_provider="OtherBank")["source_evidence"]
+    assert evidence["coverage_diagnosis"] == "NO_LOCAL_SELECTED_BANK_BOOKED_CREDITS"
+    assert evidence["bank_credits"]["provider"] == "OtherBank"
+    assert "QONTO" not in evidence["coverage_diagnosis"]
