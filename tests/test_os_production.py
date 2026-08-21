@@ -276,6 +276,7 @@ def test_every_production_compose_caller_prepares_the_deployment_environment():
         "offsite-backup.sh",
         "offsite-recovery-gameday.sh",
         "production-qonto-local-source-proof.sh",
+        "production-qonto-transaction-shape-proof.sh",
         "recovery-gameday.sh",
     }
     for path in compose_callers:
@@ -351,7 +352,7 @@ def test_update_preserves_state_environment_through_checks_and_rollback(
     for executable in fake_bin.iterdir():
         executable.chmod(0o755)
     user = subprocess.check_output(["id", "-un"], text=True).strip()
-    group = subprocess.check_output(["id", "-gn"], text=True).strip()
+    group = subprocess.check_output(["id", "-gn"], text=True, capture_output=True).stdout.strip()
     result = subprocess.run(
         [repo / "deploy/ovh/update.sh", target], cwd=tmp_path, text=True, capture_output=True,
         env={**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}",
