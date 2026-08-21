@@ -81,9 +81,9 @@ report = {
         "end_to_end_funnel_proven": False,
     },
     "matching_contract": {
-        "reference": "EXACT_NORMALIZED",
-        "amount": "EXACT_DECIMAL",
-        "currency": "EXACT",
+        "reference_match": "EXACT_NORMALIZED",
+        "amount_match": "EXACT_DECIMAL",
+        "currency_match": "EXACT",
         "fuzzy_fallback": False,
         "bank_credit_single_use": True,
     },
