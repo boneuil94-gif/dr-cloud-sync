@@ -9,7 +9,7 @@ permissions:
   contents: read
   issues: write
 concurrency:
-  group: drcloud-os-production
+  group: drcloud-os-qonto-transaction-shape-proof
   cancel-in-progress: false
 jobs:
   proof:
