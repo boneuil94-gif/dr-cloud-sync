@@ -7,6 +7,7 @@ malformed or contended matches remain unresolved/ambiguous; no fuzzy matching is
 from __future__ import annotations
 
 from collections import Counter
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 import sqlite3
 from pathlib import Path
@@ -25,6 +26,24 @@ def _money(value: object) -> Decimal | None:
     return amount if amount.is_finite() else None
 
 
+def _timestamp(value: object) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _timestamp_bound(rows, field: str, selector) -> str | None:
+    values = [parsed for row in rows if (parsed := _timestamp(row[field])) is not None]
+    return selector(values).isoformat() if values else None
+
+
 def _unmeasurable(reason: str) -> dict:
     return {
         "status": "UNMEASURABLE",
@@ -33,6 +52,35 @@ def _unmeasurable(reason: str) -> dict:
         "matched": None,
         "unresolved": None,
         "ambiguous": None,
+        "coverage_ratio": None,
+        "source_evidence": None,
+    }
+
+
+def _source_evidence(payouts, credits, *, bank_provider: str) -> dict:
+    payout_with_reference = sum(1 for row in payouts if _norm_reference(row["reference"]))
+    bank_with_reference = sum(1 for row in credits if _norm_reference(row["reference"]))
+    bank_total = len(credits)
+    payout_total = len(payouts)
+    return {
+        "payouts": {
+            "total": payout_total,
+            "with_reference": payout_with_reference,
+            "without_reference": payout_total - payout_with_reference,
+            "reference_coverage_ratio": (payout_with_reference / payout_total) if payout_total else None,
+            "latest_imported_at": _timestamp_bound(payouts, "imported_at", max),
+        },
+        "bank_credits": {
+            "provider": bank_provider,
+            "booked_credits_total": bank_total,
+            "with_reference": bank_with_reference,
+            "without_reference": bank_total - bank_with_reference,
+            "reference_coverage_ratio": (bank_with_reference / bank_total) if bank_total else None,
+            "booked_at_min": _timestamp_bound(credits, "booked_at", min),
+            "booked_at_max": _timestamp_bound(credits, "booked_at", max),
+            "latest_imported_at": _timestamp_bound(credits, "imported_at", max),
+            "presence": "BOOKED_CREDITS_PRESENT" if bank_total else "NO_BOOKED_CREDITS",
+        },
     }
 
 
@@ -52,13 +100,14 @@ def reconcile_sumup_payouts_to_bank(path: Path | str, *, bank_provider: str = "q
             return _unmeasurable("REQUIRED_LEDGER_MISSING")
 
         payouts = list(db.execute(
-            "SELECT payout_id, amount, currency, reference, status FROM sumup_payouts ORDER BY payout_id"
+            "SELECT payout_id, amount, currency, reference, status, imported_at FROM sumup_payouts ORDER BY payout_id"
         ))
         credits = list(db.execute(
-            "SELECT transaction_id, amount, currency, reference, status FROM bank_transactions "
+            "SELECT transaction_id, amount, currency, reference, status, booked_at, imported_at FROM bank_transactions "
             "WHERE provider=? AND direction='CREDIT' AND status='BOOKED' ORDER BY transaction_id",
             (bank_provider,),
         ))
+        source_evidence = _source_evidence(payouts, credits, bank_provider=bank_provider)
 
         provisional = []
         single_candidate_ids = []
@@ -119,6 +168,7 @@ def reconcile_sumup_payouts_to_bank(path: Path | str, *, bank_provider: str = "q
             "unresolved": unresolved,
             "ambiguous": ambiguous,
             "coverage_ratio": (matched / total) if total else None,
+            "source_evidence": source_evidence,
             "rows": rows,
         }
     finally:

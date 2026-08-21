@@ -41,6 +41,15 @@ def test_finance_reconciliation_proof_validates_aggregate_invariants():
     assert '"coverage_ratio": result.get("coverage_ratio")' in SCRIPT
 
 
+def test_finance_reconciliation_proof_emits_source_aware_bank_evidence_without_rows():
+    assert 'source_evidence = result.get("source_evidence")' in SCRIPT
+    assert '"source_evidence": source_evidence' in SCRIPT
+    assert "FINANCE_SOURCE_BANK_COUNTS_INCONSISTENT" in SCRIPT
+    assert "FINANCE_SOURCE_BANK_PRESENCE_INVALID" in SCRIPT
+    assert '"schema_version": 2' in SCRIPT
+    assert 'result.get("rows")' not in SCRIPT
+
+
 def test_finance_reconciliation_workflow_is_pinned_to_successful_production_sha():
     assert "name: DrCloud OS finance reconciliation proof" in WORKFLOW
     assert 'workflows: ["DrCloud OS Production"]' in WORKFLOW
@@ -56,6 +65,13 @@ def test_finance_reconciliation_workflow_is_pinned_to_successful_production_sha(
     assert "drcloud-finance-reconciliation-evidence-${{ github.run_id }}" in WORKFLOW
     assert "issues/170/comments" in WORKFLOW
     assert "group: drcloud-os-production" in WORKFLOW
+
+
+def test_finance_reconciliation_workflow_enforces_source_evidence_shape():
+    assert 'source=d.get("source_evidence")' in WORKFLOW
+    assert 'bank.get("booked_credits_total")' in WORKFLOW
+    assert 'bank.get("with_reference") + bank.get("without_reference")' in WORKFLOW
+    assert '"BOOKED_CREDITS_PRESENT" if bank.get("booked_credits_total") else "NO_BOOKED_CREDITS"' in WORKFLOW
 
 
 def test_finance_reconciliation_proof_shell_syntax():

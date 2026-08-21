@@ -73,7 +73,8 @@ def test_non_finite_money_is_unresolved_not_matched_or_crashing(tmp_path):
 
 def test_missing_ledgers_fail_closed_without_creating_database(tmp_path):
     missing=tmp_path/'missing.db'
-    assert reconcile_sumup_payouts_to_bank(missing)['status']=='UNMEASURABLE'
+    result=reconcile_sumup_payouts_to_bank(missing)
+    assert result['status']=='UNMEASURABLE' and result['source_evidence'] is None
     assert not missing.exists()
 
 
@@ -82,3 +83,49 @@ def test_empty_payouts_are_no_data(tmp_path):
     with sqlite3.connect(path) as db: _sumup_schema(db)
     result=reconcile_sumup_payouts_to_bank(path)
     assert result['status']=='NO_DATA' and result['coverage_ratio'] is None and result['payouts_total']==0
+    assert result['source_evidence']['payouts']['reference_coverage_ratio'] is None
+
+
+def test_source_evidence_is_aggregate_and_explains_bank_presence_reference_and_range(tmp_path):
+    path=tmp_path/'db'; ledger=BankLedger(path)
+    ledger.import_page('qonto',TransactionPage([
+        BankTransaction('a','2026-08-18T10:00:00+00:00',100,'EUR','one',external_transaction_id='secret-bank-id-1',reference='PRIVATE REF'),
+        BankTransaction('a','2026-08-20T11:00:00+00:00',50,'EUR','two',external_transaction_id='secret-bank-id-2',reference=None),
+    ],None))
+    with sqlite3.connect(path) as db:
+        _sumup_schema(db); _payout(db,'p1',reference='PRIVATE REF'); _payout(db,'p2',reference=None)
+    result=reconcile_sumup_payouts_to_bank(path)
+    evidence=result['source_evidence']
+    assert evidence['payouts']['total']==2 and evidence['payouts']['with_reference']==1
+    assert evidence['payouts']['without_reference']==1 and evidence['payouts']['reference_coverage_ratio']==0.5
+    bank=evidence['bank_credits']
+    assert bank['provider']=='qonto' and bank['presence']=='BOOKED_CREDITS_PRESENT'
+    assert bank['booked_credits_total']==2 and bank['with_reference']==1 and bank['without_reference']==1
+    assert bank['reference_coverage_ratio']==0.5
+    assert bank['booked_at_min']=='2026-08-18T10:00:00+00:00' and bank['booked_at_max']=='2026-08-20T11:00:00+00:00'
+    assert bank['latest_imported_at'] is not None and evidence['payouts']['latest_imported_at']=='2026-08-20T00:00:00+00:00'
+    serialized=str(evidence)
+    assert 'PRIVATE REF' not in serialized and 'secret-bank-id' not in serialized
+
+
+def test_source_evidence_timestamp_bounds_are_chronological_across_offsets(tmp_path):
+    path=tmp_path/'db'; ledger=BankLedger(path)
+    ledger.import_page('qonto',TransactionPage([
+        BankTransaction('a','2026-08-20T10:00:00+02:00',100,'EUR','one',external_transaction_id='b1',reference='A'),
+        BankTransaction('a','2026-08-20T09:00:00Z',50,'EUR','two',external_transaction_id='b2',reference='B'),
+    ],None))
+    with sqlite3.connect(path) as db: _sumup_schema(db); _payout(db)
+    bank=reconcile_sumup_payouts_to_bank(path)['source_evidence']['bank_credits']
+    assert bank['booked_at_min']=='2026-08-20T08:00:00+00:00'
+    assert bank['booked_at_max']=='2026-08-20T09:00:00+00:00'
+
+
+def test_source_evidence_reports_selected_bank_provider(tmp_path):
+    path=tmp_path/'db'; ledger=BankLedger(path)
+    ledger.import_page('otherbank',TransactionPage([
+        BankTransaction('a','2026-08-20T10:00:00+00:00',100,'EUR','one',external_transaction_id='b1',reference='BANK REF'),
+    ],None))
+    with sqlite3.connect(path) as db: _sumup_schema(db); _payout(db)
+    result=reconcile_sumup_payouts_to_bank(path, bank_provider='otherbank')
+    assert result['source_evidence']['bank_credits']['provider']=='otherbank'
+    assert result['source_evidence']['bank_credits']['booked_credits_total']==1
