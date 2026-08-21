@@ -57,12 +57,62 @@ def _unmeasurable(reason: str) -> dict:
     }
 
 
-def _source_evidence(payouts, credits, *, bank_provider: str) -> dict:
+def _coverage_diagnosis(
+    *,
+    payout_total: int,
+    payout_with_reference: int,
+    bank_total: int,
+    bank_with_reference: int,
+    matched: int,
+    unresolved: int,
+    ambiguous: int,
+    bank_provider: str,
+) -> str:
+    """Classify only what the selected local ledgers prove; never infer provider exhaustiveness."""
+    bank_prefix = "QONTO" if str(bank_provider or "").strip().lower() == "qonto" else "SELECTED_BANK"
+    if payout_total == 0:
+        return "NO_LOCAL_SUMUP_PAYOUTS"
+    if bank_total == 0:
+        return f"NO_LOCAL_{bank_prefix}_BOOKED_CREDITS"
+    if payout_with_reference == 0:
+        return "LOCAL_SUMUP_PAYOUT_REFERENCES_MISSING"
+    if bank_with_reference == 0:
+        return f"LOCAL_{bank_prefix}_BOOKED_CREDIT_REFERENCES_MISSING"
+    if payout_with_reference < payout_total:
+        return "LOCAL_SUMUP_PAYOUT_REFERENCE_COVERAGE_PARTIAL"
+    if bank_with_reference < bank_total:
+        return f"LOCAL_{bank_prefix}_BOOKED_CREDIT_REFERENCE_COVERAGE_PARTIAL"
+    if matched == payout_total and unresolved == 0 and ambiguous == 0:
+        return "LOCAL_EXACT_RECONCILIATION_COMPLETE"
+    return "LOCAL_EXACT_MATCH_GAP_REMAINS"
+
+
+def _source_evidence(
+    payouts,
+    credits,
+    *,
+    bank_provider: str,
+    matched: int,
+    unresolved: int,
+    ambiguous: int,
+) -> dict:
     payout_with_reference = sum(1 for row in payouts if _norm_reference(row["reference"]))
     bank_with_reference = sum(1 for row in credits if _norm_reference(row["reference"]))
     bank_total = len(credits)
     payout_total = len(payouts)
     return {
+        "coverage_diagnosis": _coverage_diagnosis(
+            payout_total=payout_total,
+            payout_with_reference=payout_with_reference,
+            bank_total=bank_total,
+            bank_with_reference=bank_with_reference,
+            matched=matched,
+            unresolved=unresolved,
+            ambiguous=ambiguous,
+            bank_provider=bank_provider,
+        ),
+        "diagnosis_scope": "LOCAL_LEDGER_ONLY",
+        "provider_exhaustiveness_inferred": False,
         "payouts": {
             "total": payout_total,
             "with_reference": payout_with_reference,
@@ -107,7 +157,6 @@ def reconcile_sumup_payouts_to_bank(path: Path | str, *, bank_provider: str = "q
             "WHERE provider=? AND direction='CREDIT' AND status='BOOKED' ORDER BY transaction_id",
             (bank_provider,),
         ))
-        source_evidence = _source_evidence(payouts, credits, bank_provider=bank_provider)
 
         provisional = []
         single_candidate_ids = []
@@ -161,6 +210,14 @@ def reconcile_sumup_payouts_to_bank(path: Path | str, *, bank_provider: str = "q
             rows.append(row)
 
         total = len(payouts)
+        source_evidence = _source_evidence(
+            payouts,
+            credits,
+            bank_provider=bank_provider,
+            matched=matched,
+            unresolved=unresolved,
+            ambiguous=ambiguous,
+        )
         return {
             "status": "NO_DATA" if total == 0 else "MEASURABLE",
             "payouts_total": total,
