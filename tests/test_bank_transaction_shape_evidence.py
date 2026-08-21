@@ -38,6 +38,18 @@ def test_booked_credit_remains_distinct(tmp_path):
     assert result['credits']['booked']==1
 
 
+def test_status_and_direction_counts_normalize_whitespace_and_case(tmp_path):
+    path=tmp_path/'db'
+    with _db(path) as db:
+        db.execute("INSERT INTO bank_transactions VALUES('a','Qonto',' credit ',' booked ','r')")
+        db.execute("INSERT INTO bank_transactions VALUES('b','Qonto','CREDIT',' completed ',NULL)")
+    result=qonto_local_transaction_shape(path)
+    assert result['cause']=='QONTO_LOCAL_BOOKED_CREDITS_PRESENT'
+    assert result['status_counts']=={'BOOKED':1,'COMPLETED':1}
+    assert result['direction_counts']=={'CREDIT':2,'DEBIT':0,'OTHER':0}
+    assert result['credits']=={'total':2,'booked':1,'completed':1,'with_reference':1,'reference_coverage_ratio':0.5}
+
+
 def test_unknown_status_is_bounded_to_other(tmp_path):
     path=tmp_path/'db'
     with _db(path) as db:
