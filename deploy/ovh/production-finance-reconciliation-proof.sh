@@ -49,6 +49,7 @@ aggregate = {
     "ambiguous": result.get("ambiguous"),
     "coverage_ratio": result.get("coverage_ratio"),
 }
+source_evidence = result.get("source_evidence")
 
 if status == "MEASURABLE":
     values = [aggregate[key] for key in ("payouts_total", "matched", "unresolved", "ambiguous")]
@@ -66,14 +67,36 @@ else:
     if any(aggregate[key] is not None for key in ("payouts_total", "matched", "unresolved", "ambiguous", "coverage_ratio")):
         raise SystemExit("FINANCE_RECONCILIATION_UNMEASURABLE_INVALID")
 
+if status == "UNMEASURABLE":
+    if source_evidence is not None:
+        raise SystemExit("FINANCE_SOURCE_EVIDENCE_UNMEASURABLE_INVALID")
+else:
+    if not isinstance(source_evidence, dict):
+        raise SystemExit("FINANCE_SOURCE_EVIDENCE_MISSING")
+    payouts_source = source_evidence.get("payouts") or {}
+    bank_source = source_evidence.get("bank_credits") or {}
+    if payouts_source.get("total") != aggregate["payouts_total"]:
+        raise SystemExit("FINANCE_SOURCE_PAYOUT_COUNT_MISMATCH")
+    bank_total = bank_source.get("booked_credits_total")
+    bank_with_ref = bank_source.get("with_reference")
+    bank_without_ref = bank_source.get("without_reference")
+    if not all(isinstance(value, int) and value >= 0 for value in (bank_total, bank_with_ref, bank_without_ref)):
+        raise SystemExit("FINANCE_SOURCE_BANK_COUNTS_INVALID")
+    if bank_with_ref + bank_without_ref != bank_total:
+        raise SystemExit("FINANCE_SOURCE_BANK_COUNTS_INCONSISTENT")
+    expected_presence = "BOOKED_CREDITS_PRESENT" if bank_total else "NO_BOOKED_CREDITS"
+    if bank_source.get("presence") != expected_presence:
+        raise SystemExit("FINANCE_SOURCE_BANK_PRESENCE_INVALID")
+
 report = {
-    "schema_version": 1,
+    "schema_version": 2,
     "environment": "production",
     "result": "PRODUCTION_FINANCE_RECONCILIATION_CAPTURED",
     "evidence_level": "PRODUCTION_READ_ONLY_LOCAL_LEDGER_FACTS",
     "captured_at": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
     "deployed_sha": expected_sha,
     "reconciliation": aggregate,
+    "source_evidence": source_evidence,
     "authority": {
         "payouts": "LOCAL_LEDGER_SUMUP_PAYOUTS",
         "bank_credits": "LOCAL_LEDGER_QONTO_BOOKED_CREDITS",
