@@ -35,7 +35,7 @@ if not re.fullmatch(r"[0-9a-f]{40}", expected_sha):
 
 data_dir = Path(os.environ.get("DRCLOUD_DATA_DIR", "/data"))
 database = data_dir / "drcloud.db"
-result = reconcile_sumup_payouts_to_bank(database, bank_provider="qonto")
+result = reconcile_sumup_payouts_to_bank(database, bank_provider="Qonto")
 status = result.get("status")
 if status not in {"MEASURABLE", "NO_DATA", "UNMEASURABLE"}:
     raise SystemExit("FINANCE_RECONCILIATION_STATUS_INVALID")
