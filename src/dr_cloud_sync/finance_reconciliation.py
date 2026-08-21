@@ -57,12 +57,37 @@ def _unmeasurable(reason: str) -> dict:
     }
 
 
+def _coverage_diagnosis(*, payout_total: int, payout_with_reference: int, bank_total: int, bank_with_reference: int) -> str:
+    """Classify only what the local ledgers prove; never infer provider exhaustiveness."""
+    if payout_total == 0:
+        return "NO_LOCAL_SUMUP_PAYOUTS"
+    if bank_total == 0:
+        return "NO_LOCAL_QONTO_BOOKED_CREDITS"
+    if payout_with_reference == 0:
+        return "LOCAL_SUMUP_PAYOUT_REFERENCES_MISSING"
+    if bank_with_reference == 0:
+        return "LOCAL_QONTO_BOOKED_CREDIT_REFERENCES_MISSING"
+    if payout_with_reference < payout_total:
+        return "LOCAL_SUMUP_PAYOUT_REFERENCE_COVERAGE_PARTIAL"
+    if bank_with_reference < bank_total:
+        return "LOCAL_QONTO_BOOKED_CREDIT_REFERENCE_COVERAGE_PARTIAL"
+    return "LOCAL_EXACT_MATCH_GAP_REMAINS"
+
+
 def _source_evidence(payouts, credits, *, bank_provider: str) -> dict:
     payout_with_reference = sum(1 for row in payouts if _norm_reference(row["reference"]))
     bank_with_reference = sum(1 for row in credits if _norm_reference(row["reference"]))
     bank_total = len(credits)
     payout_total = len(payouts)
     return {
+        "coverage_diagnosis": _coverage_diagnosis(
+            payout_total=payout_total,
+            payout_with_reference=payout_with_reference,
+            bank_total=bank_total,
+            bank_with_reference=bank_with_reference,
+        ),
+        "diagnosis_scope": "LOCAL_LEDGER_ONLY",
+        "provider_exhaustiveness_inferred": False,
         "payouts": {
             "total": payout_total,
             "with_reference": payout_with_reference,
