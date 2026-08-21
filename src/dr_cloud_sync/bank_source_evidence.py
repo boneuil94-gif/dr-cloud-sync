@@ -1,14 +1,16 @@
-"""Read-only sanitized evidence for the local bank synchronization control-plane.
+"""Read-only sanitized evidence for the local Qonto synchronization control-plane.
 
-This module never contacts the bank provider. It reports only already-persisted
-local source/import/diagnostic state and intentionally omits cursors, messages,
-request IDs, account identifiers and transaction-level data.
+No provider call is made. Evidence is restricted to aggregate local control-plane
+state; cursors, free-form errors, request IDs and banking identifiers are omitted.
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import json
 from pathlib import Path
 import sqlite3
+
+SCOPE = "LOCAL_SYNC_CONTROL_PLANE_ONLY"
 
 
 def _parse(value):
@@ -23,19 +25,48 @@ def _parse(value):
     return parsed.astimezone(timezone.utc)
 
 
-def _freshness(source, *, now):
-    status = str(source["status"] or "")
+def _freshness(status, completed_at, stale_after_seconds, *, now):
+    status = str(status or "")
     if status in {"ERROR", "NOT_CONFIGURED", "DISABLED", "UNSUPPORTED", "UNAVAILABLE"}:
         return status
-    last_success = _parse(source["last_success_at"])
-    if source["last_run_id"] is None or last_success is None:
+    completed = _parse(completed_at)
+    if completed is None:
         return "CONNECTED_NO_DATA"
-    stale_after = max(1, int(source["stale_after_seconds"] or 3600))
-    return "FRESH" if now - last_success <= timedelta(seconds=stale_after) else "STALE"
+    stale_after = max(1, int(stale_after_seconds or 3600))
+    return "FRESH" if now - completed <= timedelta(seconds=stale_after) else "STALE"
 
 
-def _cause(source, diagnostic):
-    status = str(source["status"] or "")
+def _latest_bank_import(db, source_id):
+    tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if not {"sync_jobs", "data_hub_sync_runs"} <= tables:
+        return None
+    row = db.execute(
+        "SELECT r.run_id,r.completed_at,r.result_json "
+        "FROM data_hub_sync_runs r JOIN sync_jobs j ON j.job_id=r.job_id "
+        "WHERE j.source_id=? AND j.job_type='BANK' AND r.status='SUCCEEDED' "
+        "ORDER BY r.run_id DESC LIMIT 1",
+        (source_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    try:
+        result = json.loads(row["result_json"] or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        result = {}
+    if not isinstance(result, dict):
+        result = {}
+    return {
+        "run_id": row["run_id"],
+        "completed_at": row["completed_at"],
+        "last_rows_imported": result.get("rows_imported"),
+        "records_available": result.get("records_available"),
+        "data_min_at": result.get("data_min_at"),
+        "data_max_at": result.get("data_max_at"),
+    }
+
+
+def _cause(status, import_run, diagnostic):
+    status = str(status or "")
     if status == "NOT_CONFIGURED":
         return "QONTO_NOT_CONFIGURED"
     if status == "DISABLED":
@@ -49,11 +80,12 @@ def _cause(source, diagnostic):
         if category in {"NETWORK", "TIMEOUT", "RATE_LIMIT", "HTTP"}:
             return "QONTO_SYNC_BLOCKED_TRANSPORT"
         return "QONTO_SYNC_ERROR_OTHER"
-    if source["last_run_id"] is None:
+    if import_run is None:
         return "QONTO_NO_SUCCESSFUL_IMPORT_RUN"
-    if source["records_available"] is None:
+    records = import_run["records_available"]
+    if records is None:
         return "QONTO_IMPORT_COVERAGE_UNKNOWN"
-    if int(source["records_available"]) == 0:
+    if int(records) == 0:
         return "QONTO_LOCAL_IMPORT_PROVED_ZERO_RECORDS"
     return "QONTO_LOCAL_RECORDS_AVAILABLE"
 
@@ -71,13 +103,14 @@ def qonto_local_source_evidence(path: Path | str, *, now=None) -> dict:
         if "data_sources" not in tables:
             return {"status": "UNMEASURABLE", "reason": "DATA_SOURCE_STATE_MISSING", "provider_exhaustiveness_inferred": False}
         source = db.execute(
-            "SELECT source_id,provider,status,enabled,last_attempt_at,last_success_at,stale_after_seconds,"
-            "last_rows_imported,last_run_id,data_min_at,data_max_at,records_available,rows_imported,cursor "
+            "SELECT source_id,provider,status,enabled,stale_after_seconds,rows_imported "
             "FROM data_sources WHERE lower(provider)='qonto' AND (source_id='bank' OR source_type='BANK') "
             "ORDER BY CASE WHEN source_id='bank' THEN 0 ELSE 1 END LIMIT 1"
         ).fetchone()
         if source is None:
-            return {"status": "MEASURABLE", "cause": "QONTO_SOURCE_STATE_MISSING", "provider": "Qonto", "provider_exhaustiveness_inferred": False}
+            return {"status": "MEASURABLE", "provider": "Qonto", "evidence_scope": SCOPE,
+                    "cause": "QONTO_SOURCE_STATE_MISSING", "provider_exhaustiveness_inferred": False}
+
         diagnostic = None
         if "connector_diagnostics" in tables:
             row = db.execute(
@@ -86,35 +119,31 @@ def qonto_local_source_evidence(path: Path | str, *, now=None) -> dict:
                 (source["source_id"],),
             ).fetchone()
             if row is not None:
-                diagnostic = {
-                    "category": row["category"],
-                    "stage": row["stage"],
-                    "http_status": row["http_status"],
-                    "success": bool(row["success"]),
-                    "occurred_at": row["occurred_at"],
-                }
-        result = {
+                diagnostic = {"category": row["category"], "stage": row["stage"],
+                              "http_status": row["http_status"], "success": bool(row["success"]),
+                              "occurred_at": row["occurred_at"]}
+
+        import_run = _latest_bank_import(db, source["source_id"])
+        completed_at = import_run["completed_at"] if import_run else None
+        return {
             "status": "MEASURABLE",
             "provider": "Qonto",
-            "evidence_scope": "LOCAL_SYNC_CONTROL_PLANE_ONLY",
+            "evidence_scope": SCOPE,
             "provider_exhaustiveness_inferred": False,
-            "cause": _cause(source, diagnostic),
+            "cause": _cause(source["status"], import_run, diagnostic),
             "source": {
                 "status": source["status"],
                 "enabled": bool(source["enabled"]),
-                "freshness": _freshness(source, now=observed),
-                "last_attempt_at": source["last_attempt_at"],
-                "last_success_at": source["last_success_at"],
-                "last_run_id_present": source["last_run_id"] is not None,
-                "last_rows_imported": source["last_rows_imported"],
+                "freshness": _freshness(source["status"], completed_at, source["stale_after_seconds"], now=observed),
+                "successful_import_run_present": import_run is not None,
+                "last_import_completed_at": completed_at,
+                "last_rows_imported": import_run["last_rows_imported"] if import_run else None,
                 "rows_imported_total": source["rows_imported"],
-                "records_available": source["records_available"],
-                "data_min_at": source["data_min_at"],
-                "data_max_at": source["data_max_at"],
-                "cursor_present": bool(source["cursor"]),
+                "records_available": import_run["records_available"] if import_run else None,
+                "data_min_at": import_run["data_min_at"] if import_run else None,
+                "data_max_at": import_run["data_max_at"] if import_run else None,
             },
             "latest_diagnostic": diagnostic,
         }
-        return result
     finally:
         db.close()
