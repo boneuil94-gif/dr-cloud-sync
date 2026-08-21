@@ -50,6 +50,7 @@ aggregate = {
     "coverage_ratio": result.get("coverage_ratio"),
 }
 source_evidence = result.get("source_evidence")
+bank_authority = "LOCAL_LEDGER_QONTO_BOOKED_CREDITS"
 
 if status == "MEASURABLE":
     values = [aggregate[key] for key in ("payouts_total", "matched", "unresolved", "ambiguous")]
@@ -77,14 +78,20 @@ else:
     bank_source = source_evidence.get("bank_credits") or {}
     if payouts_source.get("total") != aggregate["payouts_total"]:
         raise SystemExit("FINANCE_SOURCE_PAYOUT_COUNT_MISMATCH")
-    bank_total = bank_source.get("booked_credits_total")
+    eligible_total = bank_source.get("eligible_credits_total")
+    using_eligible_contract = eligible_total is not None
+    bank_total = eligible_total if using_eligible_contract else bank_source.get("booked_credits_total")
     bank_with_ref = bank_source.get("with_reference")
     bank_without_ref = bank_source.get("without_reference")
     if not all(isinstance(value, int) and value >= 0 for value in (bank_total, bank_with_ref, bank_without_ref)):
         raise SystemExit("FINANCE_SOURCE_BANK_COUNTS_INVALID")
     if bank_with_ref + bank_without_ref != bank_total:
         raise SystemExit("FINANCE_SOURCE_BANK_COUNTS_INCONSISTENT")
-    expected_presence = "BOOKED_CREDITS_PRESENT" if bank_total else "NO_BOOKED_CREDITS"
+    if using_eligible_contract:
+        expected_presence = "ELIGIBLE_CREDITS_PRESENT" if bank_total else "NO_ELIGIBLE_CREDITS"
+        bank_authority = "LOCAL_LEDGER_QONTO_ELIGIBLE_CREDITS"
+    else:
+        expected_presence = "BOOKED_CREDITS_PRESENT" if bank_total else "NO_BOOKED_CREDITS"
     if bank_source.get("presence") != expected_presence:
         raise SystemExit("FINANCE_SOURCE_BANK_PRESENCE_INVALID")
 
@@ -99,7 +106,7 @@ report = {
     "source_evidence": source_evidence,
     "authority": {
         "payouts": "LOCAL_LEDGER_SUMUP_PAYOUTS",
-        "bank_credits": "LOCAL_LEDGER_QONTO_BOOKED_CREDITS",
+        "bank_credits": bank_authority,
         "provider_authority_totals_proven": False,
         "end_to_end_funnel_proven": False,
     },
