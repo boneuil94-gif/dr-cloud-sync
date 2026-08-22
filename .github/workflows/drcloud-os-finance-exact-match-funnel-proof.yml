@@ -1,0 +1,159 @@
+name: DrCloud OS finance exact-match funnel proof
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["DrCloud OS Production"]
+    types: [completed]
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  # Serialize with production deployments so the host checkout/container cannot
+  # change between the deployed-SHA check and the read-only in-container proof.
+  group: drcloud-os-production
+  cancel-in-progress: false
+jobs:
+  proof:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      REVIEWED_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: Validate reviewed SHA
+        run: |
+          set -euo pipefail
+          [[ "$REVIEWED_SHA" =~ ^[0-9a-f]{40}$ ]]
+      - name: Check out exact reviewed SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REVIEWED_SHA }}
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.OVH_SSH_PRIVATE_KEY }}
+          SSH_HOST_KEYS: ${{ secrets.OVH_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/drcloud_deploy
+          printf '%s\n' "$SSH_HOST_KEYS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/drcloud_deploy ~/.ssh/known_hosts
+      - name: Execute read-only finance exact-match funnel proof
+        id: proof
+        continue-on-error: true
+        env:
+          OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
+          OVH_SSH_PORT: ${{ secrets.OVH_SSH_PORT }}
+          OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" "$OVH_SSH_USER@$OVH_SSH_HOST" \
+            "EXPECTED_DEPLOYED_SHA='$REVIEWED_SHA' bash -s" > finance_exact_match_funnel_evidence.json <<'REMOTE'
+          set -Eeuo pipefail
+          repo=/opt/drcloud-os
+          expected_sha="${EXPECTED_DEPLOYED_SHA:-}"
+          [[ "$expected_sha" =~ ^[0-9a-f]{40}$ ]] || { echo FINANCE_FUNNEL_EXPECTED_SHA_INVALID >&2; exit 64; }
+          deployed_sha="$(git -C "$repo" rev-parse HEAD)"
+          [[ "$deployed_sha" == "$expected_sha" ]] || { echo FINANCE_FUNNEL_DEPLOYED_SHA_MISMATCH >&2; exit 65; }
+          source "$repo/deploy/ovh/deployment-environment.sh"
+          cd "$repo/deploy/ovh"
+          docker compose exec -T -e EXPECTED_DEPLOYED_SHA="$expected_sha" drcloud-os python - <<'PY'
+          from __future__ import annotations
+          import datetime,json,os,re
+          from pathlib import Path
+          from dr_cloud_sync.finance_match_funnel import exact_match_funnel
+
+          sha=os.environ.get('EXPECTED_DEPLOYED_SHA','')
+          if not re.fullmatch(r'[0-9a-f]{40}',sha): raise SystemExit('FINANCE_FUNNEL_EXPECTED_SHA_INVALID')
+          path=Path(os.environ.get('DRCLOUD_DATA_DIR','/data'))/'drcloud.db'
+          evidence=exact_match_funnel(path,bank_provider='qonto')
+          report={
+           'schema_version':1,
+           'environment':'production',
+           'result':'PRODUCTION_FINANCE_EXACT_MATCH_FUNNEL_CAPTURED',
+           'evidence_level':'PRODUCTION_READ_ONLY_LOCAL_LEDGER',
+           'captured_at':datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00','Z'),
+           'deployed_sha':sha,
+           'exact_match_funnel':evidence,
+           'safety':{'database_read_only':True,'provider_network_calls':False,'external_provider_auth':'NONE','mutations':False,'row_level_identifiers_emitted':False,'reference_values_emitted':False,'free_form_banking_data_emitted':False},
+          }
+          forbidden={'message','response_excerpt','request_id','cursor','account_id','transaction_id','payout_id','iban','reference','label','counterparty','secret','token','credential','api_key','authorization','email','phone'}
+          def scan(v):
+           if isinstance(v,dict):
+            for k,c in v.items():
+             if str(k).lower() in forbidden: raise SystemExit('FINANCE_FUNNEL_SENSITIVE_KEY')
+             scan(c)
+           elif isinstance(v,list):
+            for c in v: scan(c)
+          scan(report)
+          print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+          REMOTE
+          test -s finance_exact_match_funnel_evidence.json
+      - name: Upload sanitized evidence
+        if: always() && hashFiles('finance_exact_match_funnel_evidence.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: drcloud-finance-exact-match-funnel-evidence-${{ github.run_id }}
+          path: finance_exact_match_funnel_evidence.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Enforce captured evidence
+        id: enforce
+        if: always()
+        env:
+          PROOF_OUTCOME: ${{ steps.proof.outcome }}
+        run: |
+          set -euo pipefail
+          test "$PROOF_OUTCOME" = success
+          test -s finance_exact_match_funnel_evidence.json
+          python - <<'PY'
+          import json,os
+          d=json.load(open('finance_exact_match_funnel_evidence.json'))
+          assert d['schema_version']==1
+          assert d['result']=='PRODUCTION_FINANCE_EXACT_MATCH_FUNNEL_CAPTURED'
+          assert d['environment']=='production'
+          assert d['deployed_sha']==os.environ['REVIEWED_SHA']
+          f=d['exact_match_funnel']
+          assert f['provider_exhaustiveness_inferred'] is False
+          assert f['status'] in {'MEASURABLE','NO_DATA','UNMEASURABLE'}
+          if f['status']!='UNMEASURABLE':
+              assert f['diagnosis_scope']=='LOCAL_LEDGER_ONLY'
+              assert str(f['bank_provider']).lower()=='qonto'
+              assert set(f['eligible_statuses'])=={'BOOKED','COMPLETED'}
+              c=f['counts']
+              keys={'payouts_total','payouts_valid_for_exact_matching','eligible_bank_credits_total','eligible_bank_credits_valid_for_exact_matching','payouts_with_reference_overlap','payouts_with_reference_currency_overlap','payouts_with_exact_tuple_overlap','payouts_with_unique_exact_bank_candidate','payouts_with_multiple_exact_bank_candidates'}
+              assert set(c)==keys
+              assert all(isinstance(c[k],int) and c[k]>=0 for k in keys)
+              assert c['payouts_with_reference_overlap']<=c['payouts_valid_for_exact_matching']
+              assert c['payouts_with_reference_currency_overlap']<=c['payouts_with_reference_overlap']
+              assert c['payouts_with_exact_tuple_overlap']<=c['payouts_with_reference_currency_overlap']
+              assert c['payouts_with_unique_exact_bank_candidate']+c['payouts_with_multiple_exact_bank_candidates']==c['payouts_with_exact_tuple_overlap']
+          s=d['safety']
+          assert s['database_read_only'] is True
+          assert s['provider_network_calls'] is False
+          assert s['external_provider_auth']=='NONE'
+          assert s['mutations'] is False
+          assert s['row_level_identifiers_emitted'] is False
+          assert s['reference_values_emitted'] is False
+          assert s['free_form_banking_data_emitted'] is False
+          PY
+      - name: Index this run for connector discovery
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROOF_OUTCOME: ${{ steps.proof.outcome }}
+          ENFORCE_OUTCOME: ${{ steps.enforce.outcome }}
+          TRIGGER_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || '' }}
+        run: |
+          python - <<'PY'
+          import datetime,json,os
+          conclusion='success' if os.environ.get('PROOF_OUTCOME')=='success' and os.environ.get('ENFORCE_OUTCOME')=='success' else 'failure'
+          row={'schema_version':1,'workflow':'DrCloud OS finance exact-match funnel proof','run_id':int(os.environ['GITHUB_RUN_ID']),'run_number':int(os.environ['GITHUB_RUN_NUMBER']),'run_attempt':int(os.environ.get('GITHUB_RUN_ATTEMPT','1')),'status':'completed','conclusion':conclusion,'event':os.environ.get('GITHUB_EVENT_NAME'),'head_branch':'main','head_sha':os.environ['REVIEWED_SHA'],'indexed_at':datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00','Z'),'run_url':f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"}
+          if os.environ.get('TRIGGER_RUN_ID'): row['trigger_run_id']=int(os.environ['TRIGGER_RUN_ID'])
+          body='<!-- drcloud-run-index -->\n```json\n'+json.dumps(row,sort_keys=True)+'\n```'
+          json.dump({'body':body},open('run-index-payload.json','w'))
+          PY
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/170/comments" --input run-index-payload.json
