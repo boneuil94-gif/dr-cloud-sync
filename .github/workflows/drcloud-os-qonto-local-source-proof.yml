@@ -13,6 +13,7 @@ permissions:
 concurrency:
   group: drcloud-os-production
   cancel-in-progress: false
+  queue: max
 
 jobs:
   proof:
