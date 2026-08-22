@@ -9,7 +9,9 @@ permissions:
   contents: read
   issues: write
 concurrency:
-  group: drcloud-os-finance-exact-match-funnel-proof
+  # Serialize with production deployments so the host checkout/container cannot
+  # change between the deployed-SHA check and the read-only in-container proof.
+  group: drcloud-os-production
   cancel-in-progress: false
 jobs:
   proof:
