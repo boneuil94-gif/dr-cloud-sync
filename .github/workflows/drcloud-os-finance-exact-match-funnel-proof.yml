@@ -13,6 +13,7 @@ concurrency:
   # change between the deployed-SHA check and the read-only in-container proof.
   group: drcloud-os-production
   cancel-in-progress: false
+  queue: max
 jobs:
   proof:
     if: >-
