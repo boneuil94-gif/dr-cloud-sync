@@ -64,6 +64,20 @@ def test_amount_gap_only_pairs_unique_reference_currency_candidates(tmp_path):
     assert 'secret-' not in serialized and '95' not in serialized and '105' not in serialized
 
 
+def test_qonto_provider_matching_is_case_insensitive(tmp_path):
+    path=tmp_path/'db'; ledger=BankLedger(path)
+    ledger.import_page('Qonto',TransactionPage([
+        BankTransaction('a','2026-08-20T10:00:00+00:00',95,'EUR','one',external_transaction_id='secret-case',reference='CASE REF',status='COMPLETED')
+    ],None))
+    with sqlite3.connect(path) as db:
+        _sumup_schema(db)
+        _payout(db,'p1','100','EUR','CASE REF','5')
+    result=amount_gap_funnel(path)
+    assert result['counts']['payouts_with_unique_reference_currency_bank_candidate']==1
+    assert result['counts']['unique_pairs_equal_after_subtracting_payout_fee']==1
+    assert 'CASE REF' not in str(result) and 'secret-case' not in str(result)
+
+
 def test_non_qonto_completed_credit_is_not_treated_as_proven_settled(tmp_path):
     path=tmp_path/'db'; ledger=BankLedger(path)
     ledger.import_page('otherbank',TransactionPage([
