@@ -7,12 +7,18 @@ def test_finance_match_funnel_production_proof_is_pinned_read_only_and_sanitized
     helper = (root / "src/dr_cloud_sync/finance_match_funnel.py").read_text()
 
     assert 'workflows: ["DrCloud OS Production"]' in workflow
-    assert "group: drcloud-os-production" in workflow
+    assert "group: drcloud-os-finance-exact-match-funnel-proof" in workflow
+    assert "group: drcloud-os-production" not in workflow
     assert "cancel-in-progress: false" in workflow
     assert "REVIEWED_SHA" in workflow and "github.event.workflow_run.head_sha" in workflow
     assert 'ref: ${{ env.REVIEWED_SHA }}' in workflow
     assert "EXPECTED_DEPLOYED_SHA" in workflow
-    assert workflow.index("deployment-environment.sh") < workflow.index("docker compose")
+    lock = 'exec 9>"${DRCLOUD_DEPLOY_LOCK:-/tmp/drcloud-os-deploy.lock}"'
+    assert lock in workflow
+    assert "flock 9" in workflow
+    assert workflow.index("deployment-environment.sh") < workflow.index(lock)
+    assert workflow.index(lock) < workflow.index('deployed_sha="$(git -C "$repo" rev-parse HEAD)"')
+    assert workflow.index("flock 9") < workflow.index("docker compose")
     assert "exact_match_funnel(path,bank_provider='qonto')" in workflow
     assert "provider_exhaustiveness_inferred" in workflow
     assert "provider_network_calls" in workflow and "False" in workflow
