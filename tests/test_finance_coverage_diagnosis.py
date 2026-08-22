@@ -12,14 +12,14 @@ def _payout(db, payout_id="p1", reference="BANK REF"):
     db.execute("INSERT INTO sumup_payouts VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (payout_id, None, "2026-08-20", "100", "EUR", "0", "PAID", reference, None, None, None, "[]", "{}", "2026-08-20T00:00:00+00:00"))
 
 
-def test_diagnosis_is_local_only_when_no_qonto_booked_credit(tmp_path):
+def test_diagnosis_is_local_only_when_no_qonto_eligible_credit(tmp_path):
     path = tmp_path / "db"
     BankLedger(path)
     with sqlite3.connect(path) as db:
         _sumup_schema(db)
         _payout(db)
     evidence = reconcile_sumup_payouts_to_bank(path, bank_provider="Qonto")["source_evidence"]
-    assert evidence["coverage_diagnosis"] == "NO_LOCAL_QONTO_BOOKED_CREDITS"
+    assert evidence["coverage_diagnosis"] == "NO_LOCAL_QONTO_ELIGIBLE_CREDITS"
     assert evidence["diagnosis_scope"] == "LOCAL_LEDGER_ONLY"
     assert evidence["provider_exhaustiveness_inferred"] is False
 
@@ -34,7 +34,7 @@ def test_diagnosis_reports_missing_bank_references_without_fuzzy_fallback(tmp_pa
         _sumup_schema(db)
         _payout(db)
     evidence = reconcile_sumup_payouts_to_bank(path, bank_provider="Qonto")["source_evidence"]
-    assert evidence["coverage_diagnosis"] == "LOCAL_QONTO_BOOKED_CREDIT_REFERENCES_MISSING"
+    assert evidence["coverage_diagnosis"] == "LOCAL_QONTO_ELIGIBLE_CREDIT_REFERENCES_MISSING"
     assert evidence["bank_credits"]["with_reference"] == 0
 
 
@@ -74,6 +74,6 @@ def test_non_qonto_provider_diagnosis_is_provider_neutral(tmp_path):
         _sumup_schema(db)
         _payout(db)
     evidence = reconcile_sumup_payouts_to_bank(path, bank_provider="OtherBank")["source_evidence"]
-    assert evidence["coverage_diagnosis"] == "NO_LOCAL_SELECTED_BANK_BOOKED_CREDITS"
+    assert evidence["coverage_diagnosis"] == "NO_LOCAL_SELECTED_BANK_ELIGIBLE_CREDITS"
     assert evidence["bank_credits"]["provider"] == "OtherBank"
     assert "QONTO" not in evidence["coverage_diagnosis"]

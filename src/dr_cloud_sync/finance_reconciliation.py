@@ -1,8 +1,13 @@
 """Read-only, fail-closed reconciliation between SumUp payouts and bank credits.
 
-A payout is only MATCHED when one and only one booked bank credit has the same
+A payout is only MATCHED when one and only one eligible bank credit has the same
 currency, exact decimal amount and exact normalized provider reference. Missing,
 malformed or contended matches remain unresolved/ambiguous; no fuzzy matching is used.
+
+Qonto's imported transaction contract uses ``COMPLETED`` for settled transactions in
+production. For Qonto only, ``BOOKED`` and ``COMPLETED`` are therefore eligible settled
+credit statuses. Other bank providers remain restricted to ``BOOKED`` until their own
+imported status contract is separately proven.
 """
 from __future__ import annotations
 
@@ -44,6 +49,13 @@ def _timestamp_bound(rows, field: str, selector) -> str | None:
     return selector(values).isoformat() if values else None
 
 
+def _eligible_credit_statuses(bank_provider: str) -> tuple[str, ...]:
+    """Return only statuses proven settled by the selected imported provider contract."""
+    if str(bank_provider or "").strip().lower() == "qonto":
+        return ("BOOKED", "COMPLETED")
+    return ("BOOKED",)
+
+
 def _unmeasurable(reason: str) -> dict:
     return {
         "status": "UNMEASURABLE",
@@ -73,15 +85,15 @@ def _coverage_diagnosis(
     if payout_total == 0:
         return "NO_LOCAL_SUMUP_PAYOUTS"
     if bank_total == 0:
-        return f"NO_LOCAL_{bank_prefix}_BOOKED_CREDITS"
+        return f"NO_LOCAL_{bank_prefix}_ELIGIBLE_CREDITS"
     if payout_with_reference == 0:
         return "LOCAL_SUMUP_PAYOUT_REFERENCES_MISSING"
     if bank_with_reference == 0:
-        return f"LOCAL_{bank_prefix}_BOOKED_CREDIT_REFERENCES_MISSING"
+        return f"LOCAL_{bank_prefix}_ELIGIBLE_CREDIT_REFERENCES_MISSING"
     if payout_with_reference < payout_total:
         return "LOCAL_SUMUP_PAYOUT_REFERENCE_COVERAGE_PARTIAL"
     if bank_with_reference < bank_total:
-        return f"LOCAL_{bank_prefix}_BOOKED_CREDIT_REFERENCE_COVERAGE_PARTIAL"
+        return f"LOCAL_{bank_prefix}_ELIGIBLE_CREDIT_REFERENCE_COVERAGE_PARTIAL"
     if matched == payout_total and unresolved == 0 and ambiguous == 0:
         return "LOCAL_EXACT_RECONCILIATION_COMPLETE"
     return "LOCAL_EXACT_MATCH_GAP_REMAINS"
@@ -92,6 +104,7 @@ def _source_evidence(
     credits,
     *,
     bank_provider: str,
+    eligible_statuses: tuple[str, ...],
     matched: int,
     unresolved: int,
     ambiguous: int,
@@ -99,6 +112,8 @@ def _source_evidence(
     payout_with_reference = sum(1 for row in payouts if _norm_reference(row["reference"]))
     bank_with_reference = sum(1 for row in credits if _norm_reference(row["reference"]))
     bank_total = len(credits)
+    booked_total = sum(1 for row in credits if str(row["status"] or "").upper() == "BOOKED")
+    completed_total = sum(1 for row in credits if str(row["status"] or "").upper() == "COMPLETED")
     payout_total = len(payouts)
     return {
         "coverage_diagnosis": _coverage_diagnosis(
@@ -122,14 +137,17 @@ def _source_evidence(
         },
         "bank_credits": {
             "provider": bank_provider,
-            "booked_credits_total": bank_total,
+            "eligible_statuses": list(eligible_statuses),
+            "eligible_credits_total": bank_total,
+            "booked_credits_total": booked_total,
+            "completed_credits_total": completed_total,
             "with_reference": bank_with_reference,
             "without_reference": bank_total - bank_with_reference,
             "reference_coverage_ratio": (bank_with_reference / bank_total) if bank_total else None,
             "booked_at_min": _timestamp_bound(credits, "booked_at", min),
             "booked_at_max": _timestamp_bound(credits, "booked_at", max),
             "latest_imported_at": _timestamp_bound(credits, "imported_at", max),
-            "presence": "BOOKED_CREDITS_PRESENT" if bank_total else "NO_BOOKED_CREDITS",
+            "presence": "ELIGIBLE_CREDITS_PRESENT" if bank_total else "NO_ELIGIBLE_CREDITS",
         },
     }
 
@@ -152,10 +170,12 @@ def reconcile_sumup_payouts_to_bank(path: Path | str, *, bank_provider: str = "q
         payouts = list(db.execute(
             "SELECT payout_id, amount, currency, reference, status, imported_at FROM sumup_payouts ORDER BY payout_id"
         ))
+        eligible_statuses = _eligible_credit_statuses(bank_provider)
+        placeholders = ",".join("?" for _ in eligible_statuses)
         credits = list(db.execute(
             "SELECT transaction_id, amount, currency, reference, status, booked_at, imported_at FROM bank_transactions "
-            "WHERE provider=? AND direction='CREDIT' AND status='BOOKED' ORDER BY transaction_id",
-            (bank_provider,),
+            f"WHERE provider=? AND direction='CREDIT' AND status IN ({placeholders}) ORDER BY transaction_id",
+            (bank_provider, *eligible_statuses),
         ))
 
         provisional = []
@@ -214,6 +234,7 @@ def reconcile_sumup_payouts_to_bank(path: Path | str, *, bank_provider: str = "q
             payouts,
             credits,
             bank_provider=bank_provider,
+            eligible_statuses=eligible_statuses,
             matched=matched,
             unresolved=unresolved,
             ambiguous=ambiguous,

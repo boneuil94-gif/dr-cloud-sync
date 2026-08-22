@@ -22,6 +22,28 @@ def test_exact_reference_amount_currency_matches_one_bank_credit(tmp_path):
     assert result['rows']==[{'payout_id':'p1','status':'MATCHED','bank_transaction_id':'bank:'+ledger.fingerprint('qonto',tx)}]
 
 
+def test_qonto_completed_credit_is_eligible_for_exact_match(tmp_path):
+    path=tmp_path/'db'; ledger=BankLedger(path)
+    tx=BankTransaction('a','2026-08-20T10:00:00+00:00',100,'EUR','SumUp payout',external_transaction_id='b1',reference='BANK REF',status='COMPLETED')
+    ledger.import_page('qonto',TransactionPage([tx],None))
+    with sqlite3.connect(path) as db: _sumup_schema(db); _payout(db)
+    result=reconcile_sumup_payouts_to_bank(path)
+    assert result['matched']==1 and result['coverage_ratio']==1
+    bank=result['source_evidence']['bank_credits']
+    assert bank['eligible_statuses']==['BOOKED','COMPLETED']
+    assert bank['eligible_credits_total']==1 and bank['booked_credits_total']==0 and bank['completed_credits_total']==1
+
+
+def test_completed_status_is_not_generalized_to_unproven_bank_provider(tmp_path):
+    path=tmp_path/'db'; ledger=BankLedger(path)
+    tx=BankTransaction('a','2026-08-20T10:00:00+00:00',100,'EUR','SumUp payout',external_transaction_id='b1',reference='BANK REF',status='COMPLETED')
+    ledger.import_page('otherbank',TransactionPage([tx],None))
+    with sqlite3.connect(path) as db: _sumup_schema(db); _payout(db)
+    result=reconcile_sumup_payouts_to_bank(path,bank_provider='otherbank')
+    assert result['matched']==0 and result['unresolved']==1
+    assert result['source_evidence']['bank_credits']['eligible_statuses']==['BOOKED']
+
+
 def test_missing_reference_never_uses_amount_only_fallback(tmp_path):
     path=tmp_path/'db'; ledger=BankLedger(path)
     ledger.import_page('qonto',TransactionPage([BankTransaction('a','2026-08-20T10:00:00+00:00',100,'EUR','SumUp payout',external_transaction_id='b1',reference='whatever')],None))
@@ -99,8 +121,9 @@ def test_source_evidence_is_aggregate_and_explains_bank_presence_reference_and_r
     assert evidence['payouts']['total']==2 and evidence['payouts']['with_reference']==1
     assert evidence['payouts']['without_reference']==1 and evidence['payouts']['reference_coverage_ratio']==0.5
     bank=evidence['bank_credits']
-    assert bank['provider']=='qonto' and bank['presence']=='BOOKED_CREDITS_PRESENT'
-    assert bank['booked_credits_total']==2 and bank['with_reference']==1 and bank['without_reference']==1
+    assert bank['provider']=='qonto' and bank['presence']=='ELIGIBLE_CREDITS_PRESENT'
+    assert bank['eligible_credits_total']==2 and bank['booked_credits_total']==2 and bank['completed_credits_total']==0
+    assert bank['with_reference']==1 and bank['without_reference']==1
     assert bank['reference_coverage_ratio']==0.5
     assert bank['booked_at_min']=='2026-08-18T10:00:00+00:00' and bank['booked_at_max']=='2026-08-20T11:00:00+00:00'
     assert bank['latest_imported_at'] is not None and evidence['payouts']['latest_imported_at']=='2026-08-20T00:00:00+00:00'
@@ -129,3 +152,4 @@ def test_source_evidence_reports_selected_bank_provider(tmp_path):
     result=reconcile_sumup_payouts_to_bank(path, bank_provider='otherbank')
     assert result['source_evidence']['bank_credits']['provider']=='otherbank'
     assert result['source_evidence']['bank_credits']['booked_credits_total']==1
+    assert result['source_evidence']['bank_credits']['eligible_credits_total']==1
