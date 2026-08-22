@@ -27,7 +27,8 @@ def amount_gap_funnel(path: Path | str, *, bank_provider: str = "qonto") -> dict
 
     Amount relationships are evaluated only when a payout has exactly one bank credit
     candidate with the same normalized reference and currency. Multiple candidates are
-    counted but never arbitrarily paired.
+    counted but never arbitrarily paired. Sign-shape evidence is aggregate-only and is
+    diagnostic: absolute-value equality never changes reconciliation semantics.
     """
     ledger_path = Path(path)
     if not ledger_path.is_file():
@@ -54,11 +55,18 @@ def amount_gap_funnel(path: Path | str, *, bank_provider: str = "qonto") -> dict
         counts = {
             "payouts_total": len(payouts),
             "payouts_valid_for_amount_gap": 0,
+            "valid_payout_amount_positive": 0,
+            "valid_payout_amount_zero": 0,
+            "valid_payout_amount_negative": 0,
             "payouts_with_reference_currency_overlap": 0,
             "payouts_without_reference_currency_bank_candidate": 0,
             "payouts_with_unique_reference_currency_bank_candidate": 0,
             "payouts_with_multiple_reference_currency_bank_candidates": 0,
+            "unique_bank_candidate_amount_positive": 0,
+            "unique_bank_candidate_amount_zero": 0,
+            "unique_bank_candidate_amount_negative": 0,
             "unique_pairs_amount_equal": 0,
+            "unique_pairs_absolute_amount_equal": 0,
             "unique_pairs_bank_amount_lower": 0,
             "unique_pairs_bank_amount_higher": 0,
             "unique_pairs_equal_after_subtracting_payout_fee": 0,
@@ -77,6 +85,12 @@ def amount_gap_funnel(path: Path | str, *, bank_provider: str = "qonto") -> dict
             if not reference or payout_amount is None or not currency:
                 continue
             counts["payouts_valid_for_amount_gap"] += 1
+            if payout_amount > 0:
+                counts["valid_payout_amount_positive"] += 1
+            elif payout_amount < 0:
+                counts["valid_payout_amount_negative"] += 1
+            else:
+                counts["valid_payout_amount_zero"] += 1
 
             candidates = []
             for credit in credits:
@@ -98,6 +112,14 @@ def amount_gap_funnel(path: Path | str, *, bank_provider: str = "qonto") -> dict
 
             counts["payouts_with_unique_reference_currency_bank_candidate"] += 1
             bank_amount = candidates[0]
+            if bank_amount > 0:
+                counts["unique_bank_candidate_amount_positive"] += 1
+            elif bank_amount < 0:
+                counts["unique_bank_candidate_amount_negative"] += 1
+            else:
+                counts["unique_bank_candidate_amount_zero"] += 1
+            if abs(bank_amount) == abs(payout_amount):
+                counts["unique_pairs_absolute_amount_equal"] += 1
             if bank_amount == payout_amount:
                 counts["unique_pairs_amount_equal"] += 1
                 continue
