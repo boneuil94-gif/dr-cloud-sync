@@ -15,6 +15,7 @@ concurrency:
   # move to another SHA while this proof is running.
   group: drcloud-os-production
   cancel-in-progress: false
+  queue: max
 
 jobs:
   recovery:
