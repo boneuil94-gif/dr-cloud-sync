@@ -47,11 +47,18 @@ def test_amount_gap_only_pairs_unique_reference_currency_candidates(tmp_path):
     assert counts=={
         'payouts_total':6,
         'payouts_valid_for_amount_gap':5,
+        'valid_payout_amount_positive':5,
+        'valid_payout_amount_zero':0,
+        'valid_payout_amount_negative':0,
         'payouts_with_reference_currency_overlap':4,
         'payouts_without_reference_currency_bank_candidate':1,
         'payouts_with_unique_reference_currency_bank_candidate':3,
         'payouts_with_multiple_reference_currency_bank_candidates':1,
+        'unique_bank_candidate_amount_positive':3,
+        'unique_bank_candidate_amount_zero':0,
+        'unique_bank_candidate_amount_negative':0,
         'unique_pairs_amount_equal':0,
+        'unique_pairs_absolute_amount_equal':0,
         'unique_pairs_bank_amount_lower':2,
         'unique_pairs_bank_amount_higher':1,
         'unique_pairs_equal_after_subtracting_payout_fee':1,
@@ -62,6 +69,25 @@ def test_amount_gap_only_pairs_unique_reference_currency_candidates(tmp_path):
     serialized=str(result)
     assert 'PRIVATE A' not in serialized and 'PRIVATE B' not in serialized and 'PRIVATE C' not in serialized
     assert 'secret-' not in serialized and '95' not in serialized and '105' not in serialized
+
+
+def test_amount_gap_classifies_sign_shape_without_changing_exact_matching(tmp_path):
+    path=tmp_path/'db'; ledger=BankLedger(path)
+    ledger.import_page('qonto',TransactionPage([
+        BankTransaction('a','2026-08-20T10:00:00+00:00',100,'EUR','one',external_transaction_id='sign-secret',reference='SIGN REF',status='COMPLETED')
+    ],None))
+    with sqlite3.connect(path) as db:
+        _sumup_schema(db)
+        _payout(db,'p1','-100','EUR','SIGN REF','0')
+    result=amount_gap_funnel(path)
+    counts=result['counts']
+    assert counts['valid_payout_amount_negative']==1
+    assert counts['unique_bank_candidate_amount_positive']==1
+    assert counts['unique_pairs_amount_equal']==0
+    assert counts['unique_pairs_absolute_amount_equal']==1
+    assert counts['unique_pairs_bank_amount_higher']==1
+    assert 'SIGN REF' not in str(result) and 'sign-secret' not in str(result)
+    assert result['safety']['monetary_values_emitted'] is False
 
 
 def test_qonto_provider_matching_is_case_insensitive(tmp_path):
