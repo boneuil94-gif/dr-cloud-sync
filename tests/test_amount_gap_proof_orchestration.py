@@ -20,3 +20,14 @@ def test_queued_amount_gap_proof_uses_supported_concurrency_and_deploy_lock():
     assert "mutations':False" in text
     assert "reference_values_emitted':False" in text
     assert "monetary_values_emitted':False" in text
+
+
+def test_legacy_amount_gap_post_production_trigger_is_retired():
+    assert not Path('.github/workflows/drcloud-os-finance-amount-gap-proof.yml').exists()
+
+
+def test_deployment_waits_for_read_only_proof_lock_instead_of_failing_immediately():
+    text = Path('deploy/ovh/update.sh').read_text(encoding='utf-8')
+    assert 'flock -n 9' not in text
+    assert 'flock -w 300 9' in text
+    assert 'verrou de déploiement indisponible après 300 secondes' in text
