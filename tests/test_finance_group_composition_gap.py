@@ -100,6 +100,29 @@ def test_unknown_types_are_bounded_and_deduction_json_shape_is_not_exposed(tmp_p
     assert "provider-new-kind" not in rendered and "not-json" not in rendered
 
 
+def test_blank_or_missing_deduction_payload_is_invalid_not_empty(tmp_path):
+    path = tmp_path / "ledger.sqlite3"
+    db = _db(path)
+    with db:
+        db.executemany(
+            "INSERT INTO sumup_payouts VALUES(?,?,?,?,?,?)",
+            [
+                ("p1", "30", "EUR", "r", "PAYOUT", None),
+                ("p2", "30", "EUR", "r", "PAYOUT_DEDUCTION", "   "),
+            ],
+        )
+        db.execute(
+            "INSERT INTO bank_transactions VALUES(?,?,?,?,?,?,?)",
+            ("b", "qonto", "CREDIT", "COMPLETED", "70", "EUR", "r"),
+        )
+    db.close()
+
+    counts = group_composition_gap_funnel(path)["counts"]
+    assert counts["remaining_multi_record_groups_total"] == 1
+    assert counts["remaining_groups_with_invalid_deductions_json"] == 1
+    assert counts["remaining_groups_with_empty_deductions_json"] == 0
+
+
 def test_fail_closed_for_invalid_amount_or_nonunique_bank_candidate(tmp_path):
     path = tmp_path / "ledger.sqlite3"
     db = _db(path)
