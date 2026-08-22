@@ -195,22 +195,29 @@ def reconcile_sumup_payouts_to_bank(path: Path | str, *, bank_provider: str = "q
         ))
 
         valid_group_members = defaultdict(list)
+        invalid_group_keys = set()
         for payout in payouts:
             reference = _norm_reference(payout["reference"])
             amount = _money(payout["amount"])
             currency = str(payout["currency"] or "").upper()
-            if reference and amount is not None and currency:
-                valid_group_members[(reference, currency)].append((payout, amount))
+            if reference and currency:
+                key = (reference, currency)
+                if amount is None:
+                    invalid_group_keys.add(key)
+                else:
+                    valid_group_members[key].append((payout, amount))
 
         provisional_by_id = {}
         claims: list[tuple[str, str, list[str]]] = []
         grouped_ids = set()
 
         # SumUp's payouts endpoint returns payout and deduction records separately.
-        # Only multi-record groups sharing the exact normalized reference+currency may
-        # use exact group-sum matching, and only against one unique bank credit.
+        # Only complete multi-record groups sharing the exact normalized
+        # reference+currency may use exact group-sum matching. Any malformed amount in
+        # that provider group blocks grouping entirely so a valid subset can never be
+        # promoted to a match while the complete group total is unknowable.
         for (reference, currency), members in valid_group_members.items():
-            if len(members) < 2:
+            if len(members) < 2 or (reference, currency) in invalid_group_keys:
                 continue
             group_amount = sum((amount for _, amount in members), Decimal("0"))
             candidates = _exact_credit_candidates(
