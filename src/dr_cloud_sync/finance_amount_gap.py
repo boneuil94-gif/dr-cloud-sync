@@ -27,8 +27,8 @@ def amount_gap_funnel(path: Path | str, *, bank_provider: str = "qonto") -> dict
 
     Amount relationships are evaluated only when a payout has exactly one bank credit
     candidate with the same normalized reference and currency. Multiple candidates are
-    counted but never arbitrarily paired. Sign-shape evidence is aggregate-only and is
-    diagnostic: absolute-value equality never changes reconciliation semantics.
+    counted but never arbitrarily paired. Sign-shape and reference-group aggregation
+    evidence are aggregate-only diagnostics and never change reconciliation semantics.
     """
     ledger_path = Path(path)
     if not ledger_path.is_file():
@@ -73,7 +73,26 @@ def amount_gap_funnel(path: Path | str, *, bank_provider: str = "qonto") -> dict
             "unique_pairs_equal_after_adding_payout_fee": 0,
             "unique_pairs_not_explained_by_payout_fee": 0,
             "payouts_with_nonzero_fee": 0,
+            "payout_reference_currency_groups_total": 0,
+            "payout_reference_currency_groups_single_record": 0,
+            "payout_reference_currency_groups_multiple_records": 0,
+            "payout_reference_currency_groups_without_bank_candidate": 0,
+            "payout_reference_currency_groups_with_unique_bank_candidate": 0,
+            "payout_reference_currency_groups_with_multiple_bank_candidates": 0,
+            "group_sum_pairs_amount_equal": 0,
+            "group_sum_pairs_absolute_amount_equal": 0,
+            "group_sum_pairs_bank_amount_lower": 0,
+            "group_sum_pairs_bank_amount_higher": 0,
         }
+
+        payout_groups = {}
+        credit_groups = {}
+        for credit in credits:
+            reference = _norm_reference(credit["reference"])
+            amount = _money(credit["amount"])
+            currency = str(credit["currency"] or "").upper()
+            if reference and amount is not None and currency:
+                credit_groups.setdefault((reference, currency), []).append(amount)
 
         for payout in payouts:
             reference = _norm_reference(payout["reference"])
@@ -84,6 +103,7 @@ def amount_gap_funnel(path: Path | str, *, bank_provider: str = "qonto") -> dict
                 counts["payouts_with_nonzero_fee"] += 1
             if not reference or payout_amount is None or not currency:
                 continue
+            payout_groups.setdefault((reference, currency), []).append(payout_amount)
             counts["payouts_valid_for_amount_gap"] += 1
             if payout_amount > 0:
                 counts["valid_payout_amount_positive"] += 1
@@ -92,16 +112,7 @@ def amount_gap_funnel(path: Path | str, *, bank_provider: str = "qonto") -> dict
             else:
                 counts["valid_payout_amount_zero"] += 1
 
-            candidates = []
-            for credit in credits:
-                if str(credit["currency"] or "").upper() != currency:
-                    continue
-                if _norm_reference(credit["reference"]) != reference:
-                    continue
-                credit_amount = _money(credit["amount"])
-                if credit_amount is not None:
-                    candidates.append(credit_amount)
-
+            candidates = credit_groups.get((reference, currency), [])
             if not candidates:
                 counts["payouts_without_reference_currency_bank_candidate"] += 1
                 continue
@@ -138,6 +149,31 @@ def amount_gap_funnel(path: Path | str, *, bank_provider: str = "qonto") -> dict
                     explained = True
             if not explained:
                 counts["unique_pairs_not_explained_by_payout_fee"] += 1
+
+        counts["payout_reference_currency_groups_total"] = len(payout_groups)
+        for key, payout_amounts in payout_groups.items():
+            if len(payout_amounts) == 1:
+                counts["payout_reference_currency_groups_single_record"] += 1
+            else:
+                counts["payout_reference_currency_groups_multiple_records"] += 1
+            candidates = credit_groups.get(key, [])
+            if not candidates:
+                counts["payout_reference_currency_groups_without_bank_candidate"] += 1
+                continue
+            if len(candidates) > 1:
+                counts["payout_reference_currency_groups_with_multiple_bank_candidates"] += 1
+                continue
+            counts["payout_reference_currency_groups_with_unique_bank_candidate"] += 1
+            payout_sum = sum(payout_amounts)
+            bank_amount = candidates[0]
+            if abs(bank_amount) == abs(payout_sum):
+                counts["group_sum_pairs_absolute_amount_equal"] += 1
+            if bank_amount == payout_sum:
+                counts["group_sum_pairs_amount_equal"] += 1
+            elif bank_amount < payout_sum:
+                counts["group_sum_pairs_bank_amount_lower"] += 1
+            else:
+                counts["group_sum_pairs_bank_amount_higher"] += 1
 
         return {
             "status": "NO_DATA" if not payouts else "MEASURABLE",

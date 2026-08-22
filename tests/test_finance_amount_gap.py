@@ -65,6 +65,16 @@ def test_amount_gap_only_pairs_unique_reference_currency_candidates(tmp_path):
         'unique_pairs_equal_after_adding_payout_fee':1,
         'unique_pairs_not_explained_by_payout_fee':1,
         'payouts_with_nonzero_fee':3,
+        'payout_reference_currency_groups_total':5,
+        'payout_reference_currency_groups_single_record':5,
+        'payout_reference_currency_groups_multiple_records':0,
+        'payout_reference_currency_groups_without_bank_candidate':1,
+        'payout_reference_currency_groups_with_unique_bank_candidate':3,
+        'payout_reference_currency_groups_with_multiple_bank_candidates':1,
+        'group_sum_pairs_amount_equal':0,
+        'group_sum_pairs_absolute_amount_equal':0,
+        'group_sum_pairs_bank_amount_lower':2,
+        'group_sum_pairs_bank_amount_higher':1,
     }
     serialized=str(result)
     assert 'PRIVATE A' not in serialized and 'PRIVATE B' not in serialized and 'PRIVATE C' not in serialized
@@ -86,8 +96,29 @@ def test_amount_gap_classifies_sign_shape_without_changing_exact_matching(tmp_pa
     assert counts['unique_pairs_amount_equal']==0
     assert counts['unique_pairs_absolute_amount_equal']==1
     assert counts['unique_pairs_bank_amount_higher']==1
+    assert counts['group_sum_pairs_absolute_amount_equal']==1
     assert 'SIGN REF' not in str(result) and 'sign-secret' not in str(result)
     assert result['safety']['monetary_values_emitted'] is False
+
+
+def test_amount_gap_classifies_multi_record_payout_reference_groups_without_reconciling(tmp_path):
+    path=tmp_path/'db'; ledger=BankLedger(path)
+    ledger.import_page('qonto',TransactionPage([
+        BankTransaction('a','2026-08-20T10:00:00+00:00',100,'EUR','grouped',external_transaction_id='group-secret',reference='GROUP REF',status='COMPLETED')
+    ],None))
+    with sqlite3.connect(path) as db:
+        _sumup_schema(db)
+        _payout(db,'p1','40','EUR','GROUP REF','0')
+        _payout(db,'p2','60','EUR','GROUP REF','0')
+    counts=amount_gap_funnel(path)['counts']
+    assert counts['payouts_with_unique_reference_currency_bank_candidate']==2
+    assert counts['unique_pairs_amount_equal']==0
+    assert counts['unique_pairs_bank_amount_higher']==2
+    assert counts['payout_reference_currency_groups_total']==1
+    assert counts['payout_reference_currency_groups_multiple_records']==1
+    assert counts['payout_reference_currency_groups_with_unique_bank_candidate']==1
+    assert counts['group_sum_pairs_amount_equal']==1
+    assert counts['group_sum_pairs_absolute_amount_equal']==1
 
 
 def test_qonto_provider_matching_is_case_insensitive(tmp_path):
