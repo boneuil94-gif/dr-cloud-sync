@@ -34,8 +34,14 @@ def _type_bucket(value) -> str:
 
 
 def _deductions_state(value) -> str:
+    # Missing/blank persisted deduction data is unknown/corrupt evidence, never
+    # equivalent to an explicitly persisted empty JSON list.
+    if value is None:
+        return "INVALID"
+    if isinstance(value, (str, bytes)) and not value.strip():
+        return "INVALID"
     try:
-        parsed = json.loads(value or "[]")
+        parsed = json.loads(value)
     except (TypeError, ValueError, json.JSONDecodeError):
         return "INVALID"
     if not isinstance(parsed, list):
