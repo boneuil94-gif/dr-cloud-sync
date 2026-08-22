@@ -32,11 +32,17 @@ def test_group_fee_gap_production_proof_is_pinned_locked_and_sanitized():
     assert "monetary_values_emitted':False" in workflow
 
 
-def test_group_fee_gap_production_proof_does_not_receive_provider_credentials():
+def test_group_fee_gap_production_proof_clears_container_credentials_before_python():
     workflow = (
         Path(__file__).parents[1]
         / ".github/workflows/drcloud-os-finance-group-fee-gap-proof.yml"
     ).read_text()
+    assert "docker compose exec -T drcloud-os env -i" in workflow
+    assert "PATH=/usr/local/bin:/usr/bin:/bin" in workflow
+    assert "DRCLOUD_DATA_DIR=/data" in workflow
+    assert 'EXPECTED_DEPLOYED_SHA="$expected_sha"' in workflow
+    assert "env -i" in workflow[: workflow.index("python - <<'PY'")]
+
     forbidden = (
         "QONTO_CREDENTIAL",
         "SUMUP_API_KEY",
