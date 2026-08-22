@@ -13,7 +13,10 @@ record_successful_commit() {
 }
 
 exec 9>"${DRCLOUD_DEPLOY_LOCK:-/tmp/drcloud-os-deploy.lock}"
-flock -n 9 || { echo "ERREUR: un déploiement est déjà en cours." >&2; exit 1; }
+# Read-only production proofs may briefly hold this same host lock. Wait for
+# them instead of failing a deployment immediately; retain a bounded timeout
+# so a wedged proof cannot block deployment forever.
+flock -w 300 9 || { echo "ERREUR: verrou de déploiement indisponible après 300 secondes." >&2; exit 1; }
 [[ -z "$(git -C "$repo" status --porcelain)" ]] || { echo "ERREUR: arbre Git non propre; mise à jour refusée." >&2; exit 1; }
 previous="$(git -C "$repo" rev-parse HEAD)"
 echo "Déploiement demandé: previous=$previous target=$target"
