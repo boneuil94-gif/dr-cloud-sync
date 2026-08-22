@@ -55,7 +55,7 @@ def test_qonto_completed_is_included_but_unproven_provider_completed_is_not(tmp_
     path=tmp_path/'db'; ledger=BankLedger(path)
     qonto=BankTransaction('a','2026-08-20T10:00:00+00:00',100,'EUR','q',external_transaction_id='q1',reference='REF',status='COMPLETED')
     other=BankTransaction('a','2026-08-20T10:00:00+00:00',100,'EUR','o',external_transaction_id='o1',reference='REF',status='COMPLETED')
-    ledger.import_page('qonto',TransactionPage([qonto],None)); ledger.import_page('otherbank',TransactionPage([other],None))
+    ledger.import_page('Qonto',TransactionPage([qonto],None)); ledger.import_page('otherbank',TransactionPage([other],None))
     with sqlite3.connect(path) as db: _sumup_schema(db); _payout(db,'p1','100','EUR','REF')
     assert exact_match_funnel(path,bank_provider='qonto')['counts']['payouts_with_unique_exact_bank_candidate']==1
     other_result=exact_match_funnel(path,bank_provider='otherbank')
