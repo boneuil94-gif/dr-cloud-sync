@@ -51,7 +51,7 @@ def group_fee_gap_funnel(path: Path | str, *, bank_provider: str = "qonto") -> d
         ))
 
         payout_groups: dict[tuple[str, str], list[sqlite3.Row]] = {}
-        credit_groups: dict[tuple[str, str], list] = {}
+        credit_groups: dict[tuple[str, str], list[sqlite3.Row]] = {}
         for payout in payouts:
             reference = _norm_reference(payout["reference"])
             currency = str(payout["currency"] or "").upper()
@@ -60,9 +60,8 @@ def group_fee_gap_funnel(path: Path | str, *, bank_provider: str = "qonto") -> d
         for credit in credits:
             reference = _norm_reference(credit["reference"])
             currency = str(credit["currency"] or "").upper()
-            amount = _money(credit["amount"])
-            if reference and currency and amount is not None:
-                credit_groups.setdefault((reference, currency), []).append(amount)
+            if reference and currency:
+                credit_groups.setdefault((reference, currency), []).append(credit)
 
         counts = {
             "payout_reference_currency_groups_total": len(payout_groups),
@@ -70,6 +69,7 @@ def group_fee_gap_funnel(path: Path | str, *, bank_provider: str = "qonto") -> d
             "multi_record_groups_without_bank_candidate": 0,
             "multi_record_groups_with_unique_bank_candidate": 0,
             "multi_record_groups_with_multiple_bank_candidates": 0,
+            "multi_record_groups_with_invalid_bank_candidate_amount": 0,
             "unique_candidate_groups_with_invalid_payout_amount": 0,
             "unique_candidate_groups_with_invalid_payout_fee": 0,
             "unique_candidate_groups_exact_amount_equal": 0,
@@ -85,11 +85,15 @@ def group_fee_gap_funnel(path: Path | str, *, bank_provider: str = "qonto") -> d
             if len(group) < 2:
                 continue
             counts["multi_record_groups_total"] += 1
-            candidates = credit_groups.get(key, [])
-            if not candidates:
+            candidate_rows = credit_groups.get(key, [])
+            if not candidate_rows:
                 counts["multi_record_groups_without_bank_candidate"] += 1
                 continue
-            if len(candidates) > 1:
+            candidate_amounts = [_money(row["amount"]) for row in candidate_rows]
+            if any(value is None for value in candidate_amounts):
+                counts["multi_record_groups_with_invalid_bank_candidate_amount"] += 1
+                continue
+            if len(candidate_rows) > 1:
                 counts["multi_record_groups_with_multiple_bank_candidates"] += 1
                 continue
             counts["multi_record_groups_with_unique_bank_candidate"] += 1
@@ -101,7 +105,7 @@ def group_fee_gap_funnel(path: Path | str, *, bank_provider: str = "qonto") -> d
                 continue
 
             payout_sum = sum(amounts)
-            bank_amount = candidates[0]
+            bank_amount = candidate_amounts[0]
             if bank_amount == payout_sum:
                 counts["unique_candidate_groups_exact_amount_equal"] += 1
                 continue
