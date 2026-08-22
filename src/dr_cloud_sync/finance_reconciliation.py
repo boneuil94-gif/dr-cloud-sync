@@ -1,8 +1,11 @@
-"""Read-only, fail-closed reconciliation between SumUp payouts and bank credits.
+"""Read-only, fail-closed reconciliation between SumUp payout records and bank credits.
 
-A payout is only MATCHED when one and only one eligible bank credit has the same
-currency, exact decimal amount and exact normalized provider reference. Missing,
-malformed or contended matches remain unresolved/ambiguous; no fuzzy matching is used.
+A payout record is only MATCHED when one and only one eligible bank credit has the same
+currency, exact decimal amount and exact normalized provider reference. SumUp's payout
+list may also contain multiple payout/deduction records carrying the same reference; for
+such multi-record groups only, the exact sum of all valid rows may match one unique bank
+credit with the same reference and currency. Missing, malformed or contended matches
+remain unresolved/ambiguous; no fuzzy matching is used.
 
 Qonto's imported transaction contract uses ``COMPLETED`` for settled transactions in
 production. For Qonto only, ``BOOKED`` and ``COMPLETED`` are therefore eligible settled
@@ -11,7 +14,7 @@ imported status contract is separately proven.
 """
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 import sqlite3
@@ -152,13 +155,26 @@ def _source_evidence(
     }
 
 
+def _exact_credit_candidates(credits, *, reference: str, currency: str, amount: Decimal) -> list[str]:
+    candidates = []
+    for bank in credits:
+        bank_amount = _money(bank["amount"])
+        if bank_amount is None or bank_amount != amount:
+            continue
+        if str(bank["currency"] or "").upper() != currency:
+            continue
+        if _norm_reference(bank["reference"]) != reference:
+            continue
+        candidates.append(bank["transaction_id"])
+    return candidates
+
+
 def reconcile_sumup_payouts_to_bank(path: Path | str, *, bank_provider: str = "qonto") -> dict:
     """Return sanitized reconciliation facts without mutating or creating a ledger."""
     ledger_path = Path(path)
     if not ledger_path.is_file():
         return _unmeasurable("REQUIRED_LEDGER_MISSING")
 
-    # mode=ro enforces the function's read-only contract at SQLite level.
     db = sqlite3.connect(f"{ledger_path.resolve().as_uri()}?mode=ro", uri=True)
     db.row_factory = sqlite3.Row
     try:
@@ -178,50 +194,127 @@ def reconcile_sumup_payouts_to_bank(path: Path | str, *, bank_provider: str = "q
             (bank_provider, *eligible_statuses),
         ))
 
-        provisional = []
-        single_candidate_ids = []
+        valid_group_members = defaultdict(list)
+        invalid_group_keys = set()
         for payout in payouts:
             reference = _norm_reference(payout["reference"])
             amount = _money(payout["amount"])
             currency = str(payout["currency"] or "").upper()
+            if reference and currency:
+                key = (reference, currency)
+                if amount is None:
+                    invalid_group_keys.add(key)
+                else:
+                    valid_group_members[key].append((payout, amount))
+
+        provisional_by_id = {}
+        claims: list[tuple[str, str, list[str]]] = []
+        grouped_ids = set()
+
+        # SumUp's payouts endpoint returns payout and deduction records separately.
+        # Only complete multi-record groups sharing the exact normalized
+        # reference+currency may use exact group-sum matching. Any malformed amount in
+        # that provider group blocks grouping entirely so a valid subset can never be
+        # promoted to a match while the complete group total is unknowable.
+        for (reference, currency), members in valid_group_members.items():
+            if len(members) < 2 or (reference, currency) in invalid_group_keys:
+                continue
+            group_amount = sum((amount for _, amount in members), Decimal("0"))
+            candidates = _exact_credit_candidates(
+                credits, reference=reference, currency=currency, amount=group_amount
+            )
+            ids = [row["payout_id"] for row, _ in members]
+            if len(candidates) == 1:
+                claim_id = "group:" + "|".join(sorted(str(i) for i in ids))
+                claims.append((claim_id, candidates[0], ids))
+                grouped_ids.update(ids)
+                for payout_id in ids:
+                    provisional_by_id[payout_id] = {
+                        "payout_id": payout_id,
+                        "status": "CANDIDATE",
+                        "bank_transaction_id": candidates[0],
+                        "_claim_id": claim_id,
+                    }
+            elif len(candidates) > 1:
+                grouped_ids.update(ids)
+                for payout_id in ids:
+                    provisional_by_id[payout_id] = {
+                        "payout_id": payout_id,
+                        "status": "AMBIGUOUS",
+                        "reason": "MULTIPLE_EXACT_GROUP_BANK_MATCHES",
+                    }
+
+        # Rows not resolved as an exact group keep the original individual exact-match
+        # behavior. This ensures grouping never becomes a fuzzy or amount-only fallback.
+        for payout in payouts:
+            payout_id = payout["payout_id"]
+            if payout_id in grouped_ids:
+                continue
+            reference = _norm_reference(payout["reference"])
+            amount = _money(payout["amount"])
+            currency = str(payout["currency"] or "").upper()
             if not reference:
-                provisional.append({"payout_id": payout["payout_id"], "status": "UNRESOLVED", "reason": "PAYOUT_REFERENCE_MISSING"})
+                provisional_by_id[payout_id] = {
+                    "payout_id": payout_id,
+                    "status": "UNRESOLVED",
+                    "reason": "PAYOUT_REFERENCE_MISSING",
+                }
                 continue
             if amount is None or not currency:
-                provisional.append({"payout_id": payout["payout_id"], "status": "UNRESOLVED", "reason": "PAYOUT_AMOUNT_OR_CURRENCY_INVALID"})
+                provisional_by_id[payout_id] = {
+                    "payout_id": payout_id,
+                    "status": "UNRESOLVED",
+                    "reason": "PAYOUT_AMOUNT_OR_CURRENCY_INVALID",
+                }
                 continue
 
-            candidates = []
-            for bank in credits:
-                bank_amount = _money(bank["amount"])
-                if bank_amount is None or bank_amount != amount:
-                    continue
-                if str(bank["currency"] or "").upper() != currency:
-                    continue
-                if _norm_reference(bank["reference"]) != reference:
-                    continue
-                candidates.append(bank["transaction_id"])
-
+            candidates = _exact_credit_candidates(
+                credits, reference=reference, currency=currency, amount=amount
+            )
             if len(candidates) == 1:
-                candidate = candidates[0]
-                single_candidate_ids.append(candidate)
-                provisional.append({"payout_id": payout["payout_id"], "status": "CANDIDATE", "bank_transaction_id": candidate})
+                claim_id = f"row:{payout_id}"
+                claims.append((claim_id, candidates[0], [payout_id]))
+                provisional_by_id[payout_id] = {
+                    "payout_id": payout_id,
+                    "status": "CANDIDATE",
+                    "bank_transaction_id": candidates[0],
+                    "_claim_id": claim_id,
+                }
             elif len(candidates) > 1:
-                provisional.append({"payout_id": payout["payout_id"], "status": "AMBIGUOUS", "reason": "MULTIPLE_EXACT_BANK_MATCHES"})
+                provisional_by_id[payout_id] = {
+                    "payout_id": payout_id,
+                    "status": "AMBIGUOUS",
+                    "reason": "MULTIPLE_EXACT_BANK_MATCHES",
+                }
             else:
-                provisional.append({"payout_id": payout["payout_id"], "status": "UNRESOLVED", "reason": "NO_EXACT_BANK_MATCH"})
+                provisional_by_id[payout_id] = {
+                    "payout_id": payout_id,
+                    "status": "UNRESOLVED",
+                    "reason": "NO_EXACT_BANK_MATCH",
+                }
 
-        contention = Counter(single_candidate_ids)
+        # Contention is counted per logical claim, not per member of one legitimate
+        # SumUp payout/deduction group.
+        bank_claim_counts = Counter(bank_id for _, bank_id, _ in claims)
         matched = unresolved = ambiguous = 0
         rows = []
-        for row in provisional:
+        for payout in payouts:
+            row = provisional_by_id[payout["payout_id"]]
             if row["status"] == "CANDIDATE":
                 candidate = row["bank_transaction_id"]
-                if contention[candidate] == 1:
-                    row = {"payout_id": row["payout_id"], "status": "MATCHED", "bank_transaction_id": candidate}
+                if bank_claim_counts[candidate] == 1:
+                    row = {
+                        "payout_id": row["payout_id"],
+                        "status": "MATCHED",
+                        "bank_transaction_id": candidate,
+                    }
                     matched += 1
                 else:
-                    row = {"payout_id": row["payout_id"], "status": "AMBIGUOUS", "reason": "BANK_CREDIT_CONTENDED"}
+                    row = {
+                        "payout_id": row["payout_id"],
+                        "status": "AMBIGUOUS",
+                        "reason": "BANK_CREDIT_CONTENDED",
+                    }
                     ambiguous += 1
             elif row["status"] == "AMBIGUOUS":
                 ambiguous += 1
