@@ -47,7 +47,7 @@ def amount_gap_funnel(path: Path | str, *, bank_provider: str = "qonto") -> dict
         placeholders = ",".join("?" for _ in eligible_statuses)
         credits = list(db.execute(
             "SELECT amount, currency, reference FROM bank_transactions "
-            f"WHERE provider=? AND direction='CREDIT' AND status IN ({placeholders})",
+            f"WHERE provider=? COLLATE NOCASE AND direction='CREDIT' AND status IN ({placeholders})",
             (bank_provider, *eligible_statuses),
         ))
 
