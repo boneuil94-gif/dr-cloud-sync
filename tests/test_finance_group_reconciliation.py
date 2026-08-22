@@ -79,14 +79,14 @@ def test_group_sum_never_crosses_reference_or_currency(tmp_path):
     assert result['matched']==0 and result['unresolved']==2
 
 
-def test_invalid_group_member_is_not_summed_into_a_match(tmp_path):
+def test_invalid_group_member_blocks_valid_subset_group_match(tmp_path):
     path=tmp_path/'db'
-    tx=BankTransaction('a','2026-08-20T10:00:00+00:00',120,'EUR','one',external_transaction_id='b1',reference='BANK REF')
-    _bank(path,[tx])
+    _bank(path,[BankTransaction('a','2026-08-20T10:00:00+00:00',100,'EUR','one',external_transaction_id='b1',reference='BANK REF')])
     with sqlite3.connect(path) as db:
         _sumup_schema(db)
         _payout(db,'p1','120')
-        _payout(db,'p2','sNaN')
+        _payout(db,'p2','-20')
+        _payout(db,'p3','sNaN')
     result=reconcile_sumup_payouts_to_bank(path)
-    assert result['matched']==1 and result['unresolved']==1
-    assert next(row for row in result['rows'] if row['payout_id']=='p2')['reason']=='PAYOUT_AMOUNT_OR_CURRENCY_INVALID'
+    assert result['matched']==0 and result['unresolved']==3 and result['ambiguous']==0
+    assert next(row for row in result['rows'] if row['payout_id']=='p3')['reason']=='PAYOUT_AMOUNT_OR_CURRENCY_INVALID'
