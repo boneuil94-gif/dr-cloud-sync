@@ -83,6 +83,23 @@ def test_group_fee_gap_requires_unique_bank_candidate(tmp_path):
     assert counts['multi_record_groups_with_unique_bank_candidate']==0
 
 
+def test_group_fee_gap_invalid_bank_candidate_amount_blocks_uniqueness(tmp_path):
+    path=tmp_path/'db'; ledger=BankLedger(path)
+    ledger.import_page('qonto',TransactionPage([
+        BankTransaction('a','2026-08-22T10:00:00+00:00',105,'EUR','one',external_transaction_id='b5',reference='REF',status='COMPLETED'),
+        BankTransaction('a','2026-08-22T11:00:00+00:00',1,'EUR','two',external_transaction_id='b6',reference='REF',status='COMPLETED'),
+    ],None))
+    with sqlite3.connect(path) as db:
+        db.execute("UPDATE bank_transactions SET amount='sNaN' WHERE external_transaction_id='b6'")
+        _sumup_schema(db)
+        _payout(db,'p1','40','REF','2')
+        _payout(db,'p2','60','REF','3')
+    counts=group_fee_gap_funnel(path)['counts']
+    assert counts['multi_record_groups_with_invalid_bank_candidate_amount']==1
+    assert counts['multi_record_groups_with_unique_bank_candidate']==0
+    assert counts['unique_candidate_groups_equal_after_adding_total_fee']==0
+
+
 def test_missing_ledger_is_fail_closed(tmp_path):
     path=tmp_path/'missing.db'
     result=group_fee_gap_funnel(path)
