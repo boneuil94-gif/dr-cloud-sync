@@ -69,9 +69,13 @@ def test_finance_reconciliation_workflow_is_pinned_to_successful_production_sha(
 
 def test_finance_reconciliation_workflow_enforces_source_evidence_shape():
     assert 'source=d.get("source_evidence")' in WORKFLOW
-    assert 'bank.get("booked_credits_total")' in WORKFLOW
-    assert 'bank.get("with_reference") + bank.get("without_reference")' in WORKFLOW
-    assert '"BOOKED_CREDITS_PRESENT" if bank.get("booked_credits_total") else "NO_BOOKED_CREDITS"' in WORKFLOW
+    assert 'eligible_total = bank.get("eligible_credits_total")' in WORKFLOW
+    assert 'bank_total = eligible_total if using_eligible_contract else bank.get("booked_credits_total")' in WORKFLOW
+    assert 'bank.get("with_reference") + bank.get("without_reference") == bank_total' in WORKFLOW
+    assert '"ELIGIBLE_CREDITS_PRESENT" if bank_total else "NO_ELIGIBLE_CREDITS"' in WORKFLOW
+    assert '"BOOKED_CREDITS_PRESENT" if bank_total else "NO_BOOKED_CREDITS"' in WORKFLOW
+    assert 'LOCAL_LEDGER_QONTO_ELIGIBLE_CREDITS' in WORKFLOW
+    assert 'LOCAL_LEDGER_QONTO_BOOKED_CREDITS' in WORKFLOW
 
 
 def test_finance_reconciliation_proof_shell_syntax():
