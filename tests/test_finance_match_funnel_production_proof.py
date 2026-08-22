@@ -7,7 +7,7 @@ def test_finance_match_funnel_production_proof_is_pinned_read_only_and_sanitized
     helper = (root / "src/dr_cloud_sync/finance_match_funnel.py").read_text()
 
     assert 'workflows: ["DrCloud OS Production"]' in workflow
-    assert "group: drcloud-os-finance-exact-match-funnel-proof" in workflow
+    assert "group: drcloud-os-production" in workflow
     assert "cancel-in-progress: false" in workflow
     assert "REVIEWED_SHA" in workflow and "github.event.workflow_run.head_sha" in workflow
     assert 'ref: ${{ env.REVIEWED_SHA }}' in workflow
