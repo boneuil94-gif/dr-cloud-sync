@@ -22,6 +22,8 @@ def test_group_composition_gap_production_proof_is_pinned_locked_and_sanitized()
     assert "group_composition_gap_funnel(path,bank_provider='qonto')" in workflow
     assert "PRODUCTION_FINANCE_GROUP_COMPOSITION_GAP_CAPTURED" in workflow
     assert "provider_exhaustiveness_inferred'] is False" in workflow
+    assert "f['status'] in {'MEASURABLE','NO_DATA'}" in workflow
+    assert "isinstance(f['counts'],dict)" in workflow
     assert "database_read_only':True" in workflow
     assert "provider_network_calls':False" in workflow
     assert "external_provider_auth':'NONE'" in workflow
