@@ -8,6 +8,7 @@ evidence but never counted as independent RPO obligations.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -124,6 +125,60 @@ def _purchase_ledger_projection(db: sqlite3.Connection) -> dict | None:
     }
 
 
+def _sumup_payout_business_projection(db: sqlite3.Connection) -> dict | None:
+    """Project payouts only from timestamps actually present in provider rows.
+
+    ``sumup_payouts.payout_date`` is NOT NULL but the importer historically
+    falls back to the local import timestamp when the provider omits every
+    business date field.  Using that persisted column blindly would therefore
+    turn ingestion time into fabricated business progress.  The durable RPO
+    projection accepts a payout only when its sanitized ``raw_json`` contains a
+    valid provider ``payout_date``/``date``/``timestamp`` and that canonical
+    value exactly matches the persisted payout_date. Any malformed, absent or
+    mismatched row makes the source remain unmeasurable (fail closed).
+    """
+    required = {"payout_date", "raw_json"}
+    if not required <= _table_columns(db, "sumup_payouts"):
+        return None
+    try:
+        rows = db.execute("SELECT payout_date,raw_json FROM sumup_payouts").fetchall()
+    except sqlite3.Error:
+        return None
+    if not rows:
+        return {
+            "records_available": 0,
+            "data_min_at": None,
+            "data_max_at": None,
+            "watermark_origin": "DURABLE_LEDGER",
+            "watermark_table": "sumup_payouts",
+            "watermark_timestamp_column": "provider_business_timestamp",
+        }
+
+    business_times: list[str] = []
+    for stored_value, raw_value in rows:
+        try:
+            payload = json.loads(raw_value)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        provider_value = payload.get("payout_date") or payload.get("date") or payload.get("timestamp")
+        provider_time = _iso(provider_value)
+        stored_time = _iso(stored_value)
+        if provider_time is None or stored_time is None or provider_time != stored_time:
+            return None
+        business_times.append(provider_time)
+
+    return {
+        "records_available": len(business_times),
+        "data_min_at": min(business_times),
+        "data_max_at": max(business_times),
+        "watermark_origin": "DURABLE_LEDGER",
+        "watermark_table": "sumup_payouts",
+        "watermark_timestamp_column": "provider_business_timestamp",
+    }
+
+
 def _durable_ledger_projection(db: sqlite3.Connection, source_id: str) -> dict | None:
     """Return count/min/max from one approved committed business ledger.
 
@@ -134,6 +189,8 @@ def _durable_ledger_projection(db: sqlite3.Connection, source_id: str) -> dict |
     """
     if source_id == "purchases":
         return _purchase_ledger_projection(db)
+    if source_id == "sumup_payouts":
+        return _sumup_payout_business_projection(db)
     definition = DURABLE_LEDGER_PROJECTIONS.get(source_id)
     if not definition:
         return None
