@@ -15,17 +15,18 @@ def test_rpo_gap_diagnostics_emits_only_bounded_gap_facts(tmp_path):
         db.executemany(
             "insert into data_sources values (?,?,?,?,?,?,?,?,?,?)",
             [
-                ("good", "SALES", "provider", "CONNECTED", 1,
+                ("good", "SALES", "provider-fixture-value", "CONNECTED", 1,
                  "2026-08-24T10:00:00Z", 3600, "2026-08-01T00:00:00Z",
                  "2026-08-24T09:59:00Z", 10),
-                ("missing", "OTHER", "provider", "CONNECTED", 1,
+                ("missing", "OTHER", "provider-fixture-value", "CONNECTED", 1,
                  "2026-08-24T10:00:00Z", 3600, None, None, 5),
-                ("badts", "OTHER", "provider", "CONNECTED", 1,
+                ("badts", "OTHER", "provider-fixture-value", "CONNECTED", 1,
                  "2026-08-24T10:00:00Z", 3600, None, "yesterday", 3),
             ],
         )
     result = source_rpo_gap_diagnostics(path)
     assert result["evidence_scope"] == "LOCAL_RECOVERY_WATERMARK_ONLY"
+    assert result["evidence_status"] == "MEASURABLE"
     assert result["provider_exhaustiveness_inferred"] is False
     assert result["timestamps_emitted"] is False
     assert result["sensitive_values_emitted"] is False
@@ -40,7 +41,7 @@ def test_rpo_gap_diagnostics_emits_only_bounded_gap_facts(tmp_path):
     ]
     text = repr(result)
     assert "2026-" not in text
-    assert "provider" not in text
+    assert "provider-fixture-value" not in text
 
 
 def test_rpo_gap_diagnostics_ignores_neutral_sources(tmp_path):
@@ -56,5 +57,15 @@ def test_rpo_gap_diagnostics_ignores_neutral_sources(tmp_path):
             ],
         )
     result = source_rpo_gap_diagnostics(path)
+    assert result["evidence_status"] == "MEASURABLE"
     assert result["gap_count"] == 0
     assert result["gaps"] == []
+
+
+def test_rpo_gap_diagnostics_preserves_unavailable_watermark_state(tmp_path):
+    result = source_rpo_gap_diagnostics(tmp_path / "missing.db")
+    assert result["evidence_status"] == "UNAVAILABLE"
+    assert result["source_count"] is None
+    assert result["gap_count"] is None
+    assert result["gaps"] == []
+    assert result["provider_exhaustiveness_inferred"] is False
