@@ -8,6 +8,7 @@ evidence but never counted as independent RPO obligations.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -54,6 +55,26 @@ def _iso(value: object) -> str | None:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         return None
     return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _sumup_business_time(value: object) -> str | None:
+    """Return an exact timestamp or a conservative lower bound for a payout date.
+
+    SumUp can expose payout business progress as a calendar date (YYYY-MM-DD)
+    rather than an instant.  Encoding that date as the beginning of the UTC day
+    is explicitly a lower bound, not an assertion that the payout happened at
+    midnight.  It can therefore only overstate observed staleness, never make
+    recovery look fresher than the provider evidence supports.
+    """
+    if not isinstance(value, str) or not value:
+        return None
+    if len(value) == 10:
+        try:
+            parsed = datetime.strptime(value, "%Y-%m-%d")
+        except ValueError:
+            return None
+        return parsed.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
+    return _iso(value)
 
 
 def _classification(row: dict) -> str:
@@ -124,6 +145,60 @@ def _purchase_ledger_projection(db: sqlite3.Connection) -> dict | None:
     }
 
 
+def _sumup_payout_business_projection(db: sqlite3.Connection) -> dict | None:
+    """Project payouts only from business dates actually present in provider rows.
+
+    ``sumup_payouts.payout_date`` is NOT NULL but the importer historically
+    falls back to the local import timestamp when the provider omits every
+    business date field. Using that persisted column blindly would therefore
+    turn ingestion time into fabricated business progress. The projection
+    requires a provider ``payout_date``/``date``/``timestamp`` in sanitized
+    ``raw_json`` and an exact canonical match with the persisted value. Any
+    malformed, absent or mismatched row makes the source remain unmeasurable.
+    Date-only values use a conservative day-start lower bound for comparison.
+    """
+    required = {"payout_date", "raw_json"}
+    if not required <= _table_columns(db, "sumup_payouts"):
+        return None
+    try:
+        rows = db.execute("SELECT payout_date,raw_json FROM sumup_payouts").fetchall()
+    except sqlite3.Error:
+        return None
+    if not rows:
+        return {
+            "records_available": 0,
+            "data_min_at": None,
+            "data_max_at": None,
+            "watermark_origin": "DURABLE_LEDGER",
+            "watermark_table": "sumup_payouts",
+            "watermark_timestamp_column": "provider_business_date_lower_bound",
+        }
+
+    business_times: list[str] = []
+    for stored_value, raw_value in rows:
+        try:
+            payload = json.loads(raw_value)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        provider_value = payload.get("payout_date") or payload.get("date") or payload.get("timestamp")
+        provider_time = _sumup_business_time(provider_value)
+        stored_time = _sumup_business_time(stored_value)
+        if provider_time is None or stored_time is None or provider_time != stored_time:
+            return None
+        business_times.append(provider_time)
+
+    return {
+        "records_available": len(business_times),
+        "data_min_at": min(business_times),
+        "data_max_at": max(business_times),
+        "watermark_origin": "DURABLE_LEDGER",
+        "watermark_table": "sumup_payouts",
+        "watermark_timestamp_column": "provider_business_date_lower_bound",
+    }
+
+
 def _durable_ledger_projection(db: sqlite3.Connection, source_id: str) -> dict | None:
     """Return count/min/max from one approved committed business ledger.
 
@@ -134,6 +209,8 @@ def _durable_ledger_projection(db: sqlite3.Connection, source_id: str) -> dict |
     """
     if source_id == "purchases":
         return _purchase_ledger_projection(db)
+    if source_id == "sumup_payouts":
+        return _sumup_payout_business_projection(db)
     definition = DURABLE_LEDGER_PROJECTIONS.get(source_id)
     if not definition:
         return None
