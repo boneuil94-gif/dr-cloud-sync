@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "evidence_date": "2026-08-24",
+  "module_updates": {
+    "core": {
+      "justification": "lifecycle, SQLite, idempotence, retry, health et concurrence multi-worker testés",
+      "blocker": "fault injection production et historique de charge restent incomplets",
+      "next_step": "accumuler des preuves production-like sans extrapoler les tests locaux",
+      "evidence_level": "TESTED"
+    },
+    "deployment": {
+      "justification": "CI/CD au SHA exact, health/HTTPS publics, rollback OVH-equivalent, backup Restic chiffré off-host, rétention 7/4/12 et restauration remote-only prouvés; bootstrap administrateur durable également prouvé en lecture seule",
+      "blocker": "RPO source-aware prouvé à confiance MEDIUM avec 4 sources comparables / 3 non mesurables; historique SLO/alerting, rotation secrets et répétition périodique du DR encore incomplets",
+      "next_step": "réduire uniquement les 3 sources RPO réellement non mesurables sans inventer de timestamps, accumuler l'historique monitoring/SLO et DR, puis prouver la rotation des secrets",
+      "evidence_level": "PRODUCTION_PROVEN"
+    },
+    "finance": {
+      "justification": "cockpit/KPI issus des ledgers et rapprochement local SumUp payout→Qonto exact/group prouvé à 773/793, 20 unresolved, 0 ambiguous",
+      "blocker": "funnel SALE→PAYMENT→SUMUP TRANSACTION→PAYOUT→QONTO encore incomplet et exhaustivité provider non prouvée",
+      "next_step": "étendre la preuve vers les ventes/paiements/transactions tout en gardant les 2 groupes payout résiduels fail-closed jusqu'au proof composition",
+      "evidence_level": "PRODUCTION_PROVEN"
+    },
+    "settlements": {
+      "justification": "chaîne, modèles, explorer, revue et rapprochement payout→Qonto local mesuré en production",
+      "blocker": "funnel amont SALE→PAYMENT→SUMUP TRANSACTION et exhaustivité provider restent non prouvés",
+      "next_step": "mesurer le funnel complet avec totaux d'autorité sans déduire l'exhaustivité de la fraîcheur locale",
+      "evidence_level": "PARTIAL"
+    }
+  },
+  "priorities": [
+    "P1 — accumuler monitoring/SLO et preuve de livraison des alertes",
+    "P1 — réduire les 3 sources RPO indépendantes non mesurables sans inventer de timestamps",
+    "P1 — étendre le funnel financier SALE→PAYMENT→SUMUP TRANSACTION→PAYOUT→QONTO et prouver l'autorité provider",
+    "P1 — prouver la rotation des secrets sans exposer les valeurs",
+    "P1 — accumuler plusieurs cycles DR périodiques planifiés",
+    "P1 — prouver lifecycle PII/consent et politique de rétention"
+  ],
+  "blockers": [
+    "exhaustivité/autorité production des connecteurs non prouvée",
+    "funnel SALE→PAYMENT→SUMUP TRANSACTION→PAYOUT→QONTO incomplet malgré 773/793 payouts→Qonto rapprochés localement",
+    "3 sources RPO indépendantes restent non mesurables",
+    "historique SLO/alerting, rotation secrets et cadence DR répétée encore incomplets",
+    "providers sociaux officiels non configurés"
+  ],
+  "evidence": {
+    "offsite_retention": {
+      "status": "PRODUCTION_PROVEN",
+      "backup_run_id": 32690360110,
+      "retention": "RETENTION_APPLIED",
+      "remote_check": "PROVEN"
+    },
+    "remote_only_recovery": {
+      "status": "PRODUCTION_PROVEN_SINGLE_SCHEDULED_CYCLE",
+      "run_id": 32690432892,
+      "restore_result": "OFFSITE_RESTORE_PROVEN",
+      "app_boot": "APP_BOOT_OK",
+      "health": "HEALTH_OK",
+      "observed_restore_seconds": 15,
+      "observed_rpo_seconds": 0,
+      "rpo_confidence": "MEDIUM",
+      "comparable_sources": 4,
+      "unmeasurable_sources": 3,
+      "cadence_history_complete": false
+    },
+    "finance_local_reconciliation": {
+      "status": "PRODUCTION_PROVEN_LOCAL_LEDGER_ONLY",
+      "matched": 773,
+      "total": 793,
+      "unresolved": 20,
+      "ambiguous": 0,
+      "provider_exhaustiveness_inferred": false
+    },
+    "sqlite_multi_worker": {
+      "status": "TESTED"
+    },
+    "group_composition_proof": {
+      "status": "PENDING_COMPATIBLE_PRODUCTION_TRIGGER"
+    }
+  }
+}
