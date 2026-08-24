@@ -21,6 +21,19 @@ _ALLOWED_ORIGINS = {
 
 def source_rpo_gap_diagnostics(database: Path) -> dict:
     watermark = capture_recovery_watermark(Path(database), captured_from="LOCAL_RPO_GAP_DIAGNOSTIC")
+    if watermark.get("table_available") is not True:
+        return {
+            "schema_version": 1,
+            "evidence_scope": "LOCAL_RECOVERY_WATERMARK_ONLY",
+            "evidence_status": "UNAVAILABLE",
+            "provider_exhaustiveness_inferred": False,
+            "timestamps_emitted": False,
+            "sensitive_values_emitted": False,
+            "source_count": None,
+            "gap_count": None,
+            "gaps": [],
+        }
+
     rows = []
     for source in watermark.get("sources", []):
         classification = str(source.get("classification") or "UNMEASURABLE")
@@ -50,6 +63,7 @@ def source_rpo_gap_diagnostics(database: Path) -> dict:
     return {
         "schema_version": 1,
         "evidence_scope": "LOCAL_RECOVERY_WATERMARK_ONLY",
+        "evidence_status": "MEASURABLE",
         "provider_exhaustiveness_inferred": False,
         "timestamps_emitted": False,
         "sensitive_values_emitted": False,
