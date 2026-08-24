@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from pathlib import Path
 
@@ -37,6 +38,42 @@ def test_classification_and_deterministic_aggregate(tmp_path):
     assert classes == {"a":"ELIGIBLE","empty":"NO_DATA","invalid":"INVALID_TIMESTAMP","none":"NOT_CONFIGURED","off":"DISABLED","z":"ELIGIBLE"}
     assert result["aggregate_data_max_at"] == "2026-08-19T12:00:00Z"
     assert result["confidence"] != "HIGH"
+
+
+def test_sumup_payout_projection_requires_real_provider_business_timestamp(tmp_path):
+    path=database(tmp_path,[row("sumup_payouts", maximum=None, records=None)])
+    with sqlite3.connect(path) as db:
+        db.execute("create table sumup_payouts(payout_date text not null,raw_json text not null)")
+        db.executemany("insert into sumup_payouts values(?,?)",[
+            ("2026-08-20T08:00:00Z", json.dumps({"payout_date":"2026-08-20T08:00:00Z"})),
+            ("2026-08-21T09:30:00+00:00", json.dumps({"date":"2026-08-21T09:30:00Z"})),
+        ])
+    result=capture_recovery_watermark(path)
+    payout=next(x for x in result["sources"] if x["source_id"]=="sumup_payouts")
+    assert payout["classification"]=="ELIGIBLE"
+    assert payout["watermark_origin"]=="DURABLE_LEDGER"
+    assert payout["records_available"]==2
+    assert payout["data_min_at"]=="2026-08-20T08:00:00Z"
+    assert payout["data_max_at"]=="2026-08-21T09:30:00Z"
+
+
+def test_sumup_payout_projection_rejects_import_time_fallback_and_mismatch(tmp_path):
+    for suffix, stored, payload in [
+        ("missing", "2026-08-21T10:00:00Z", {"amount":"10"}),
+        ("mismatch", "2026-08-21T10:00:00Z", {"payout_date":"2026-08-20T10:00:00Z"}),
+        ("invalid", "2026-08-21T10:00:00Z", {"payout_date":"yesterday"}),
+    ]:
+        folder=tmp_path/suffix; folder.mkdir()
+        path=database(folder,[row("sumup_payouts", maximum=None, records=None)])
+        with sqlite3.connect(path) as db:
+            db.execute("create table sumup_payouts(payout_date text not null,raw_json text not null)")
+            db.execute("insert into sumup_payouts values(?,?)",(stored,json.dumps(payload)))
+        result=capture_recovery_watermark(path)
+        payout=next(x for x in result["sources"] if x["source_id"]=="sumup_payouts")
+        assert payout["classification"]=="UNMEASURABLE"
+        assert payout["watermark_origin"]=="DATA_SOURCE_CONTROL_PLANE"
+        assert payout["records_available"] is None
+        assert payout["data_max_at"] is None
 
 
 def test_comparison_gaps_and_missing_timestamp():
