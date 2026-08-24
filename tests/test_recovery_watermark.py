@@ -45,22 +45,34 @@ def test_sumup_payout_projection_requires_real_provider_business_timestamp(tmp_p
     with sqlite3.connect(path) as db:
         db.execute("create table sumup_payouts(payout_date text not null,raw_json text not null)")
         db.executemany("insert into sumup_payouts values(?,?)",[
-            ("2026-08-20T08:00:00Z", json.dumps({"payout_date":"2026-08-20T08:00:00Z"})),
+            ("2026-08-20", json.dumps({"payout_date":"2026-08-20"})),
             ("2026-08-21T09:30:00+00:00", json.dumps({"date":"2026-08-21T09:30:00Z"})),
         ])
     result=capture_recovery_watermark(path)
     payout=next(x for x in result["sources"] if x["source_id"]=="sumup_payouts")
     assert payout["classification"]=="ELIGIBLE"
     assert payout["watermark_origin"]=="DURABLE_LEDGER"
+    assert payout["watermark_timestamp_column"]=="provider_business_date_lower_bound"
     assert payout["records_available"]==2
-    assert payout["data_min_at"]=="2026-08-20T08:00:00Z"
+    assert payout["data_min_at"]=="2026-08-20T00:00:00Z"
     assert payout["data_max_at"]=="2026-08-21T09:30:00Z"
+
+
+def test_sumup_payout_date_only_is_conservative_day_lower_bound(tmp_path):
+    path=database(tmp_path,[row("sumup_payouts", maximum=None, records=None)])
+    with sqlite3.connect(path) as db:
+        db.execute("create table sumup_payouts(payout_date text not null,raw_json text not null)")
+        db.execute("insert into sumup_payouts values(?,?)",("2026-01-01",json.dumps({"date":"2026-01-01"})))
+    result=capture_recovery_watermark(path)
+    payout=next(x for x in result["sources"] if x["source_id"]=="sumup_payouts")
+    assert payout["classification"]=="ELIGIBLE"
+    assert payout["data_max_at"]=="2026-01-01T00:00:00Z"
 
 
 def test_sumup_payout_projection_rejects_import_time_fallback_and_mismatch(tmp_path):
     for suffix, stored, payload in [
         ("missing", "2026-08-21T10:00:00Z", {"amount":"10"}),
-        ("mismatch", "2026-08-21T10:00:00Z", {"payout_date":"2026-08-20T10:00:00Z"}),
+        ("mismatch", "2026-08-21", {"payout_date":"2026-08-20"}),
         ("invalid", "2026-08-21T10:00:00Z", {"payout_date":"yesterday"}),
     ]:
         folder=tmp_path/suffix; folder.mkdir()
