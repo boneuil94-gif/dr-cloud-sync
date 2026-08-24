@@ -18,15 +18,26 @@ SAFE_COLUMNS = ("source_id", "source_type", "provider", "status", "enabled",
                 "last_success_at", "stale_after_seconds", "data_min_at",
                 "data_max_at", "records_available")
 
+# Explicit source -> durable local business projection. Table and column names
+# are constants, never caller-controlled SQL. A source not listed here falls
+# back to its data_sources control-plane watermark.
 DURABLE_LEDGER_PROJECTIONS = {
     "bank": ("bank_transactions", "booked_at", None),
     "shopcaisse_sales": ("sales", "sold_at", ("source", "SHOPCAISSE")),
     "prestashop_sales": ("sales", "sold_at", ("source", "PRESTASHOP")),
     "sumup_transactions": ("sumup_transactions", "timestamp", None),
+    # Purchases are handled explicitly below because both order headers and
+    # mutable order lines are durable business truth.
     "purchases": ("purchase_orders", "updated_at", None),
+    # Stock RPO only follows movements that are actually applied. ``applied_at``
+    # is the durable business-progress timestamp; legacy rows without it remain
+    # explicitly unmeasurable rather than falling back to an earlier timestamp.
     "stock": ("stock_movements", "applied_at", ("status", "APPLIED")),
 }
 
+# These are not independent provider feeds. They are materialised while the
+# transaction-detail sync imports ``sumup_transactions``. Counting them as
+# separate RPO sources would overstate missing coverage and imply fake jobs.
 DERIVED_SOURCE_PARENTS = {
     "sumup_fees": "sumup_transactions",
     "sumup_refunds": "sumup_transactions",
@@ -47,13 +58,13 @@ def _iso(value: object) -> str | None:
 
 
 def _sumup_business_time(value: object) -> str | None:
-    """Canonicalise a SumUp payout business date without inventing precision.
+    """Return an exact timestamp or a conservative lower bound for a payout date.
 
-    SumUp's payout contract can return a calendar date (``YYYY-MM-DD``) rather
-    than an instant. For RPO comparison we encode such a date as the *lower
-    bound* of that UTC day. This is deliberately conservative: it can only make
-    the observed lag look older by up to a day, never fresher. Timestamp-shaped
-    provider values keep their exact timezone-aware instant.
+    SumUp can expose payout business progress as a calendar date (YYYY-MM-DD)
+    rather than an instant.  Encoding that date as the beginning of the UTC day
+    is explicitly a lower bound, not an assertion that the payout happened at
+    midnight.  It can therefore only overstate observed staleness, never make
+    recovery look fresher than the provider evidence supports.
     """
     if not isinstance(value, str) or not value:
         return None
@@ -96,6 +107,12 @@ def _table_columns(db: sqlite3.Connection, table: str) -> set[str]:
 
 
 def _purchase_ledger_projection(db: sqlite3.Connection) -> dict | None:
+    """Project purchase progress across order headers and mutable child lines.
+
+    Both tables carry durable ``updated_at`` timestamps. Counting both tables
+    also makes line deletion visible to comparison logic; a count regression is
+    deliberately treated as unmeasurable instead of a zero-second RPO.
+    """
     required = {
         "purchase_orders": {"updated_at"},
         "purchase_order_lines": {"updated_at"},
@@ -133,10 +150,12 @@ def _sumup_payout_business_projection(db: sqlite3.Connection) -> dict | None:
 
     ``sumup_payouts.payout_date`` is NOT NULL but the importer historically
     falls back to the local import timestamp when the provider omits every
-    business date field. The projection therefore requires a provider value in
-    sanitized ``raw_json`` and an exact canonical match with the persisted
-    value. Date-only values are represented as a conservative UTC day lower
-    bound; they are never presented as an observed provider event time.
+    business date field. Using that persisted column blindly would therefore
+    turn ingestion time into fabricated business progress. The projection
+    requires a provider ``payout_date``/``date``/``timestamp`` in sanitized
+    ``raw_json`` and an exact canonical match with the persisted value. Any
+    malformed, absent or mismatched row makes the source remain unmeasurable.
+    Date-only values use a conservative day-start lower bound for comparison.
     """
     required = {"payout_date", "raw_json"}
     if not required <= _table_columns(db, "sumup_payouts"):
@@ -181,6 +200,13 @@ def _sumup_payout_business_projection(db: sqlite3.Connection) -> dict | None:
 
 
 def _durable_ledger_projection(db: sqlite3.Connection, source_id: str) -> dict | None:
+    """Return count/min/max from one approved committed business ledger.
+
+    ``None`` means the projection cannot be measured (missing table/columns), so
+    the caller keeps the existing control-plane facts. A real empty ledger is
+    returned as count=0 and deliberately clears stale timestamps. Any matching
+    row lacking its durable timestamp makes the whole projection fail closed.
+    """
     if source_id == "purchases":
         return _purchase_ledger_projection(db)
     if source_id == "sumup_payouts":
@@ -195,6 +221,7 @@ def _durable_ledger_projection(db: sqlite3.Connection, source_id: str) -> dict |
         required.add(filter_definition[0])
     if not required <= columns:
         return None
+
     where_sql = ""
     params: tuple[object, ...] = ()
     if filter_definition:
@@ -204,11 +231,14 @@ def _durable_ledger_projection(db: sqlite3.Connection, source_id: str) -> dict |
     try:
         row = db.execute(
             f"SELECT COUNT(*),COUNT({timestamp_column}),MIN({timestamp_column}),MAX({timestamp_column}) "
-            f"FROM {table}{where_sql}", params).fetchone()
+            f"FROM {table}{where_sql}",
+            params,
+        ).fetchone()
     except sqlite3.Error:
         return None
     if row is None:
         return None
+
     count = int(row[0] or 0)
     timestamped = int(row[1] or 0)
     measurable = count == timestamped
@@ -224,6 +254,7 @@ def _durable_ledger_projection(db: sqlite3.Connection, source_id: str) -> dict |
 
 def capture_recovery_watermark(database: Path, *, captured_at=None,
                                captured_from: str = "LIVE_DATABASE") -> dict:
+    """Read SQLite read-only and return only approved source/business facts."""
     when = _iso(captured_at) if captured_at is not None else datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     if when is None:
         raise ValueError("captured_at must be an ISO-8601 timestamp with timezone")
@@ -266,6 +297,8 @@ def capture_recovery_watermark(database: Path, *, captured_at=None,
             else:
                 clean["watermark_origin"] = "DATA_SOURCE_CONTROL_PLANE"
         clean["classification"] = _classification(clean)
+        # Canonicalise valid timestamps; preserve invalid values solely so the
+        # explicit INVALID_TIMESTAMP classification remains auditable.
         for key in ("last_success_at", "data_min_at", "data_max_at"):
             if clean[key] is not None and _iso(clean[key]):
                 clean[key] = _iso(clean[key])
@@ -299,6 +332,14 @@ def validate_recovery_watermark(value: object) -> bool:
 
 
 def compare_recovery_watermarks(live: dict, backup: dict) -> dict:
+    """Compare independent business progress; max per-source lag is observed RPO.
+
+    Count growth without comparable timestamps is reported, never converted to
+    a zero-second RPO. Count regression is also fail-closed because it can mean
+    a durable deletion that has no standalone timestamp. NOT_CONFIGURED,
+    DISABLED, NO_DATA and DERIVED sources are neutral because a derived
+    projection inherits its parent source's RPO.
+    """
     base = {"comparable_sources": 0, "unmeasurable_sources": 0,
             "business_data_gap_seconds": None, "sync_progress_gap_seconds": None,
             "record_count_gap": 0, "observed_rpo_seconds": None,
