@@ -25,31 +25,65 @@ jobs:
           HEALTH_URL: https://osdrcloud.fr/health
         run: |
           python - <<'PY'
+          from datetime import datetime, timezone
           import json
           import os
+          import urllib.error
           import urllib.request
 
-          url = os.environ["HEALTH_URL"]
+          evidence = {
+              "schema_version": 1,
+              "observed_at": datetime.now(timezone.utc).isoformat(),
+              "probe_status": "FAILURE",
+              "failure_category": "UNKNOWN",
+              "http_status": None,
+              "contract_status": "UNPROVEN",
+              "alert_action": "PENDING",
+              "sanitized": True,
+          }
+
           request = urllib.request.Request(
-              url,
+              os.environ["HEALTH_URL"],
               headers={"User-Agent": "drcloud-external-health/1"},
               method="GET",
           )
+          exit_code = 1
           try:
               with urllib.request.urlopen(request, timeout=10) as response:
+                  evidence["http_status"] = int(response.status)
                   if response.status != 200:
-                      raise RuntimeError(f"unexpected HTTP status {response.status}")
-                  payload = json.load(response)
-          except Exception as exc:
-              # Fail closed without echoing response bodies, headers, credentials or PII.
-              raise SystemExit(f"EXTERNAL_HEALTH_PROBE_FAILED:{type(exc).__name__}") from None
+                      evidence["failure_category"] = "HTTP_STATUS"
+                  else:
+                      try:
+                          payload = json.load(response)
+                      except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+                          evidence["failure_category"] = "INVALID_JSON"
+                      else:
+                          if payload.get("status") == "ok" and payload.get("database") == "ok":
+                              evidence.update(
+                                  probe_status="SUCCESS",
+                                  failure_category=None,
+                                  contract_status="PROVEN",
+                              )
+                              exit_code = 0
+                          else:
+                              evidence["failure_category"] = "CONTRACT"
+          except urllib.error.HTTPError as exc:
+              evidence["http_status"] = int(exc.code)
+              evidence["failure_category"] = "HTTP_STATUS"
+          except (urllib.error.URLError, TimeoutError, OSError):
+              evidence["failure_category"] = "NETWORK"
+          finally:
+              with open("external-health-evidence.json", "w", encoding="utf-8") as handle:
+                  json.dump(evidence, handle, sort_keys=True)
 
-          if payload.get("status") != "ok" or payload.get("database") != "ok":
-              raise SystemExit("EXTERNAL_HEALTH_CONTRACT_FAILED")
-          print("EXTERNAL_HEALTH_PROVEN")
+          if exit_code == 0:
+              print("EXTERNAL_HEALTH_PROVEN")
+          raise SystemExit(exit_code)
           PY
 
       - name: Reconcile sanitized GitHub alert
+        id: alert
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -58,19 +92,45 @@ jobs:
         run: |
           set -euo pipefail
           open_number="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$ALERT_TITLE in:title" --json number,title --jq ".[] | select(.title == env.ALERT_TITLE) | .number" | head -n1)"
+          alert_action="NOOP"
           if [[ "$PROBE_OUTCOME" = failure ]]; then
             if [[ -z "$open_number" ]]; then
               gh issue create --repo "$GITHUB_REPOSITORY" \
                 --title "$ALERT_TITLE" \
                 --body "Sanitized external health contract failed. No response body, headers, credentials or PII were captured. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
+              alert_action="CREATED"
             fi
           elif [[ "$PROBE_OUTCOME" = success && -n "$open_number" ]]; then
             gh issue close --repo "$GITHUB_REPOSITORY" "$open_number" \
               --comment "External health contract is green again. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
+            alert_action="CLOSED"
           fi
+          ALERT_ACTION="$alert_action" python - <<'PY'
+          import json
+          import os
+
+          path = "external-health-evidence.json"
+          with open(path, encoding="utf-8") as handle:
+              evidence = json.load(handle)
+          evidence["alert_action"] = os.environ["ALERT_ACTION"]
+          with open(path, "w", encoding="utf-8") as handle:
+              json.dump(evidence, handle, sort_keys=True)
+          PY
+
+      - name: Upload sanitized external health evidence
+        if: always() && hashFiles('external-health-evidence.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: drcloud-external-health-evidence-${{ github.run_id }}
+          path: external-health-evidence.json
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Enforce external health
         if: always()
         env:
           PROBE_OUTCOME: ${{ steps.probe.outcome }}
-        run: test "$PROBE_OUTCOME" = success
+          ALERT_OUTCOME: ${{ steps.alert.outcome }}
+        run: |
+          test "$PROBE_OUTCOME" = success
+          test "$ALERT_OUTCOME" = success
