@@ -88,6 +88,74 @@ def test_sumup_payout_projection_rejects_import_time_fallback_and_mismatch(tmp_p
         assert payout["data_max_at"] is None
 
 
+def _marketing_intelligence_schema(db):
+    db.execute("create table marketing_audit(event_type text,entity_type text,entity_id text,occurred_at text)")
+    db.execute("create table marketing_proposals(proposal_id text,opportunity_id text,created_at text)")
+    db.execute("create table marketing_opportunities(opportunity_id text,detected_at text)")
+    db.execute("create table marketing_proposal_products(proposal_id text)")
+    db.execute("create table marketing_hypotheses(hypothesis_id text,measured_at text)")
+
+
+def test_marketing_intelligence_projection_counts_only_owned_durable_events(tmp_path):
+    path=database(tmp_path,[row("marketing_intelligence", maximum=None, records=None)])
+    with sqlite3.connect(path) as db:
+        _marketing_intelligence_schema(db)
+        # Generic marketing rows must not be attributed to the intelligence source.
+        db.execute("insert into marketing_opportunities values('generic-o','2026-08-20T08:00:00Z')")
+        db.execute("insert into marketing_proposals values('generic-p','generic-o','2026-08-20T08:00:00Z')")
+        db.execute("insert into marketing_proposal_products values('generic-p')")
+        db.execute("insert into marketing_audit values('MARKETING_PROPOSAL_CREATED','proposal','generic-p','2026-08-20T08:00:00Z')")
+        # This transaction is owned by MarketingIntelligenceService through its atomic audit event.
+        db.execute("insert into marketing_opportunities values('intel-o','2026-08-21T09:00:00+00:00')")
+        db.execute("insert into marketing_proposals values('intel-p','intel-o','2026-08-21T09:00:01+00:00')")
+        db.execute("insert into marketing_proposal_products values('intel-p')")
+        db.execute("insert into marketing_audit values('INTELLIGENCE_PROPOSAL_GENERATED','proposal','intel-p','2026-08-21T09:00:02+00:00')")
+        # Hypotheses are stored in a source-owned table even when measuring a foreign proposal.
+        db.execute("insert into marketing_hypotheses values('hypothesis:1','2026-08-22T10:00:00+00:00')")
+    result=capture_recovery_watermark(path)
+    source=next(x for x in result["sources"] if x["source_id"]=="marketing_intelligence")
+    assert source["classification"]=="ELIGIBLE"
+    assert source["watermark_origin"]=="DURABLE_LEDGER"
+    assert source["watermark_table"]=="marketing_audit+marketing_hypotheses"
+    assert source["watermark_timestamp_column"]=="intelligence_owned_event_time"
+    assert source["records_available"]==2
+    assert source["data_min_at"]=="2026-08-21T09:00:02Z"
+    assert source["data_max_at"]=="2026-08-22T10:00:00Z"
+
+
+def test_marketing_intelligence_projection_fails_closed_on_incomplete_owned_generation(tmp_path):
+    path=database(tmp_path,[row("marketing_intelligence", maximum=None, records=None)])
+    with sqlite3.connect(path) as db:
+        _marketing_intelligence_schema(db)
+        db.execute("insert into marketing_audit values('INTELLIGENCE_PROPOSAL_GENERATED','proposal','missing-p','2026-08-21T09:00:00Z')")
+    result=capture_recovery_watermark(path)
+    source=next(x for x in result["sources"] if x["source_id"]=="marketing_intelligence")
+    assert source["classification"]=="UNMEASURABLE"
+    assert source["watermark_origin"]=="DATA_SOURCE_CONTROL_PLANE"
+    assert source["records_available"] is None and source["data_max_at"] is None
+
+
+def test_marketing_intelligence_projection_fails_closed_on_missing_product_or_bad_timestamp(tmp_path):
+    for suffix, has_product, measured_at in [
+        ("missing-product", False, "2026-08-22T10:00:00Z"),
+        ("bad-time", True, "yesterday"),
+    ]:
+        folder=tmp_path/suffix; folder.mkdir()
+        path=database(folder,[row("marketing_intelligence", maximum=None, records=None)])
+        with sqlite3.connect(path) as db:
+            _marketing_intelligence_schema(db)
+            db.execute("insert into marketing_opportunities values('intel-o','2026-08-21T09:00:00Z')")
+            db.execute("insert into marketing_proposals values('intel-p','intel-o','2026-08-21T09:00:01Z')")
+            if has_product:
+                db.execute("insert into marketing_proposal_products values('intel-p')")
+            db.execute("insert into marketing_audit values('INTELLIGENCE_PROPOSAL_GENERATED','proposal','intel-p','2026-08-21T09:00:02Z')")
+            db.execute("insert into marketing_hypotheses values('hypothesis:1',?)",(measured_at,))
+        result=capture_recovery_watermark(path)
+        source=next(x for x in result["sources"] if x["source_id"]=="marketing_intelligence")
+        assert source["classification"]=="UNMEASURABLE"
+        assert source["watermark_origin"]=="DATA_SOURCE_CONTROL_PLANE"
+
+
 def test_comparison_gaps_and_missing_timestamp():
     def wm(maximum, records=10):
         return {"schema_version":1,"captured_from":"TEST","captured_at":"2026-08-19T12:00:00Z",
