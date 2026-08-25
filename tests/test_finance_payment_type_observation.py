@@ -25,7 +25,7 @@ def test_observation_separates_missing_unrecognized_and_recognized_without_raw_v
         ("p2", "s1", "Terminal Secret Label", None, None, "UNKNOWN", "unknown-label", "shopcaisse-payment-types-v2"),
         ("p3", "s1", "", "Cash Secret Label", None, "CASH", "exact-normalized:name:cash-secret-label", "shopcaisse-payment-types-v2"),
         ("p4", "s1", "", None, "Card Secret Label", "CARD", "exact-normalized:description:card-secret-label", "shopcaisse-payment-types-v2"),
-        ("p5", "s1", "legacy", None, None, "UNKNOWN", "legacy-unmapped", "shopcaisse-payment-types-v1"),
+        ("p5", "s1", "Obsolete Secret Tender", None, None, "UNKNOWN", "legacy-unmapped", "shopcaisse-payment-types-v1"),
         ("p6", "s2", "visa", None, None, "CARD", "exact-normalized:payment_type:visa", "shopcaisse-payment-types-v2"),
     ]
     db.executemany("INSERT INTO sale_payments VALUES(?,?,?,?,?,?,?,?)", rows)
@@ -52,7 +52,7 @@ def test_observation_separates_missing_unrecognized_and_recognized_without_raw_v
     assert c["unknown_current_mapping_version"] == 2
     assert c["unknown_other_or_legacy_mapping_version"] == 1
     text = str(result)
-    for secret in ("Terminal Secret Label", "Cash Secret Label", "Card Secret Label", "legacy", "visa"):
+    for secret in ("Terminal Secret Label", "Cash Secret Label", "Card Secret Label", "Obsolete Secret Tender", "visa"):
         assert secret not in text
     assert result["provider_exhaustiveness_inferred"] is False
     assert result["safety"]["raw_payment_values_emitted"] is False
