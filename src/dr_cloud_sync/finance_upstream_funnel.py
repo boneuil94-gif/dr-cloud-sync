@@ -58,56 +58,59 @@ def upstream_settlement_funnel(path: Path | str) -> dict:
     db = sqlite3.connect(f"{ledger_path.resolve().as_uri()}?mode=ro", uri=True)
     db.row_factory = sqlite3.Row
     try:
-        tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        if not _REQUIRED_TABLES <= tables:
-            return _unmeasurable("REQUIRED_LEDGER_MISSING")
+        try:
+            tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if not _REQUIRED_TABLES <= tables:
+                return _unmeasurable("REQUIRED_LEDGER_MISSING")
 
-        eligible = list(db.execute(
-            """SELECT p.payment_id,p.sale_id
-               FROM sale_payments p JOIN sales s ON s.sale_id=p.sale_id
-               WHERE s.source='SHOPCAISSE'
-                 AND p.canonical_payment_type='CARD'
-                 AND p.quality_status='VALID'"""
-        ))
-        payment_ids = {row["payment_id"] for row in eligible}
-        sale_ids = {row["sale_id"] for row in eligible}
+            eligible = list(db.execute(
+                """SELECT p.payment_id,p.sale_id
+                   FROM sale_payments p JOIN sales s ON s.sale_id=p.sale_id
+                   WHERE s.source='SHOPCAISSE'
+                     AND p.canonical_payment_type='CARD'
+                     AND p.quality_status='VALID'"""
+            ))
+            payment_ids = {row["payment_id"] for row in eligible}
+            sale_ids = {row["sale_id"] for row in eligible}
 
-        matched_targets: dict[str, set[str]] = {payment_id: set() for payment_id in payment_ids}
-        if payment_ids:
-            for row in db.execute(
-                """SELECT l.source_id,l.target_id
-                   FROM payment_settlement_links l
-                   JOIN sumup_transactions t ON t.sumup_transaction_id=l.target_id
-                   WHERE l.source_type='SHOPCAISSE_PAYMENT'
-                     AND l.target_type='SUMUP_TRANSACTION'
-                     AND l.status='MATCHED'
-                     AND l.target_id IS NOT NULL"""
-            ):
-                if row["source_id"] in matched_targets:
-                    matched_targets[row["source_id"]].add(row["target_id"])
+            matched_targets: dict[str, set[str]] = {payment_id: set() for payment_id in payment_ids}
+            if payment_ids:
+                for row in db.execute(
+                    """SELECT l.source_id,l.target_id
+                       FROM payment_settlement_links l
+                       JOIN sumup_transactions t ON t.sumup_transaction_id=l.target_id
+                       WHERE l.source_type='SHOPCAISSE_PAYMENT'
+                         AND l.target_type='SUMUP_TRANSACTION'
+                         AND l.status='MATCHED'
+                         AND l.target_id IS NOT NULL"""
+                ):
+                    if row["source_id"] in matched_targets:
+                        matched_targets[row["source_id"]].add(row["target_id"])
 
-        no_tx = unique_tx = multiple_tx = 0
-        unique_target_by_payment: dict[str, str] = {}
-        for payment_id, targets in matched_targets.items():
-            if not targets:
-                no_tx += 1
-            elif len(targets) == 1:
-                unique_tx += 1
-                unique_target_by_payment[payment_id] = next(iter(targets))
-            else:
-                multiple_tx += 1
+            no_tx = unique_tx = multiple_tx = 0
+            unique_target_by_payment: dict[str, str] = {}
+            for payment_id, targets in matched_targets.items():
+                if not targets:
+                    no_tx += 1
+                elif len(targets) == 1:
+                    unique_tx += 1
+                    unique_target_by_payment[payment_id] = next(iter(targets))
+                else:
+                    multiple_tx += 1
 
-        payout_ids_by_tx: dict[str, set[str]] = {}
-        if unique_target_by_payment:
-            target_ids = set(unique_target_by_payment.values())
-            for row in db.execute(
-                """SELECT i.sumup_transaction_id,i.payout_id
-                   FROM sumup_payout_items i
-                   JOIN sumup_payouts p ON p.payout_id=i.payout_id
-                   WHERE i.sumup_transaction_id IS NOT NULL"""
-            ):
-                if row["sumup_transaction_id"] in target_ids:
-                    payout_ids_by_tx.setdefault(row["sumup_transaction_id"], set()).add(row["payout_id"])
+            payout_ids_by_tx: dict[str, set[str]] = {}
+            if unique_target_by_payment:
+                target_ids = set(unique_target_by_payment.values())
+                for row in db.execute(
+                    """SELECT i.sumup_transaction_id,i.payout_id
+                       FROM sumup_payout_items i
+                       JOIN sumup_payouts p ON p.payout_id=i.payout_id
+                       WHERE i.sumup_transaction_id IS NOT NULL"""
+                ):
+                    if row["sumup_transaction_id"] in target_ids:
+                        payout_ids_by_tx.setdefault(row["sumup_transaction_id"], set()).add(row["payout_id"])
+        except sqlite3.OperationalError:
+            return _unmeasurable("REQUIRED_SCHEMA_INCOMPLETE")
 
         no_payout = unique_payout = multiple_payouts = 0
         for target_id in unique_target_by_payment.values():
