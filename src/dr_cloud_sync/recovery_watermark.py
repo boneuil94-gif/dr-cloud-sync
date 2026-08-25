@@ -199,6 +199,77 @@ def _sumup_payout_business_projection(db: sqlite3.Connection) -> dict | None:
     }
 
 
+def _marketing_intelligence_projection(db: sqlite3.Connection) -> dict | None:
+    """Project only durable events owned by ``marketing_intelligence``.
+
+    Opportunities and proposals live in shared marketing tables, so ownership is
+    anchored to the audit event written atomically by ``MarketingIntelligenceService``.
+    The learning-loop hypotheses live in an intelligence-owned table and are also
+    durable source progress.  We deliberately do not count unrelated marketing
+    proposals/opportunities.  Every generated audit must still resolve to its
+    proposal, opportunity and product mapping; malformed schema, missing owned
+    rows or invalid timestamps make the entire projection fail closed.
+    """
+    required = {
+        "marketing_audit": {"event_type", "entity_type", "entity_id", "occurred_at"},
+        "marketing_proposals": {"proposal_id", "opportunity_id", "created_at"},
+        "marketing_opportunities": {"opportunity_id", "detected_at"},
+        "marketing_proposal_products": {"proposal_id"},
+        "marketing_hypotheses": {"hypothesis_id", "measured_at"},
+    }
+    if any(not columns <= _table_columns(db, table) for table, columns in required.items()):
+        return None
+    try:
+        audit_rows = db.execute(
+            "SELECT entity_id,occurred_at FROM marketing_audit "
+            "WHERE event_type='INTELLIGENCE_PROPOSAL_GENERATED' "
+            "AND lower(entity_type)='proposal'"
+        ).fetchall()
+        owned_rows = db.execute(
+            "SELECT a.entity_id,a.occurred_at,p.created_at,o.detected_at,"
+            "EXISTS(SELECT 1 FROM marketing_proposal_products pp WHERE pp.proposal_id=p.proposal_id) "
+            "FROM marketing_audit a "
+            "JOIN marketing_proposals p ON p.proposal_id=a.entity_id "
+            "JOIN marketing_opportunities o ON o.opportunity_id=p.opportunity_id "
+            "WHERE a.event_type='INTELLIGENCE_PROPOSAL_GENERATED' "
+            "AND lower(a.entity_type)='proposal'"
+        ).fetchall()
+        hypothesis_rows = db.execute(
+            "SELECT hypothesis_id,measured_at FROM marketing_hypotheses"
+        ).fetchall()
+    except sqlite3.Error:
+        return None
+
+    # An ownership audit is created in the same transaction as the proposal,
+    # opportunity and product mapping. A missing owned row therefore means the
+    # local durable state cannot be represented truthfully by a partial projection.
+    if len(owned_rows) != len(audit_rows):
+        return None
+
+    event_times: list[tuple[datetime, str]] = []
+    for _entity_id, occurred_at, created_at, detected_at, has_product in owned_rows:
+        canonical = [_iso(occurred_at), _iso(created_at), _iso(detected_at)]
+        if not has_product or any(value is None for value in canonical):
+            return None
+        event_time = canonical[0]
+        event_times.append((datetime.fromisoformat(event_time.replace("Z", "+00:00")), event_time))
+    for _hypothesis_id, measured_at in hypothesis_rows:
+        canonical = _iso(measured_at)
+        if canonical is None:
+            return None
+        event_times.append((datetime.fromisoformat(canonical.replace("Z", "+00:00")), canonical))
+
+    count = len(event_times)
+    return {
+        "records_available": count,
+        "data_min_at": min(event_times, key=lambda item: item[0])[1] if count else None,
+        "data_max_at": max(event_times, key=lambda item: item[0])[1] if count else None,
+        "watermark_origin": "DURABLE_LEDGER",
+        "watermark_table": "marketing_audit+marketing_hypotheses",
+        "watermark_timestamp_column": "intelligence_owned_event_time",
+    }
+
+
 def _durable_ledger_projection(db: sqlite3.Connection, source_id: str) -> dict | None:
     """Return count/min/max from one approved committed business ledger.
 
@@ -211,6 +282,8 @@ def _durable_ledger_projection(db: sqlite3.Connection, source_id: str) -> dict |
         return _purchase_ledger_projection(db)
     if source_id == "sumup_payouts":
         return _sumup_payout_business_projection(db)
+    if source_id == "marketing_intelligence":
+        return _marketing_intelligence_projection(db)
     definition = DURABLE_LEDGER_PROJECTIONS.get(source_id)
     if not definition:
         return None
