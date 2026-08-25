@@ -22,7 +22,7 @@ def _db(path):
             ('p4','s4','Beta Tender','Other Name',None,'UNKNOWN','unknown-label','shopcaisse-payment-types-v2'),
             ('p5','s5','Known','Known',None,'CASH','exact-normalized:payment_type:cash','shopcaisse-payment-types-v2'),
         ]
-        db.executemany("INSERT INTO sale_payments VALUES(?,?,?,?,?,?,?,?,?)", rows)
+        db.executemany("INSERT INTO sale_payments VALUES(?,?,?,?,?,?,?,?)", rows)
 
 
 def test_unknown_shape_is_aggregate_only_and_current_unknown_only(tmp_path):
@@ -36,8 +36,8 @@ def test_unknown_shape_is_aggregate_only_and_current_unknown_only(tmp_path):
         'unknown_payment_type_name_different': 1,
         'unknown_description_present': 0,
         'unknown_distinct_payment_type_signatures': 2,
-        'unknown_distinct_name_signatures': 3,
-        'unknown_distinct_pair_signatures': 3,
+        'unknown_distinct_name_signatures': 2,
+        'unknown_distinct_pair_signatures': 2,
         'unknown_largest_payment_type_bucket': 3,
         'unknown_largest_name_bucket': 3,
         'unknown_largest_pair_bucket': 3,
