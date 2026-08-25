@@ -56,6 +56,9 @@ def upstream_payment_population(path: Path | str) -> dict:
     db.row_factory = sqlite3.Row
     try:
         try:
+            # Keep every aggregate and the control-plane report on one SQLite read
+            # snapshot so a concurrent ShopCaisse sync cannot mix ledger states.
+            db.execute("BEGIN")
             tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             if not _REQUIRED_TABLES <= tables:
                 return _unmeasurable("REQUIRED_LEDGER_MISSING")
@@ -91,8 +94,10 @@ def upstream_payment_population(path: Path | str) -> dict:
             "shopcaisse_payments_card_and_non_valid": 0,
         }
         for row in rows:
-            canonical = str(row["canonical_payment_type"] or "").upper()
-            quality = str(row["quality_status"] or "").upper()
+            # Preserve the settlement engine's exact stored-value semantics.  A
+            # malformed legacy value such as ``valid`` must not become eligible.
+            canonical = str(row["canonical_payment_type"] or "")
+            quality = str(row["quality_status"] or "")
             n = int(row["n"])
             counts["shopcaisse_payments"] += n
             if canonical == "CARD":
