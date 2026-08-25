@@ -88,6 +88,25 @@ def test_population_buckets_are_bounded_and_exclude_other_sales_sources(tmp_path
     assert evidence['safety']['provider_network_calls'] is False
 
 
+def test_population_preserves_exact_settlement_casing(tmp_path):
+    path=tmp_path/'exact-casing.db'; db=_db(path)
+    db.execute("INSERT INTO sales VALUES('s1','SHOPCAISSE')")
+    db.executemany("INSERT INTO sale_payments VALUES(?,?,?,?)",[
+        ('a','s1','CARD','valid'),
+        ('b','s1','card','VALID'),
+        ('c','s1','CARD','VALID'),
+    ])
+    db.commit(); db.close()
+    counts=upstream_payment_population(path)['counts']
+    assert counts['shopcaisse_payments']==3
+    assert counts['shopcaisse_payments_card']==2
+    assert counts['shopcaisse_payments_unknown_or_missing_type']==1
+    assert counts['shopcaisse_payments_quality_valid']==2
+    assert counts['shopcaisse_payments_quality_non_valid']==1
+    assert counts['shopcaisse_payments_card_and_valid']==1
+    assert counts['shopcaisse_payments_card_and_non_valid']==1
+
+
 def test_invalid_or_unrecognised_control_plane_report_stays_unknown(tmp_path):
     path=tmp_path/'diagnostic.db'; db=_db(path)
     db.execute("INSERT INTO sales_sync_states VALUES('SHOPCAISSE','not-json')")
