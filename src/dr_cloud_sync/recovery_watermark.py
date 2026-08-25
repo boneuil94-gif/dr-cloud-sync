@@ -199,6 +199,75 @@ def _sumup_payout_business_projection(db: sqlite3.Connection) -> dict | None:
     }
 
 
+def _marketing_intelligence_projection(db: sqlite3.Connection) -> dict | None:
+    """Project only durable facts demonstrably owned by Marketing Intelligence.
+
+    Intelligence-generated proposals are identified by the audit row written in
+    the same transaction as their proposal/opportunity/product-link creation.
+    Hypotheses are written by ``MarketingIntelligenceService.measure`` into its
+    dedicated table and accompanied by ``MARKETING_OUTCOME_MEASURED`` audit rows.
+    Shared marketing rows without these ownership proofs are deliberately ignored.
+    Any broken ownership link or invalid/missing durable timestamp fails closed.
+    """
+    required = {
+        "marketing_audit": {"event_type", "entity_type", "entity_id", "occurred_at"},
+        "marketing_proposals": {"proposal_id", "opportunity_id", "created_at", "updated_at"},
+        "marketing_opportunities": {"opportunity_id", "detected_at"},
+        "marketing_proposal_products": {"proposal_id"},
+        "marketing_hypotheses": {"hypothesis_id", "measured_at"},
+    }
+    if any(not columns <= _table_columns(db, table) for table, columns in required.items()):
+        return None
+    try:
+        generated_audits = int(db.execute(
+            "SELECT COUNT(*) FROM marketing_audit "
+            "WHERE event_type='INTELLIGENCE_PROPOSAL_GENERATED' AND entity_type='proposal'"
+        ).fetchone()[0])
+        generated_links = int(db.execute(
+            "SELECT COUNT(*) FROM marketing_audit a "
+            "JOIN marketing_proposals p ON p.proposal_id=a.entity_id "
+            "JOIN marketing_opportunities o ON o.opportunity_id=p.opportunity_id "
+            "WHERE a.event_type='INTELLIGENCE_PROPOSAL_GENERATED' AND a.entity_type='proposal'"
+        ).fetchone()[0])
+        hypothesis_count = int(db.execute("SELECT COUNT(*) FROM marketing_hypotheses").fetchone()[0])
+        measured_audits = int(db.execute(
+            "SELECT COUNT(*) FROM marketing_audit a JOIN marketing_hypotheses h ON h.hypothesis_id=a.entity_id "
+            "WHERE a.event_type='MARKETING_OUTCOME_MEASURED' AND a.entity_type='hypothesis'"
+        ).fetchone()[0])
+        if generated_audits != generated_links or hypothesis_count != measured_audits:
+            return None
+        timestamp_rows = db.execute(
+            "WITH owned AS ("
+            " SELECT DISTINCT entity_id AS proposal_id FROM marketing_audit"
+            " WHERE event_type='INTELLIGENCE_PROPOSAL_GENERATED' AND entity_type='proposal'"
+            ") "
+            "SELECT occurred_at FROM marketing_audit "
+            "WHERE (event_type='INTELLIGENCE_PROPOSAL_GENERATED' AND entity_type='proposal') "
+            "   OR (event_type='MARKETING_OUTCOME_MEASURED' AND entity_type='hypothesis') "
+            "UNION ALL SELECT p.created_at FROM marketing_proposals p JOIN owned x ON x.proposal_id=p.proposal_id "
+            "UNION ALL SELECT p.updated_at FROM marketing_proposals p JOIN owned x ON x.proposal_id=p.proposal_id "
+            "UNION ALL SELECT o.detected_at FROM marketing_opportunities o "
+            " JOIN marketing_proposals p ON p.opportunity_id=o.opportunity_id JOIN owned x ON x.proposal_id=p.proposal_id "
+            "UNION ALL SELECT p.created_at FROM marketing_proposal_products pp "
+            " JOIN marketing_proposals p ON p.proposal_id=pp.proposal_id JOIN owned x ON x.proposal_id=p.proposal_id "
+            "UNION ALL SELECT measured_at FROM marketing_hypotheses"
+        ).fetchall()
+    except (sqlite3.Error, TypeError, ValueError):
+        return None
+    timestamps = [row[0] for row in timestamp_rows]
+    canonical = [_iso(value) for value in timestamps]
+    if any(value is None for value in canonical):
+        return None
+    return {
+        "records_available": len(canonical),
+        "data_min_at": min(canonical) if canonical else None,
+        "data_max_at": max(canonical) if canonical else None,
+        "watermark_origin": "DURABLE_LEDGER",
+        "watermark_table": "marketing_intelligence_owned_facts",
+        "watermark_timestamp_column": "owned_durable_timestamp",
+    }
+
+
 def _durable_ledger_projection(db: sqlite3.Connection, source_id: str) -> dict | None:
     """Return count/min/max from one approved committed business ledger.
 
@@ -211,6 +280,8 @@ def _durable_ledger_projection(db: sqlite3.Connection, source_id: str) -> dict |
         return _purchase_ledger_projection(db)
     if source_id == "sumup_payouts":
         return _sumup_payout_business_projection(db)
+    if source_id == "marketing_intelligence":
+        return _marketing_intelligence_projection(db)
     definition = DURABLE_LEDGER_PROJECTIONS.get(source_id)
     if not definition:
         return None
