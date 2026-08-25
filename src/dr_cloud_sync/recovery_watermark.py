@@ -246,23 +246,24 @@ def _marketing_intelligence_projection(db: sqlite3.Connection) -> dict | None:
     if len(owned_rows) != len(audit_rows):
         return None
 
-    event_times: list[str] = []
+    event_times: list[tuple[datetime, str]] = []
     for _entity_id, occurred_at, created_at, detected_at, has_product in owned_rows:
         canonical = [_iso(occurred_at), _iso(created_at), _iso(detected_at)]
         if not has_product or any(value is None for value in canonical):
             return None
-        event_times.append(canonical[0])
+        event_time = canonical[0]
+        event_times.append((datetime.fromisoformat(event_time.replace("Z", "+00:00")), event_time))
     for _hypothesis_id, measured_at in hypothesis_rows:
         canonical = _iso(measured_at)
         if canonical is None:
             return None
-        event_times.append(canonical)
+        event_times.append((datetime.fromisoformat(canonical.replace("Z", "+00:00")), canonical))
 
     count = len(event_times)
     return {
         "records_available": count,
-        "data_min_at": min(event_times) if count else None,
-        "data_max_at": max(event_times) if count else None,
+        "data_min_at": min(event_times, key=lambda item: item[0])[1] if count else None,
+        "data_max_at": max(event_times, key=lambda item: item[0])[1] if count else None,
         "watermark_origin": "DURABLE_LEDGER",
         "watermark_table": "marketing_audit+marketing_hypotheses",
         "watermark_timestamp_column": "intelligence_owned_event_time",
