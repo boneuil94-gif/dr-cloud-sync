@@ -76,3 +76,15 @@ def test_upstream_funnel_fails_closed_when_required_ledger_missing(tmp_path):
     partial=upstream_settlement_funnel(path)
     assert partial['evidence_status']=='UNMEASURABLE'
     assert partial['reason']=='REQUIRED_LEDGER_MISSING'
+
+
+def test_upstream_funnel_fails_closed_when_required_column_missing(tmp_path):
+    path=tmp_path/'partial-schema.db'
+    with sqlite3.connect(path) as db:
+        _schema(db)
+        db.execute('ALTER TABLE sale_payments RENAME TO sale_payments_full')
+        db.execute('CREATE TABLE sale_payments(payment_id TEXT PRIMARY KEY,sale_id TEXT NOT NULL,canonical_payment_type TEXT NOT NULL)')
+    result=upstream_settlement_funnel(path)
+    assert result['evidence_status']=='UNMEASURABLE'
+    assert result['reason']=='REQUIRED_SCHEMA_INCOMPLETE'
+    assert result['counts'] is None
