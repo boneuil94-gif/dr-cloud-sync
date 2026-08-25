@@ -47,8 +47,13 @@ def test_recovery_workflow_runs_after_successful_main_production_and_fails_close
     assert "github.event_name == 'workflow_dispatch'" in WORKFLOW
     assert "github.event.workflow_run.head_sha || github.sha" in WORKFLOW
     assert "ref: main" not in WORKFLOW
-    assert "group: drcloud-os-production" in WORKFLOW
-    assert "group: drcloud-os-sumup-payout-recovery-proof" not in WORKFLOW
+    assert "group: drcloud-os-sumup-payout-recovery-proof" in WORKFLOW
+    assert "group: drcloud-os-production" not in WORKFLOW
+    assert 'source "$repo/deploy/ovh/deployment-environment.sh"' in WORKFLOW
+    lock = WORKFLOW.index("flock 9")
+    sha_check = WORKFLOW.index('[[ "$deployed_sha" == "$expected_sha" ]]')
+    proof = WORKFLOW.index('"$proof_script"', sha_check)
+    assert lock < sha_check < proof
     assert "REVIEWED_SHA:" in WORKFLOW
     assert '"head_sha": os.environ["REVIEWED_SHA"]' in WORKFLOW
     assert "trigger_run_id" in WORKFLOW
