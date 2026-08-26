@@ -107,6 +107,7 @@ jobs:
           REMOTE
           test -s unknown_payment_signal_shape_evidence.json
       - name: Upload sanitized evidence
+        id: upload
         if: always() && hashFiles('unknown_payment_signal_shape_evidence.json') != ''
         uses: actions/upload-artifact@v4
         with:
@@ -164,12 +165,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PROOF_OUTCOME: ${{ steps.proof.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
           ENFORCE_OUTCOME: ${{ steps.enforce.outcome }}
           TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           python - <<'PY'
           import datetime,json,os
-          conclusion='success' if os.environ.get('PROOF_OUTCOME')=='success' and os.environ.get('ENFORCE_OUTCOME')=='success' else 'failure'
+          conclusion='success' if os.environ.get('PROOF_OUTCOME')=='success' and os.environ.get('UPLOAD_OUTCOME')=='success' and os.environ.get('ENFORCE_OUTCOME')=='success' else 'failure'
           row={'schema_version':1,'workflow':'DrCloud OS finance unknown payment signal shape proof','run_id':int(os.environ['GITHUB_RUN_ID']),'run_number':int(os.environ['GITHUB_RUN_NUMBER']),'run_attempt':int(os.environ.get('GITHUB_RUN_ATTEMPT','1')),'status':'completed','conclusion':conclusion,'event':os.environ.get('GITHUB_EVENT_NAME'),'head_branch':'main','head_sha':os.environ['REVIEWED_SHA'],'indexed_at':datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00','Z'),'run_url':f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",'trigger_run_id':int(os.environ['TRIGGER_RUN_ID'])}
           body='<!-- drcloud-run-index -->\n```json\n'+json.dumps(row,sort_keys=True)+'\n```'
           json.dump({'body':body},open('run-index-payload.json','w'))
