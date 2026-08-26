@@ -1,0 +1,193 @@
+name: DrCloud OS SumUp merchant time evidence
+
+on:
+  workflow_run:
+    workflows: ["DrCloud OS Production"]
+    types: [completed]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: drcloud-os-sumup-merchant-time-evidence
+  cancel-in-progress: false
+
+jobs:
+  proof:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      REVIEWED_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Validate reviewed SHA
+        run: |
+          set -euo pipefail
+          [[ "$REVIEWED_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+      - name: Check out exact reviewed SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REVIEWED_SHA }}
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.OVH_SSH_PRIVATE_KEY }}
+          SSH_HOST_KEYS: ${{ secrets.OVH_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/drcloud_deploy
+          printf '%s\n' "$SSH_HOST_KEYS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/drcloud_deploy ~/.ssh/known_hosts
+
+      - name: Execute deployment-locked read-only merchant time evidence
+        id: proof
+        continue-on-error: true
+        env:
+          OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
+          OVH_SSH_PORT: ${{ secrets.OVH_SSH_PORT }}
+          OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" "$OVH_SSH_USER@$OVH_SSH_HOST" \
+            "EXPECTED_DEPLOYED_SHA='$REVIEWED_SHA' bash -s" > sumup_merchant_time_evidence.json <<'REMOTE'
+          set -Eeuo pipefail
+          repo=/opt/drcloud-os
+          expected_sha="${EXPECTED_DEPLOYED_SHA:-}"
+          [[ "$expected_sha" =~ ^[0-9a-f]{40}$ ]] || { echo SUMUP_MERCHANT_TIME_EXPECTED_SHA_INVALID >&2; exit 64; }
+          source "$repo/deploy/ovh/deployment-environment.sh"
+          exec 9>"${DRCLOUD_DEPLOY_LOCK:-/tmp/drcloud-os-deploy.lock}"
+          flock 9
+          deployed_sha="$(git -C "$repo" rev-parse HEAD)"
+          [[ "$deployed_sha" == "$expected_sha" ]] || { echo SUMUP_MERCHANT_TIME_DEPLOYED_SHA_MISMATCH >&2; exit 65; }
+          cd "$repo/deploy/ovh"
+          docker compose exec -T drcloud-os env -i \
+            PATH=/usr/local/bin:/usr/bin:/bin \
+            DRCLOUD_DATA_DIR=/data \
+            EXPECTED_DEPLOYED_SHA="$expected_sha" \
+            python - <<'PY'
+          import json,os,re
+          from pathlib import Path
+          from dr_cloud_sync.sumup_merchant_time_evidence import sumup_merchant_time_evidence
+
+          sha=os.environ.get('EXPECTED_DEPLOYED_SHA','')
+          if not re.fullmatch(r'[0-9a-f]{40}',sha):
+              raise SystemExit('SUMUP_MERCHANT_TIME_EXPECTED_SHA_INVALID')
+          path=Path(os.environ.get('DRCLOUD_DATA_DIR','/data'))/'drcloud.db'
+          evidence=sumup_merchant_time_evidence(path)
+          if evidence.get('evidence_status') != 'MEASURABLE':
+              raise SystemExit('SUMUP_MERCHANT_TIME_EVIDENCE_UNAVAILABLE')
+          report={
+            'schema_version':1,
+            'environment':'production',
+            'result':'PRODUCTION_SUMUP_MERCHANT_TIME_EVIDENCE_CAPTURED',
+            'evidence_level':'PRODUCTION_READ_ONLY_LOCAL_SANITIZED_PAYLOAD',
+            'deployed_sha':sha,
+            'sumup_merchant_time_evidence':evidence,
+            'safety':{
+              'database_read_only':True,
+              'provider_network_calls':False,
+              'external_provider_auth':'NONE',
+              'mutations':False,
+              'raw_provider_values_emitted':False,
+              'timestamp_values_emitted':False,
+              'merchant_identifiers_emitted':False,
+              'sensitive_values_emitted':False,
+              'imported_at_used_as_business_progress':False,
+            },
+          }
+          forbidden={'raw_json','merchant_code','merchant_id','legal_name','trading_name','email','phone','address','iban','account_id','transaction_id','payout_id','reference','amount','credential','secret','token','authorization','timestamp_value','created_at_value','updated_at_value','imported_at'}
+          def scan(value):
+              if isinstance(value,dict):
+                  for key,child in value.items():
+                      if str(key).lower() in forbidden:
+                          raise SystemExit('SUMUP_MERCHANT_TIME_SENSITIVE_KEY')
+                      scan(child)
+              elif isinstance(value,list):
+                  for child in value:
+                      scan(child)
+          scan(report)
+          print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+          REMOTE
+          test -s sumup_merchant_time_evidence.json
+
+      - name: Upload sanitized evidence
+        id: upload
+        if: always() && hashFiles('sumup_merchant_time_evidence.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: drcloud-sumup-merchant-time-evidence-${{ github.run_id }}
+          path: sumup_merchant_time_evidence.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce bounded evidence contract
+        id: enforce
+        if: always()
+        env:
+          PROOF_OUTCOME: ${{ steps.proof.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          test "$PROOF_OUTCOME" = success
+          test "$UPLOAD_OUTCOME" = success
+          test -s sumup_merchant_time_evidence.json
+          python - <<'PY'
+          import json,os
+          d=json.load(open('sumup_merchant_time_evidence.json'))
+          assert d['schema_version']==1
+          assert d['result']=='PRODUCTION_SUMUP_MERCHANT_TIME_EVIDENCE_CAPTURED'
+          assert d['environment']=='production'
+          assert d['deployed_sha']==os.environ['REVIEWED_SHA']
+          e=d['sumup_merchant_time_evidence']
+          assert e['evidence_status']=='MEASURABLE'
+          assert e['provider_exhaustiveness_inferred'] is False
+          assert e['rpo_projection_authorized'] is False
+          assert e['current_endpoint_business_timestamp_semantics_proven'] is False
+          assert e['candidate_readiness'] in {
+              'NO_DATA','RAW_PAYLOAD_INVALID','UPDATED_AT_CONFLICTING',
+              'UPDATED_AT_ALL_ROWS_AWARE','UPDATED_AT_ABSENT','UPDATED_AT_PARTIAL_OR_INVALID'
+          }
+          counts=e['counts']
+          required={
+              'merchant_rows','raw_json_objects','raw_json_invalid','updated_at_present_rows',
+              'updated_at_aware_rows','updated_at_multiple_location_rows',
+              'updated_at_conflicting_location_rows','created_at_present_rows','created_at_aware_rows'
+          }
+          assert set(counts)==required
+          assert all(isinstance(counts[key],int) and counts[key]>=0 for key in required)
+          assert counts['updated_at_aware_rows'] <= counts['updated_at_present_rows'] <= counts['merchant_rows']
+          assert counts['created_at_aware_rows'] <= counts['created_at_present_rows'] <= counts['merchant_rows']
+          s=d['safety']
+          assert s['database_read_only'] is True
+          assert s['provider_network_calls'] is False
+          assert s['external_provider_auth']=='NONE'
+          assert s['mutations'] is False
+          assert s['raw_provider_values_emitted'] is False
+          assert s['timestamp_values_emitted'] is False
+          assert s['merchant_identifiers_emitted'] is False
+          assert s['sensitive_values_emitted'] is False
+          assert s['imported_at_used_as_business_progress'] is False
+          PY
+
+      - name: Index this run for connector discovery
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROOF_OUTCOME: ${{ steps.proof.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+          ENFORCE_OUTCOME: ${{ steps.enforce.outcome }}
+          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          python - <<'PY'
+          import datetime,json,os
+          conclusion='success' if os.environ.get('PROOF_OUTCOME')=='success' and os.environ.get('UPLOAD_OUTCOME')=='success' and os.environ.get('ENFORCE_OUTCOME')=='success' else 'failure'
+          row={'schema_version':1,'workflow':'DrCloud OS SumUp merchant time evidence','run_id':int(os.environ['GITHUB_RUN_ID']),'run_number':int(os.environ['GITHUB_RUN_NUMBER']),'run_attempt':int(os.environ.get('GITHUB_RUN_ATTEMPT','1')),'status':'completed','conclusion':conclusion,'event':os.environ.get('GITHUB_EVENT_NAME'),'head_branch':'main','head_sha':os.environ['REVIEWED_SHA'],'indexed_at':datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00','Z'),'run_url':f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",'trigger_run_id':int(os.environ['TRIGGER_RUN_ID'])}
+          body='<!-- drcloud-run-index -->\n```json\n'+json.dumps(row,sort_keys=True)+'\n```'
+          json.dump({'body':body},open('run-index-payload.json','w'))
+          PY
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/170/comments" --input run-index-payload.json
