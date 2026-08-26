@@ -71,8 +71,10 @@ def test_unknown_shape_proof_forbids_sensitive_output_keys():
 
 def test_unknown_shape_proof_uploads_only_sanitized_artifact_and_indexes_result():
     text = _text()
+    assert 'id: upload' in text
     assert 'name: drcloud-finance-unknown-payment-signal-shape-evidence-${{ github.run_id }}' in text
     assert 'path: unknown_payment_signal_shape_evidence.json' in text
     assert 'retention-days: 30' in text
+    assert 'UPLOAD_OUTCOME: ${{ steps.upload.outcome }}' in text
     assert "'workflow':'DrCloud OS finance unknown payment signal shape proof'" in text
-    assert "conclusion='success' if os.environ.get('PROOF_OUTCOME')=='success' and os.environ.get('ENFORCE_OUTCOME')=='success' else 'failure'" in text
+    assert "conclusion='success' if os.environ.get('PROOF_OUTCOME')=='success' and os.environ.get('UPLOAD_OUTCOME')=='success' and os.environ.get('ENFORCE_OUTCOME')=='success' else 'failure'" in text
