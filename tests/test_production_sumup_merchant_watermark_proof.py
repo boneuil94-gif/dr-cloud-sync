@@ -25,9 +25,13 @@ def test_holds_deploy_lock_and_observes_sqlite_read_only():
     assert 'DRCLOUD_DEPLOY_LOCK' in text
     assert 'flock 9' in text
     assert '?mode=ro' in text
-    assert "SELECT status,records_available,data_max_at,last_run_id FROM data_sources WHERE source_id='sumup_merchant'" in text
+    assert "SELECT status,records_available,data_max_at FROM data_sources WHERE source_id='sumup_merchant'" in text
     assert "job_id='sync_sumup_merchant' AND job_type='SUMUP_MERCHANT'" in text
-    assert "SELECT status,job_id FROM data_hub_sync_runs WHERE run_id=?" in text
+    assert "SELECT status,job_id FROM data_hub_sync_runs WHERE job_id='sync_sumup_merchant' ORDER BY run_id DESC LIMIT 1" in text
+    assert "evidence['source_status']=='CONNECTED'" in text
+    assert "evidence['job_status']=='SUCCEEDED'" in text
+    assert "assert e['source_status']=='CONNECTED'" in text
+    assert "assert e['job_status']=='SUCCEEDED'" in text
     assert 'provider_network_calls' in text and "'provider_network_calls':False" in text
     assert "'external_provider_auth':'NONE'" in text
     assert "'provider_mutations':False" in text
