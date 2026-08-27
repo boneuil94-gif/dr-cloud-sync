@@ -39,8 +39,11 @@ def test_workflow_uses_existing_read_only_provider_contract_and_no_mutation():
         assert token not in text
 
 
-def test_workflow_requires_aware_created_and_updated_at_without_emitting_values():
+def test_workflow_requires_strict_rfc3339_created_and_updated_at_without_emitting_values():
     text = _text()
+    assert 'RFC3339 = re.compile(' in text
+    assert "r'^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|[+-]\\d{2}:\\d{2})$'" in text
+    assert 'if not RFC3339.fullmatch(text):' in text
     assert "created=payload.get('created_at')" in text
     assert "updated=payload.get('updated_at')" in text
     assert "created_at_present'" in text
