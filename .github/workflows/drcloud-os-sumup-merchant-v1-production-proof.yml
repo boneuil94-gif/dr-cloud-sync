@@ -93,14 +93,21 @@ jobs:
           if not isinstance(payload,dict):
               raise SystemExit('SUMUP_MERCHANT_V1_PAYLOAD_NOT_OBJECT')
 
+          RFC3339 = re.compile(
+              r'^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})$'
+          )
+
           def aware(value):
               if not isinstance(value,str) or not value.strip():
                   return False
               text=value.strip()
-              if text.endswith('Z'):
-                  text=text[:-1]+'+00:00'
+              if not RFC3339.fullmatch(text):
+                  return False
+              normalized=text[:10]+'T'+text[11:]
+              if normalized.endswith(('Z','z')):
+                  normalized=normalized[:-1]+'+00:00'
               try:
-                  parsed=datetime.fromisoformat(text)
+                  parsed=datetime.fromisoformat(normalized)
               except ValueError:
                   return False
               return parsed.tzinfo is not None and parsed.utcoffset() is not None
