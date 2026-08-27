@@ -12,7 +12,7 @@ def test_sumup_merchant_and_reader_sources_have_real_direct_jobs():
     assert '"SUMUP_READERS":sumup_readers' in INVENTORY_WEB
 
 
-def test_sumup_direct_jobs_report_durable_counts_without_inventing_business_time():
+def test_sumup_direct_jobs_report_durable_counts_and_validated_merchant_business_time():
     start = INVENTORY_WEB.index("        def sumup_merchant(cursor):")
     end = INVENTORY_WEB.index("        intelligence=", start)
     direct_jobs = INVENTORY_WEB[start:end]
@@ -21,5 +21,7 @@ def test_sumup_direct_jobs_report_durable_counts_without_inventing_business_time
     assert "import_merchant" in direct_jobs
     assert "import_readers" in direct_jobs
     assert direct_jobs.count('"records_available"') >= 2
-    assert "data_max_at" not in direct_jobs
+    assert '"data_max_at":merchant["updated_at"]' in direct_jobs
+    assert "imported_at" not in direct_jobs
+    assert "created_at" not in direct_jobs
     assert "data_min_at" not in direct_jobs
