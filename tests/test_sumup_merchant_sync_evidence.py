@@ -113,6 +113,25 @@ def test_non_autorunnable_source_is_distinguished(tmp_path):
     assert result["diagnosis"] == "SOURCE_NOT_AUTORUNNABLE"
 
 
+def test_disabled_source_is_non_autorunnable_even_if_connected(tmp_path):
+    path = _db(tmp_path)
+    _source(path, status="CONNECTED", enabled=0)
+    _job(path, status="PENDING", attempts=0)
+    result = sumup_merchant_sync_evidence(path)
+    assert result["diagnosis"] == "SOURCE_NOT_AUTORUNNABLE"
+    assert result["control_plane"]["source_enabled"] is False
+
+
+def test_blocked_job_without_run_is_not_reported_as_never_ran(tmp_path):
+    path = _db(tmp_path)
+    _source(path, status="CONNECTED", enabled=1)
+    _job(path, status="BLOCKED", attempts=0)
+    result = sumup_merchant_sync_evidence(path)
+    assert result["diagnosis"] == "JOB_FAILED_OR_BLOCKED"
+    assert result["control_plane"]["run_counts"]["total"] == 0
+    assert result["control_plane"]["job_status"] == "BLOCKED"
+
+
 def test_failed_run_is_distinguished_without_emitting_error(tmp_path):
     path = _db(tmp_path)
     _source(path, status="CONNECTED", last_run=1)
