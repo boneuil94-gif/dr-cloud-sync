@@ -109,7 +109,7 @@ def test_event_subledgers_partial_refund_chargeback_tip_tax_and_fee(tmp_path):
 
 def test_merchant_and_readers_are_separate_and_sanitized(tmp_path):
  ledger=SumUpTransactionLedger(tmp_path/"db.sqlite")
- ledger.import_merchant({"merchant_profile":{"merchant_code":"MC","legal_name":"Dr Cloud","currency":"EUR","access_token":"must-not-persist"}})
+ ledger.import_merchant({"merchant_profile":{"merchant_code":"MC","legal_name":"Dr Cloud","currency":"EUR","created_at":"2026-08-01T09:00:00Z","updated_at":"2026-08-27T09:00:00Z","access_token":"must-not-persist"}})
  ledger.import_readers(type("P",(),{"rows":({"id":"R1","model":"SOLO","status":"ONLINE","software_version":"1.2"},),"next_cursor":None})())
  assert ledger.db.execute("select legal_name from sumup_merchants").fetchone()[0]=="Dr Cloud"
  assert "must-not-persist" not in ledger.db.execute("select raw_json from sumup_merchants").fetchone()[0]
