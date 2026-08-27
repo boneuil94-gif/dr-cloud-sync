@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import hashlib
 import json
+import re
 import sqlite3
 import time
 from pathlib import Path
@@ -61,6 +62,7 @@ class SumUpReader: reader_id: str; raw: dict
 # SumUp documents payout list pagination only through a bounded date range and
 # a maximum result limit of 9999. There is no documented offset/cursor parameter.
 PAYOUT_MAX_LIMIT = 9999
+RFC3339_AWARE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$")
 
 
 def _decimal(value):
@@ -77,6 +79,28 @@ def _cursor(value):
         return parsed
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         raise SumUpError("Curseur SumUp invalide", diagnostic={"stage": "pagination", "category": "VALIDATION"}) from exc
+
+
+def _validated_rfc3339(value, field):
+    text = str(value or "").strip()
+    if not RFC3339_AWARE.fullmatch(text):
+        raise SumUpError(
+            f"Horodatage marchand SumUp {field} invalide",
+            diagnostic={"stage": "merchant_profile", "category": "PARSING", "field": field},
+        )
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise SumUpError(
+            f"Horodatage marchand SumUp {field} invalide",
+            diagnostic={"stage": "merchant_profile", "category": "PARSING", "field": field},
+        ) from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise SumUpError(
+            f"Horodatage marchand SumUp {field} sans fuseau",
+            diagnostic={"stage": "merchant_profile", "category": "PARSING", "field": field},
+        )
+    return text
 
 
 def _safe_raw(value):
@@ -143,8 +167,10 @@ class SumUpProvider:
         return {"status": "CONNECTED", "merchant_code": self.merchant_code}
 
     def merchant(self):
-        payload = self._get("/v0.1/me", stage="merchant_profile")
-        return payload if isinstance(payload, dict) else {}
+        payload = self._get(self._merchant_path("", "v1"), stage="merchant_profile")
+        if not isinstance(payload, dict):
+            raise SumUpError("Contrat marchand SumUp invalide", diagnostic={"stage": "merchant_profile", "category": "PARSING"})
+        return payload
 
     def readers(self):
         payload = self._get(self._merchant_path("readers", "v0.1"), stage="readers")
@@ -234,7 +260,7 @@ class SumUpProvider:
 
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS sumup_merchants(merchant_code TEXT PRIMARY KEY,legal_name TEXT,trading_name TEXT,country TEXT,currency TEXT,timezone TEXT,status TEXT,payout_settings_json TEXT NOT NULL,raw_json TEXT NOT NULL,imported_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sumup_merchants(merchant_code TEXT PRIMARY KEY,legal_name TEXT,trading_name TEXT,country TEXT,currency TEXT,timezone TEXT,status TEXT,payout_settings_json TEXT NOT NULL,created_at TEXT,updated_at TEXT,raw_json TEXT NOT NULL,imported_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sumup_transactions(sumup_transaction_id TEXT PRIMARY KEY,transaction_code TEXT,amount TEXT NOT NULL,currency TEXT NOT NULL,timestamp TEXT NOT NULL,status TEXT,simple_status TEXT,payment_type TEXT,entry_mode TEXT,card_type TEXT,terminal_id TEXT,product_summary TEXT,vat_amount TEXT,tip_amount TEXT,refunded_amount TEXT,chargeback_amount TEXT,foreign_transaction_id TEXT,client_transaction_id TEXT,reference TEXT,receipt_url TEXT,fee TEXT NOT NULL,events_json TEXT NOT NULL,raw_json TEXT NOT NULL,imported_at TEXT NOT NULL);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_sumup_transaction_code ON sumup_transactions(transaction_code) WHERE transaction_code IS NOT NULL;
 CREATE TABLE IF NOT EXISTS sumup_transaction_events(event_id TEXT PRIMARY KEY,sumup_transaction_id TEXT NOT NULL,event_type TEXT,status TEXT,amount TEXT,currency TEXT,event_at TEXT,payout_id TEXT,raw_json TEXT NOT NULL);
@@ -284,11 +310,15 @@ class SumUpTransactionLedger:
 
     def import_merchant(self, row):
         profile = row.get("merchant_profile", row)
-        code = str(profile.get("merchant_code") or profile.get("merchant_id") or "")
-        if not code: raise SumUpError("Profil marchand sans merchant_code", diagnostic={"category": "PARSING"})
+        code = str(profile.get("merchant_code") or profile.get("merchant_id") or row.get("merchant_code") or "")
+        if not code:
+            raise SumUpError("Profil marchand sans merchant_code", diagnostic={"stage": "merchant_profile", "category": "PARSING"})
+        created_at = _validated_rfc3339(row.get("created_at") or profile.get("created_at"), "created_at")
+        updated_at = _validated_rfc3339(row.get("updated_at") or profile.get("updated_at"), "updated_at")
         stamp = datetime.now(timezone.utc).isoformat()
         with self.db:
-            self.db.execute("INSERT OR REPLACE INTO sumup_merchants (merchant_code,legal_name,trading_name,country,currency,timezone,status,payout_settings_json,raw_json,imported_at) VALUES(?,?,?,?,?,?,?,?,?,?)", (code, profile.get("legal_name") or profile.get("company_name"), profile.get("doing_business_as") or profile.get("trading_name"), profile.get("country"), profile.get("currency"), profile.get("timezone"), profile.get("status"), json.dumps(_safe_raw(profile.get("payout_settings") or {})), json.dumps(_safe_raw(row)), stamp))
+            self.db.execute("INSERT OR REPLACE INTO sumup_merchants (merchant_code,legal_name,trading_name,country,currency,timezone,status,payout_settings_json,created_at,updated_at,raw_json,imported_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", (code, profile.get("legal_name") or profile.get("company_name"), profile.get("doing_business_as") or profile.get("trading_name"), profile.get("country"), profile.get("currency"), profile.get("timezone"), profile.get("status"), json.dumps(_safe_raw(profile.get("payout_settings") or {})), created_at, updated_at, json.dumps(_safe_raw(row)), stamp))
+        return {"merchant_code": code, "created_at": created_at, "updated_at": updated_at}
 
     def import_readers(self, page):
         inserted = 0; stamp = datetime.now(timezone.utc).isoformat()

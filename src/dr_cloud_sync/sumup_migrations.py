@@ -8,8 +8,8 @@ import sqlite3
 from .schema_diagnostics import ExpectedSchema, diagnose_schema
 
 
-SUMUP_SCHEMA_VERSION = 4
-MIGRATION_NAME = "sumup_simple_status_schema_drift_repair_20260805"
+SUMUP_SCHEMA_VERSION = 5
+MIGRATION_NAME = "sumup_merchant_resource_timestamps_20260827"
 
 
 class SumUpSchemaMigrationError(RuntimeError):
