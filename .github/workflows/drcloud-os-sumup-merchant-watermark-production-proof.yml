@@ -87,12 +87,10 @@ jobs:
                   tables={r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
                   if not required_tables <= tables:
                       raise SystemExit('SUMUP_MERCHANT_WATERMARK_SCHEMA_INCOMPLETE')
-                  source=db.execute("SELECT status,records_available,data_max_at,last_run_id FROM data_sources WHERE source_id='sumup_merchant'").fetchone()
+                  source=db.execute("SELECT status,records_available,data_max_at FROM data_sources WHERE source_id='sumup_merchant'").fetchone()
                   job=db.execute("SELECT status FROM sync_jobs WHERE job_id='sync_sumup_merchant' AND job_type='SUMUP_MERCHANT'").fetchone()
                   merchant=db.execute("SELECT count(*) AS n, sum(CASE WHEN updated_at IS NOT NULL AND trim(updated_at)<>'' THEN 1 ELSE 0 END) AS with_updated, max(updated_at) AS max_updated FROM sumup_merchants").fetchone()
-                  run=None
-                  if source and source['last_run_id'] is not None:
-                      run=db.execute("SELECT status,job_id FROM data_hub_sync_runs WHERE run_id=?",(source['last_run_id'],)).fetchone()
+                  run=db.execute("SELECT status,job_id FROM data_hub_sync_runs WHERE job_id='sync_sumup_merchant' ORDER BY run_id DESC LIMIT 1").fetchone()
                   records=int(source['records_available'] or 0) if source else 0
                   merchant_rows=int(merchant['n'] or 0)
                   merchant_with_updated=int(merchant['with_updated'] or 0)
@@ -117,8 +115,10 @@ jobs:
           evidence=None
           for _ in range(24):
               evidence=observe()
-              if (evidence['source_present'] and evidence['job_present'] and evidence['last_run_succeeded'] and
-                  evidence['records_available']>0 and evidence['merchant_rows']>0 and
+              if (evidence['source_present'] and evidence['source_status']=='CONNECTED' and
+                  evidence['job_present'] and evidence['job_status']=='SUCCEEDED' and
+                  evidence['last_run_succeeded'] and evidence['records_available']>0 and
+                  evidence['merchant_rows']>0 and
                   evidence['merchant_rows_with_provider_updated_at']==evidence['merchant_rows'] and
                   evidence['data_max_at_persisted'] and evidence['data_max_at_matches_provider_updated_at']):
                   break
@@ -196,7 +196,9 @@ jobs:
           e=d['evidence']
           assert set(e)=={'source_present','source_status','job_present','job_status','last_run_present','last_run_succeeded','records_available','merchant_rows','merchant_rows_with_provider_updated_at','data_max_at_persisted','data_max_at_matches_provider_updated_at'}
           assert e['source_present'] is True
+          assert e['source_status']=='CONNECTED'
           assert e['job_present'] is True
+          assert e['job_status']=='SUCCEEDED'
           assert e['last_run_present'] is True
           assert e['last_run_succeeded'] is True
           assert e['records_available']>0
