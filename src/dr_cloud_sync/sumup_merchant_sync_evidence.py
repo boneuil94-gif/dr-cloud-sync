@@ -133,6 +133,7 @@ def sumup_merchant_sync_evidence(path: Path | str) -> dict:
                 run_counts["other"] += count
 
         source_status = _bounded(source["status"], _SOURCE_STATUSES) if source else "UNKNOWN"
+        source_enabled = bool(source["enabled"]) if source else False
         job_status = _bounded(job["status"], _JOB_STATUSES) if job else "UNKNOWN"
         latest_status = _bounded(latest["status"], _RUN_STATUSES) if latest else "UNKNOWN"
 
@@ -142,11 +143,13 @@ def sumup_merchant_sync_evidence(path: Path | str) -> dict:
             diagnosis = "JOB_NOT_REGISTERED"
         elif merchant_rows > 0:
             diagnosis = "LEDGER_HAS_DATA"
-        elif source_status not in {"CONNECTED", "UNAVAILABLE"}:
+        elif not source_enabled or source_status not in {"CONNECTED", "UNAVAILABLE"}:
             diagnosis = "SOURCE_NOT_AUTORUNNABLE"
+        elif job_status == "BLOCKED":
+            diagnosis = "JOB_FAILED_OR_BLOCKED"
         elif run_counts["total"] == 0:
             diagnosis = "JOB_NEVER_RAN"
-        elif latest_status == "FAILED" or job_status in {"FAILED", "RETRY", "BLOCKED"}:
+        elif latest_status == "FAILED" or job_status in {"FAILED", "RETRY"}:
             diagnosis = "JOB_FAILED_OR_BLOCKED"
         elif run_counts["succeeded"] > 0:
             diagnosis = "JOB_SUCCEEDED_NO_LEDGER_ROWS"
@@ -163,7 +166,7 @@ def sumup_merchant_sync_evidence(path: Path | str) -> dict:
             "control_plane": {
                 "source_present": source is not None,
                 "source_status": source_status,
-                "source_enabled": bool(source["enabled"]) if source else False,
+                "source_enabled": source_enabled,
                 "source_last_success_presence": _presence(source["last_success_at"]) if source else "MISSING",
                 "source_last_run_presence": _presence(source["last_run_id"]) if source else "MISSING",
                 "source_records_available_state": _count_state(source["records_available"]) if source else "UNKNOWN",
