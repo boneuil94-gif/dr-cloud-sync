@@ -82,7 +82,6 @@ class InventoryApp:
         self.roadmap_service=roadmap_service or RoadmapService(); self.failures={}
         data_dir = settings.data_dir if settings else service.repo.path.parent
         self.backup_service = BackupService(configured_backup_dir(data_dir))
-        # Startup only prepares/tests infrastructure; it never mutates business data.
         self.backup_service.health(create=True)
         self.admin_status=AdminStatusService(service.repo.path, backup_service=self.backup_service)
         self.stock=StockProjectionService(service.repo,self.os_repository)
@@ -178,17 +177,12 @@ class InventoryApp:
                 sales_providers["SHOPCAISSE"]=ShopCaisseAPISalesProvider(shopcaisse_client,self.sales.db,
                     stock_board_type=os.environ.get("SHOPCAISSE_STOCK_BOARD_TYPE","DEFAULT"))
         shopcaisse_inbox=os.environ.get("SHOPCAISSE_SALES_INBOX","")
-        # Existing offline policy: a configured CSV inbox is runnable only when no
-        # API credential asks us to enforce the authenticated startup health gate.
         if not shopcaisse_key and shopcaisse_inbox and Path(shopcaisse_inbox).is_dir():
             sales_providers["SHOPCAISSE"]=ShopCaisseSalesProvider(Path(shopcaisse_inbox))
             self.data_hub.register_source("shopcaisse_sales","SHOPCAISSE_SALES","ShopCaisse",
                 configured=True,capabilities=("READ_SALES",),stale_after_seconds=intervals["sales"]*2)
         self.sales_sync=SalesSyncService(self.sales,sales_providers)
         for args in (("prestashop_sales","PRESTASHOP_SALES","PrestaShop",configured_ps),("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",prestashop_connected),("purchases","PURCHASES","LOCAL",True),("stock","STOCK","LOCAL",True)):
-            # An authenticated Qonto health check makes the source runnable, but it
-            # remains unavailable (never CONNECTED/FRESH) until BANK has imported a
-            # real page and DataHub.run records the successful synchronization.
             initial_status="UNAVAILABLE" if args[0]=="bank" and args[3] else None
             self.data_hub.register_source(*args[:3],configured=args[3],status=initial_status,capabilities=("READ",),stale_after_seconds=intervals["bank"]*2 if args[0]=="bank" else intervals["sales"]*2)
         self.data_hub.register_source("bank","BANK","Qonto",configured=qonto_configured,
@@ -205,8 +199,6 @@ class InventoryApp:
                 "CONFIGURATION",f"Configuration Qonto absente du runtime. {cause}",datetime.now(timezone.utc).isoformat(),
                 response_excerpt=json.dumps(self.qonto_configuration,ensure_ascii=False)))
         self.settlements.qonto_configured=qonto_connected
-        # Finance must reflect the live authenticated capability, not merely
-        # stale bank rows left in SQLite by an older valid configuration.
         self.finance.qonto_configured=qonto_connected
         sumup_interval=int(os.environ.get("SUMUP_SYNC_INTERVAL_SECONDS","900"))
         for source_id,source_type in (("sumup_merchant","SUMUP_MERCHANT"),("sumup_transactions","SUMUP_TRANSACTIONS"),("sumup_payouts","SUMUP_PAYOUTS"),("sumup_fees","SUMUP_FEES"),("sumup_refunds","SUMUP_REFUNDS"),("sumup_chargebacks","SUMUP_CHARGEBACKS"),("sumup_readers","SUMUP_READERS")):
@@ -214,9 +206,6 @@ class InventoryApp:
         if prestashop_client:
             self.data_hub.register_source("prestashop_catalog","PRESTASHOP_CATALOG","PrestaShop",status="UNAVAILABLE",capabilities=("READ",),stale_after_seconds=intervals["sales"]*2)
             if configured_ps:self.data_hub.register_source("prestashop_sales","PRESTASHOP_SALES","PrestaShop",status="UNAVAILABLE",capabilities=("READ",),stale_after_seconds=intervals["sales"]*2)
-        # Audited V1 inventory: these adapters are not fabricated.  They remain
-        # visible and non-green until a homologated provider and opaque secret_ref
-        # are supplied to the server runtime.
         self.data_hub.register_source("supplier_documents","SUPPLIER_DOCUMENTS","NONE",status="NOT_CONFIGURED",capabilities=("READ_STRUCTURED","PREVIEW_UNSTRUCTURED"),stale_after_seconds=int(os.environ.get("SUPPLIER_SYNC_INTERVAL_SECONDS","3600")))
         for channel in ("instagram","facebook","snapchat","tiktok"):
             self.data_hub.register_source(f"social_{channel}","SOCIAL_ANALYTICS",channel.title(),status="NOT_CONFIGURED",capabilities=("READ_ANALYTICS",),stale_after_seconds=int(os.environ.get("SOCIAL_ANALYTICS_INTERVAL_SECONDS","21600")))
@@ -242,8 +231,6 @@ class InventoryApp:
         self.social_connections=SocialConnectionService(self.marketing_repository)
         self.marketing_scheduling=MarketingSchedulingService(self.marketing_repository)
         self.social_publishing=SocialPublishingService(self.marketing_repository)
-        # Optional external integration: configuration and client are resolved only
-        # when an authenticated operator explicitly requests PREVIEW/APPLY.
         self.media_import=PrestaShopMediaProvider(service.repo.path,self.media,self.os_repository,
                                                    backup_service=self.backup_service)
         self.media_import_preview=None
@@ -288,16 +275,14 @@ class InventoryApp:
             report=self.bank.sync("Qonto",self.bank_provider,cursor)
             if report.get("qonto_diagnostic"):
                 self.qonto_configuration["transaction_sync"]=report["qonto_diagnostic"]
-            # Bank Ledger is durable before settlement recomputation; Qonto remains
-            # strictly read-only while SumUp payouts can immediately find credits.
             report["settlements"]=self.settlements.recompute()
             return report
         def sumup_merchant(cursor):
             before=int(self.sumup_transactions.db.execute("SELECT count(*) FROM sumup_merchants").fetchone()[0])
             payload=self.sumup_provider.merchant()
-            self.sumup_transactions.import_merchant(payload)
+            merchant=self.sumup_transactions.import_merchant(payload)
             records=int(self.sumup_transactions.db.execute("SELECT count(*) FROM sumup_merchants").fetchone()[0])
-            return {"rows_imported":max(0,records-before),"records_available":records,"cursor":None}
+            return {"rows_imported":max(0,records-before),"records_available":records,"data_max_at":merchant["updated_at"],"cursor":None}
         def sumup_readers(cursor):
             report=self.sumup_transactions.import_readers(self.sumup_provider.readers())
             records=int(self.sumup_transactions.db.execute("SELECT count(*) FROM sumup_readers").fetchone()[0])
@@ -501,9 +486,6 @@ class InventoryApp:
                 self.security and self.security.audit(session["uid"],"SETTLEMENT_NOTE_ADDED","PAYMENT_SETTLEMENT",sid,request_id,"settlements")
                 return self._json(start,result)
             if path == "/api/settlements/backfill" and method == "POST":
-                # The settlement projection cannot recover payments skipped by an
-                # already-advanced sales cursor. Re-read the complete read-only
-                # ShopCaisse history first; payment upserts make this idempotent.
                 imported=self.sales_sync.sync("SHOPCAISSE",force=True,actor=session.get("u","authenticated"))
                 result={"shopcaisse_import":imported,**self.settlements.backfill(batch_size=int(self._body(env).get("batch_size",500)))}; self.security and self.security.audit(session["uid"],"SETTLEMENT_BACKFILL_STARTED","PAYMENT_SETTLEMENT_RUN",result["run_id"],request_id,"settlements",result); return self._json(start,result,"202 Accepted")
             if path == "/api/settlements/recompute" and method == "POST":
@@ -682,7 +664,7 @@ class InventoryApp:
                     row,duplicates=self.suppliers.update(supplier_id,self._body(env),session.get("u","authenticated"))
                     return self._json(start,{"supplier":asdict(row),"possible_duplicates":[asdict(x) for x in duplicates]})
             if path == "/api/dashboard":
-                road=self.roadmap_service.load(); return self._json(start,{"progress_percent":road["global_progress_percent"],"next":next((m["next"] for m in road["modules"] if m.get("next")),None),"catalogue":len(self.service.items),"inventory":{"session":self.service.session(),"progress":self.service.progress()},"systems":self.admin_status.collect(),"sales":{"last_7_days":self.sales.metrics(None,7),"last_30_days":self.sales.metrics(None,30),"freshness":self.sales.status()["freshness"]},"purchase_costs":{"stock_value":self.purchase_costs.stock_value(),"profitability":self.purchase_costs.profitability(),"invoices_to_review":self.purchase_costs.db.execute("SELECT count(*) FROM supplier_invoices WHERE status!=\'VALIDATED\'").fetchone()[0]}},headers=[("X-Request-ID",request_id)])
+                road=self.roadmap_service.load(); return self._json(start,{"progress_percent":road["global_progress_percent"],"next":next((m["next"] for m in road["modules"] if m.get("next")),None),"catalogue":len(self.service.items),"inventory":{"session":self.service.session(),"progress":self.service.progress()},"systems":self.admin_status.collect(),"sales":{"last_7_days":self.sales.metrics(None,7),"last_30_days":self.sales.metrics(None,30),"freshness":self.sales.status()["freshness"]},"purchase_costs":{"stock_value":self.purchase_costs.stock_value(),"profitability":self.purchase_costs.profitability(),"invoices_to_review":self.purchase_costs.db.execute("SELECT count(*) FROM supplier_invoices WHERE status!='VALIDATED'").fetchone()[0]}},headers=[("X-Request-ID",request_id)])
             if path == "/api/state": return self._json(start,{"session":self.service.session(),"progress":self.service.progress(),"proposal":self.service.proposal()})
             if path == "/api/roadmap": return self._json(start,self.roadmap_service.load())
             if path == "/api/roadmap/health": return self._json(start,self.roadmap_service.diagnostic())
@@ -873,7 +855,6 @@ class InventoryApp:
         payload=json.dumps(data,separators=(",",":")).encode().hex(); return payload+"."+hmac.new(self.settings.secret_key.encode(),payload.encode(),hashlib.sha256).hexdigest()
     @staticmethod
     def _route_permission(path,method):
-        """Return the explicit grant required by a route; unknown routes fail closed."""
         pages={"/":"catalogue.read","/crm":"crm.read","/crm/customers":"crm.customer.read","/crm/loyalty":"crm.loyalty.read","/catalogue":"catalogue.read","/inventaire":"stock.read","/stock":"stock.read","/sales":"sales.read","/finance":"finance.read","/settlements":"settlements.read","/settlements/explorer":"settlements.read","/achats":"purchasing.read","/marketing":"marketing.read","/marketing/calendar":"marketing.calendar.read","/marketing/publishing-queue":"marketing.calendar.read","/marketing/review":"marketing.review","/marketing/campaigns":"marketing.campaigns.read","/marketing/social-analytics":"marketing.analytics.read","/marketing/learning":"marketing.learning.read","/administration":"admin.read","/securite":"security.read","/roadmap":"admin.read"}
         if path in pages: return pages[path]
         if path.startswith("/achats/"): return "purchasing.read"
@@ -916,8 +897,6 @@ class InventoryApp:
         html=html.replace("{{SAFE_BANNER}}",'<div class="safe">Mode sécurisé — écritures externes désactivées</div>' if safe else "").replace("{{CSRF}}",session["csrf"] if session else "")
         return self._send(start,html.encode(),"text/html; charset=utf-8",status,[("X-Request-ID",request_id)])
     def _catalogue(self,query):
-        # Rehydration runs in an isolated worker repository.  Catalogue responses
-        # must therefore reload committed rows instead of serving the startup copy.
         if hasattr(self.os_repository, "reload"):
             self.os_repository.reload()
         text=query.get("q",[""])[0].casefold(); selected=query.get("filter",["ALL"])[0]
