@@ -8,14 +8,14 @@ def _text():
     return WORKFLOW.read_text(encoding='utf-8')
 
 
-def test_runs_only_after_successful_main_production_and_pins_exact_sha():
+def test_runs_after_watermark_proof_completion_and_pins_exact_sha():
     text = _text()
-    assert 'workflows: ["DrCloud OS Production"]' in text
-    assert "github.event.workflow_run.conclusion == 'success'" in text
+    assert 'workflows: ["DrCloud OS SumUp merchant watermark production proof"]' in text
     assert "github.event.workflow_run.head_branch == 'main'" in text
     assert 'REVIEWED_SHA: ${{ github.event.workflow_run.head_sha }}' in text
     assert 'ref: ${{ env.REVIEWED_SHA }}' in text
     assert 'SUMUP_MERCHANT_DIAGNOSTIC_DEPLOYED_SHA_MISMATCH' in text
+    assert 'workflows: ["DrCloud OS Production"]' not in text
 
 
 def test_holds_deploy_lock_and_reads_sqlite_only():
@@ -76,8 +76,20 @@ def test_diagnostic_reports_only_boolean_states_and_aggregate_counts():
     assert "'merchant_rows_with_provider_updated_at': merchant_rows_with_provider_updated_at" in text
 
 
-def test_upload_success_is_required_for_indexed_diagnostic():
+def test_failed_capture_or_contract_cannot_be_indexed_as_success():
     text = _text()
+    assert 'id: capture' in text
+    assert 'continue-on-error: true' in text
     assert 'id: upload' in text
+    assert 'id: enforce' in text
+    assert 'if: always()' in text
+    assert 'test "$CAPTURE_OUTCOME" = success' in text
     assert 'test "$UPLOAD_OUTCOME" = success' in text
+    assert 'CAPTURE_OUTCOME: ${{ steps.capture.outcome }}' in text
+    assert 'UPLOAD_OUTCOME: ${{ steps.upload.outcome }}' in text
+    assert 'ENFORCE_OUTCOME: ${{ steps.enforce.outcome }}' in text
+    assert "os.environ.get('CAPTURE_OUTCOME') == 'success'" in text
+    assert "os.environ.get('UPLOAD_OUTCOME') == 'success'" in text
+    assert "os.environ.get('ENFORCE_OUTCOME') == 'success'" in text
+    assert "'conclusion': conclusion" in text
     assert "'workflow': 'DrCloud OS SumUp merchant watermark diagnostic'" in text
