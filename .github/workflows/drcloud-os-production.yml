@@ -51,6 +51,9 @@ jobs:
           scp -q -i ~/.ssh/drcloud_deploy -P "${OVH_SSH_PORT:-22}" \
             deploy/ovh/configure-sumup-env.sh \
             "$OVH_SSH_USER@$OVH_SSH_HOST:/tmp/drcloud-sumup-$DEPLOY_SHA.sh"
+          scp -q -i ~/.ssh/drcloud_deploy -P "${OVH_SSH_PORT:-22}" \
+            deploy/ovh/update.sh \
+            "$OVH_SSH_USER@$OVH_SSH_HOST:/tmp/drcloud-update-$DEPLOY_SHA.sh"
       - name: Deploy the exact successful commit
         env:
           OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
@@ -62,14 +65,17 @@ jobs:
           QONTO_CREDENTIAL: ${{ secrets.QONTO_CREDENTIAL }}
           SUMUP_API_KEY: ${{ secrets.SUMUP_API_KEY }}
           SUMUP_MERCHANT_CODE: ${{ vars.SUMUP_MERCHANT_CODE }}
+          GITHUB_FETCH_TOKEN: ${{ github.token }}
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
+          set -euo pipefail
           test -n "$PRESTASHOP_API_KEY" || { echo "PRESTASHOP_API_KEY est absent" >&2; exit 1; }
           test -n "$PRESTASHOP_PAID_STATE_IDS" || { echo "PRESTASHOP_PAID_STATE_IDS est absent" >&2; exit 1; }
           test -n "$SHOPCAISSE_API_KEY" || { echo "SHOPCAISSE_API_KEY est absent" >&2; exit 1; }
           test -n "$QONTO_CREDENTIAL" || { echo "QONTO_CREDENTIAL est absent" >&2; exit 1; }
           test -n "$SUMUP_API_KEY" || { echo "SUMUP_API_KEY est absent" >&2; exit 1; }
           test -n "$SUMUP_MERCHANT_CODE" || { echo "SUMUP_MERCHANT_CODE est absent" >&2; exit 1; }
+          test -n "$GITHUB_FETCH_TOKEN" || { echo "Jeton GitHub de lecture absent" >&2; exit 1; }
           printf '%s\n%s\n%s\n' 'https://dr-cloudshop.com/api' "$PRESTASHOP_API_KEY" "$PRESTASHOP_PAID_STATE_IDS" |
             ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" \
               "$OVH_SSH_USER@$OVH_SSH_HOST" \
@@ -88,6 +94,13 @@ jobs:
           printf '%s\n%s\n' "$QONTO_CREDENTIAL" '/data/shopcaisse-inbox' |
             ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" "$OVH_SSH_USER@$OVH_SSH_HOST" \
               "DRCLOUD_ENV_FILE=/opt/drcloud-os/deploy/ovh/drcloud.env /bin/bash /tmp/drcloud-connectors-$DEPLOY_SHA.sh; status=\$?; rm -f /tmp/drcloud-connectors-$DEPLOY_SHA.sh; exit \$status"
-          ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" \
-            "$OVH_SSH_USER@$OVH_SSH_HOST" \
-            "test \"\$(id -un)\" = '$OVH_SSH_USER' && /opt/drcloud-os/deploy/ovh/update.sh '$DEPLOY_SHA'"
+          printf '%s\n' "$GITHUB_FETCH_TOKEN" |
+            ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" \
+              "$OVH_SSH_USER@$OVH_SSH_HOST" \
+              "test \"\$(id -un)\" = '$OVH_SSH_USER'; \
+               chmod 700 /tmp/drcloud-update-$DEPLOY_SHA.sh; \
+               status=0; \
+               DRCLOUD_REPO_DIR=/opt/drcloud-os DRCLOUD_GITHUB_TOKEN_STDIN=1 \
+                 /bin/bash /tmp/drcloud-update-$DEPLOY_SHA.sh '$DEPLOY_SHA' || status=\$?; \
+               rm -f /tmp/drcloud-update-$DEPLOY_SHA.sh; \
+               exit \$status"
