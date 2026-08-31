@@ -19,16 +19,18 @@ def test_production_stages_reviewed_updater_and_passes_read_token_only_over_stdi
     assert 'rm -f /tmp/drcloud-update-$DEPLOY_SHA.sh' in text
 
 
-def test_updater_uses_ephemeral_extraheader_without_persisting_credentials():
+def test_updater_reads_token_before_backup_and_uses_ephemeral_extraheader():
     text = UPDATE.read_text(encoding='utf-8')
     assert 'repo="${DRCLOUD_REPO_DIR:-}"' in text
     assert 'DRCLOUD_GITHUB_TOKEN_STDIN' in text
-    assert 'IFS= read -r github_token' in text
+    read_token = text.index('IFS= read -r github_token')
+    backup = text.index('"$repo/deploy/ovh/backup.sh"')
+    assert read_token < backup
     assert "printf 'x-access-token:%s' \"$github_token\"" in text
     assert "GIT_CONFIG_KEY_0='http.https://github.com/.extraheader'" in text
     assert 'GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth"' in text
     assert 'git -C "$repo" fetch --no-tags origin main' in text
-    assert 'unset github_token auth' in text
+    assert 'github_token=""' in text
 
     forbidden = (
         'git remote set-url',
