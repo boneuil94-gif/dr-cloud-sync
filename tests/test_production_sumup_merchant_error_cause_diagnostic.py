@@ -8,9 +8,10 @@ def _text():
     return WORKFLOW.read_text(encoding='utf-8')
 
 
-def test_runs_after_watermark_diagnostic_and_pins_exact_sha():
+def test_runs_after_watermark_proof_within_chain_limit_and_pins_exact_sha():
     text = _text()
-    assert 'workflows: ["DrCloud OS SumUp merchant watermark diagnostic"]' in text
+    assert 'workflows: ["DrCloud OS SumUp merchant watermark production proof"]' in text
+    assert 'DrCloud OS SumUp merchant watermark diagnostic' not in text.split('permissions:')[0]
     assert 'REVIEWED_SHA: ${{ github.event.workflow_run.head_sha }}' in text
     assert 'ref: ${{ env.REVIEWED_SHA }}' in text
     assert 'EXPECTED_DEPLOYED_SHA' in text
@@ -23,13 +24,23 @@ def test_holds_deploy_lock_and_reads_only_sqlite_control_plane():
     assert 'DRCLOUD_DEPLOY_LOCK' in text
     assert 'flock 9' in text
     assert '?mode=ro' in text
-    assert "FROM connector_diagnostics WHERE source_id='sumup_merchant' ORDER BY diagnostic_id DESC LIMIT 1" in text
+    assert "SELECT run_id,status FROM data_hub_sync_runs WHERE job_id='sync_sumup_merchant' ORDER BY run_id DESC LIMIT 1" in text
+    assert "AND job_id='sync_sumup_merchant' AND run_id=? ORDER BY diagnostic_id DESC LIMIT 1" in text
     for token in (
         'SumUpProvider(', '.merchant()', 'sync_sumup_merchant(', 'data_hub.run(',
         'UPDATE data_sources', 'UPDATE sync_jobs', 'INSERT INTO sumup_merchants',
         'DELETE FROM sumup_merchants',
     ):
         assert token not in text
+
+
+def test_correlates_cause_to_latest_merchant_run_without_emitting_run_id():
+    text = _text()
+    assert "if run is not None:" in text
+    assert "(run['run_id'],)).fetchone()" in text
+    assert "'latest_run_diagnostic_present':diagnostic is not None" in text
+    assert "'run_identifiers_emitted':False" in text
+    assert "'run_id':run" not in text
 
 
 def test_emits_only_bounded_error_cause_fields():
