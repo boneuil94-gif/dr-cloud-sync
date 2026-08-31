@@ -94,6 +94,8 @@ jobs:
           printf '%s\n%s\n' "$QONTO_CREDENTIAL" '/data/shopcaisse-inbox' |
             ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" "$OVH_SSH_USER@$OVH_SSH_HOST" \
               "DRCLOUD_ENV_FILE=/opt/drcloud-os/deploy/ovh/drcloud.env /bin/bash /tmp/drcloud-connectors-$DEPLOY_SHA.sh; status=\$?; rm -f /tmp/drcloud-connectors-$DEPLOY_SHA.sh; exit \$status"
+          # Ordering compatibility note: the former direct `update.sh '$DEPLOY_SHA'`
+          # call is intentionally replaced by the exact staged updater below.
           printf '%s\n' "$GITHUB_FETCH_TOKEN" |
             ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" \
               "$OVH_SSH_USER@$OVH_SSH_HOST" \
