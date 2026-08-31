@@ -12,21 +12,26 @@ fi
 source "$repo/deploy/ovh/deployment-environment.sh"
 state_dir="$DRCLOUD_DEPLOYMENT_STATE_DIR"
 
+github_token=""
+if [[ "${DRCLOUD_GITHUB_TOKEN_STDIN:-0}" == "1" ]]; then
+  IFS= read -r github_token
+  [[ -n "$github_token" ]] || { echo "ERREUR: jeton GitHub de lecture absent." >&2; exit 1; }
+fi
+
 record_successful_commit() {
   "$repo/deploy/ovh/deployment-state.sh" "$state_dir" "$1"
 }
 
 fetch_reviewed_main() {
   if [[ "${DRCLOUD_GITHUB_TOKEN_STDIN:-0}" == "1" ]]; then
-    local github_token auth
-    IFS= read -r github_token
-    [[ -n "$github_token" ]] || { echo "ERREUR: jeton GitHub de lecture absent." >&2; return 1; }
+    local auth
     auth="$(printf 'x-access-token:%s' "$github_token" | base64 | tr -d '\n')"
     GIT_CONFIG_COUNT=1 \
     GIT_CONFIG_KEY_0='http.https://github.com/.extraheader' \
     GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth" \
       git -C "$repo" fetch --no-tags origin main
-    unset github_token auth
+    unset auth
+    github_token=""
   else
     git -C "$repo" fetch --no-tags origin main
   fi
