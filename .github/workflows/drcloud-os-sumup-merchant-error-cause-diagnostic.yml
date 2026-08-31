@@ -2,7 +2,7 @@ name: DrCloud OS SumUp merchant error cause diagnostic
 
 on:
   workflow_run:
-    workflows: ["DrCloud OS SumUp merchant watermark diagnostic"]
+    workflows: ["DrCloud OS SumUp merchant watermark production proof"]
     types: [completed]
 
 permissions:
@@ -119,8 +119,10 @@ jobs:
                   raise SystemExit('SUMUP_MERCHANT_ERROR_CAUSE_SCHEMA_INCOMPLETE')
               source=db.execute("SELECT status,enabled FROM data_sources WHERE source_id='sumup_merchant'").fetchone()
               job=db.execute("SELECT status FROM sync_jobs WHERE job_id='sync_sumup_merchant' AND source_id='sumup_merchant' AND job_type='SUMUP_MERCHANT'").fetchone()
-              run=db.execute("SELECT status FROM data_hub_sync_runs WHERE job_id='sync_sumup_merchant' ORDER BY run_id DESC LIMIT 1").fetchone()
-              diagnostic=db.execute("SELECT category,stage,http_status,operation,success FROM connector_diagnostics WHERE source_id='sumup_merchant' ORDER BY diagnostic_id DESC LIMIT 1").fetchone()
+              run=db.execute("SELECT run_id,status FROM data_hub_sync_runs WHERE job_id='sync_sumup_merchant' ORDER BY run_id DESC LIMIT 1").fetchone()
+              diagnostic=None
+              if run is not None:
+                  diagnostic=db.execute("SELECT category,stage,http_status,operation,success FROM connector_diagnostics WHERE source_id='sumup_merchant' AND job_id='sync_sumup_merchant' AND run_id=? ORDER BY diagnostic_id DESC LIMIT 1",(run['run_id'],)).fetchone()
               report={
                   'schema_version':1,
                   'environment':'production',
@@ -138,7 +140,7 @@ jobs:
                       'job_status':bounded(job['status'],job_statuses) if job else 'UNKNOWN',
                       'latest_run_present':run is not None,
                       'latest_run_status':bounded(run['status'],run_statuses) if run else 'UNKNOWN',
-                      'diagnostic_present':diagnostic is not None,
+                      'latest_run_diagnostic_present':diagnostic is not None,
                       'diagnostic_success':bool(diagnostic['success']) if diagnostic else False,
                       'category':bounded(diagnostic['category'],categories) if diagnostic else 'UNKNOWN',
                       'stage_family':stage_family(diagnostic['stage']) if diagnostic else 'OTHER',
@@ -153,6 +155,7 @@ jobs:
                       'raw_error_values_emitted':False,
                       'timestamp_values_emitted':False,
                       'merchant_identifiers_emitted':False,
+                      'run_identifiers_emitted':False,
                       'endpoint_paths_emitted':False,
                       'provider_payloads_emitted':False,
                       'credentials_or_pii_emitted':False,
@@ -198,7 +201,7 @@ jobs:
           assert d['rpo_projection_authorized'] is False
           assert d['imported_at_used_as_business_progress'] is False
           e=d['evidence']
-          assert set(e)=={'source_present','source_enabled','source_status','job_present','job_status','latest_run_present','latest_run_status','diagnostic_present','diagnostic_success','category','stage_family','http_status_class','operation_family'}
+          assert set(e)=={'source_present','source_enabled','source_status','job_present','job_status','latest_run_present','latest_run_status','latest_run_diagnostic_present','diagnostic_success','category','stage_family','http_status_class','operation_family'}
           assert e['category'] in {'AUTH','HTTP','TIMEOUT','NETWORK','PARSING','RATE_LIMIT','INVALID_RESPONSE','VALIDATION','CONFIGURATION','PERSISTENCE','WAF','UNKNOWN'}
           assert e['stage_family'] in {'AUTHENTICATION','MERCHANT_PROFILE','EXECUTION','PARSING','PAGINATION','OTHER'}
           assert e['http_status_class'] in {'NONE','AUTH_401_403','NOT_FOUND_404','RATE_LIMIT_429','SERVER_5XX','CLIENT_4XX_OTHER','NON_ERROR_HTTP','OTHER_HTTP'}
@@ -211,6 +214,7 @@ jobs:
               'raw_error_values_emitted':False,
               'timestamp_values_emitted':False,
               'merchant_identifiers_emitted':False,
+              'run_identifiers_emitted':False,
               'endpoint_paths_emitted':False,
               'provider_payloads_emitted':False,
               'credentials_or_pii_emitted':False,
