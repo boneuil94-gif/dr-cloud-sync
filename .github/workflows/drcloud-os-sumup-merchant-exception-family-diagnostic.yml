@@ -1,0 +1,208 @@
+name: DrCloud OS SumUp merchant exception family diagnostic
+
+on:
+  workflow_run:
+    workflows: ["DrCloud OS SumUp merchant error cause diagnostic"]
+    types: [completed]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: drcloud-os-sumup-merchant-exception-family-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    if: >-
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      REVIEWED_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Validate reviewed SHA
+        run: |
+          set -euo pipefail
+          [[ "$REVIEWED_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+      - name: Check out exact reviewed SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REVIEWED_SHA }}
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.OVH_SSH_PRIVATE_KEY }}
+          SSH_HOST_KEYS: ${{ secrets.OVH_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/drcloud_deploy
+          printf '%s\n' "$SSH_HOST_KEYS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/drcloud_deploy ~/.ssh/known_hosts
+
+      - name: Capture bounded SumUp merchant exception family
+        id: capture
+        continue-on-error: true
+        env:
+          OVH_SSH_HOST: ${{ secrets.OVH_SSH_HOST }}
+          OVH_SSH_PORT: ${{ secrets.OVH_SSH_PORT }}
+          OVH_SSH_USER: ${{ secrets.OVH_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/drcloud_deploy -p "${OVH_SSH_PORT:-22}" "$OVH_SSH_USER@$OVH_SSH_HOST" \
+            "EXPECTED_DEPLOYED_SHA='$REVIEWED_SHA' bash -s" > sumup_merchant_exception_family.json <<'REMOTE'
+          set -Eeuo pipefail
+          repo=/opt/drcloud-os
+          expected_sha="${EXPECTED_DEPLOYED_SHA:-}"
+          [[ "$expected_sha" =~ ^[0-9a-f]{40}$ ]] || { echo SUMUP_MERCHANT_EXCEPTION_FAMILY_EXPECTED_SHA_INVALID >&2; exit 64; }
+          source "$repo/deploy/ovh/deployment-environment.sh"
+          exec 9>"${DRCLOUD_DEPLOY_LOCK:-/tmp/drcloud-os-deploy.lock}"
+          flock 9
+          deployed_sha="$(git -C "$repo" rev-parse HEAD)"
+          [[ "$deployed_sha" == "$expected_sha" ]] || { echo SUMUP_MERCHANT_EXCEPTION_FAMILY_DEPLOYED_SHA_MISMATCH >&2; exit 65; }
+          cd "$repo/deploy/ovh"
+          docker compose exec -T drcloud-os env -i \
+            PATH=/usr/local/bin:/usr/bin:/bin \
+            DRCLOUD_DATA_DIR=/data \
+            EXPECTED_DEPLOYED_SHA="$expected_sha" \
+            python - <<'PY'
+          import json, os, re, sqlite3
+          from pathlib import Path
+
+          sha=os.environ.get('EXPECTED_DEPLOYED_SHA','')
+          if not re.fullmatch(r'[0-9a-f]{40}',sha):
+              raise SystemExit('SUMUP_MERCHANT_EXCEPTION_FAMILY_EXPECTED_SHA_INVALID')
+          db_path=Path(os.environ.get('DRCLOUD_DATA_DIR','/data'))/'drcloud.db'
+          if not db_path.is_file():
+              raise SystemExit('SUMUP_MERCHANT_EXCEPTION_FAMILY_LEDGER_MISSING')
+
+          families={
+              'TypeError':'TYPE_ERROR','KeyError':'KEY_ERROR','ValueError':'VALUE_ERROR',
+              'AttributeError':'ATTRIBUTE_ERROR','RuntimeError':'RUNTIME_ERROR',
+              'AssertionError':'ASSERTION_ERROR','JSONDecodeError':'JSON_DECODE_ERROR',
+              'HTTPError':'HTTP_ERROR','URLError':'URL_ERROR','TimeoutError':'TIMEOUT_ERROR',
+              'OperationalError':'SQLITE_OPERATIONAL_ERROR','IntegrityError':'SQLITE_INTEGRITY_ERROR',
+              'DatabaseError':'SQLITE_DATABASE_ERROR','OSError':'OS_ERROR',
+          }
+          allowed=set(families.values())|{'OTHER','MISSING'}
+
+          db=sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro",uri=True)
+          db.row_factory=sqlite3.Row
+          try:
+              tables={r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+              required={'data_hub_sync_runs','connector_diagnostics'}
+              if not required <= tables:
+                  raise SystemExit('SUMUP_MERCHANT_EXCEPTION_FAMILY_SCHEMA_INCOMPLETE')
+              run=db.execute("SELECT run_id,status FROM data_hub_sync_runs WHERE job_id='sync_sumup_merchant' ORDER BY run_id DESC LIMIT 1").fetchone()
+              diagnostic=None
+              if run is not None:
+                  diagnostic=db.execute("SELECT exception_type,category,stage,operation,success FROM connector_diagnostics WHERE source_id='sumup_merchant' AND job_id='sync_sumup_merchant' AND run_id=? ORDER BY diagnostic_id DESC LIMIT 1",(run['run_id'],)).fetchone()
+              exception_family='MISSING'
+              if diagnostic is not None and diagnostic['exception_type']:
+                  exception_family=families.get(str(diagnostic['exception_type']),'OTHER')
+              assert exception_family in allowed
+              report={
+                  'schema_version':1,
+                  'environment':'production',
+                  'result':'SUMUP_MERCHANT_EXCEPTION_FAMILY_DIAGNOSTIC',
+                  'deployed_sha':sha,
+                  'evidence_status':'MEASURABLE',
+                  'provider_exhaustiveness_inferred':False,
+                  'rpo_projection_authorized':False,
+                  'imported_at_used_as_business_progress':False,
+                  'evidence':{
+                      'latest_run_present':run is not None,
+                      'latest_run_failed':bool(run is not None and str(run['status']).upper()=='FAILED'),
+                      'latest_run_diagnostic_present':diagnostic is not None,
+                      'diagnostic_success':bool(diagnostic['success']) if diagnostic else False,
+                      'execution_unknown_confirmed':bool(diagnostic is not None and str(diagnostic['category']).upper()=='UNKNOWN' and str(diagnostic['stage']).lower()=='execution' and str(diagnostic['operation']).upper()=='SUMUP_MERCHANT'),
+                      'exception_family':exception_family,
+                  },
+                  'safety':{
+                      'database_read_only':True,
+                      'provider_network_calls':False,
+                      'external_provider_auth':'NONE',
+                      'provider_mutations':False,
+                      'raw_error_values_read':False,
+                      'raw_error_values_emitted':False,
+                      'raw_exception_type_emitted':False,
+                      'timestamp_values_emitted':False,
+                      'merchant_identifiers_emitted':False,
+                      'run_identifiers_emitted':False,
+                      'endpoint_paths_emitted':False,
+                      'provider_payloads_emitted':False,
+                      'credentials_or_pii_emitted':False,
+                  },
+              }
+              print(json.dumps(report,indent=2,sort_keys=True))
+          finally:
+              db.close()
+          PY
+          REMOTE
+          test -s sumup_merchant_exception_family.json
+
+      - name: Upload sanitized exception-family evidence
+        id: upload
+        if: always() && hashFiles('sumup_merchant_exception_family.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: drcloud-sumup-merchant-exception-family-${{ github.run_id }}
+          path: sumup_merchant_exception_family.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce bounded evidence contract
+        id: enforce
+        if: always()
+        env:
+          CAPTURE_OUTCOME: ${{ steps.capture.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          test "$CAPTURE_OUTCOME" = success
+          test "$UPLOAD_OUTCOME" = success
+          test -s sumup_merchant_exception_family.json
+          python - <<'PY'
+          import json,os
+          d=json.load(open('sumup_merchant_exception_family.json'))
+          assert d['schema_version']==1
+          assert d['environment']=='production'
+          assert d['result']=='SUMUP_MERCHANT_EXCEPTION_FAMILY_DIAGNOSTIC'
+          assert d['deployed_sha']==os.environ['REVIEWED_SHA']
+          assert d['evidence_status']=='MEASURABLE'
+          assert d['provider_exhaustiveness_inferred'] is False
+          assert d['rpo_projection_authorized'] is False
+          assert d['imported_at_used_as_business_progress'] is False
+          e=d['evidence']
+          assert set(e)=={'latest_run_present','latest_run_failed','latest_run_diagnostic_present','diagnostic_success','execution_unknown_confirmed','exception_family'}
+          assert e['exception_family'] in {'TYPE_ERROR','KEY_ERROR','VALUE_ERROR','ATTRIBUTE_ERROR','RUNTIME_ERROR','ASSERTION_ERROR','JSON_DECODE_ERROR','HTTP_ERROR','URL_ERROR','TIMEOUT_ERROR','SQLITE_OPERATIONAL_ERROR','SQLITE_INTEGRITY_ERROR','SQLITE_DATABASE_ERROR','OS_ERROR','OTHER','MISSING'}
+          assert d['safety']=={
+              'database_read_only':True,'provider_network_calls':False,'external_provider_auth':'NONE',
+              'provider_mutations':False,'raw_error_values_read':False,'raw_error_values_emitted':False,
+              'raw_exception_type_emitted':False,'timestamp_values_emitted':False,
+              'merchant_identifiers_emitted':False,'run_identifiers_emitted':False,
+              'endpoint_paths_emitted':False,'provider_payloads_emitted':False,
+              'credentials_or_pii_emitted':False,
+          }
+          PY
+
+      - name: Index this run for connector discovery
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CAPTURE_OUTCOME: ${{ steps.capture.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+          ENFORCE_OUTCOME: ${{ steps.enforce.outcome }}
+          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          python - <<'PY'
+          import datetime,json,os
+          conclusion='success' if os.environ.get('CAPTURE_OUTCOME')=='success' and os.environ.get('UPLOAD_OUTCOME')=='success' and os.environ.get('ENFORCE_OUTCOME')=='success' else 'failure'
+          row={'schema_version':1,'workflow':'DrCloud OS SumUp merchant exception family diagnostic','run_id':int(os.environ['GITHUB_RUN_ID']),'run_number':int(os.environ['GITHUB_RUN_NUMBER']),'run_attempt':int(os.environ.get('GITHUB_RUN_ATTEMPT','1')),'status':'completed','conclusion':conclusion,'event':os.environ.get('GITHUB_EVENT_NAME'),'head_branch':'main','head_sha':os.environ['REVIEWED_SHA'],'indexed_at':datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00','Z'),'run_url':f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",'trigger_run_id':int(os.environ['TRIGGER_RUN_ID'])}
+          body='<!-- drcloud-run-index -->\n```json\n'+json.dumps(row,sort_keys=True)+'\n```'
+          json.dump({'body':body},open('run-index-payload.json','w'))
+          PY
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/170/comments" --input run-index-payload.json
