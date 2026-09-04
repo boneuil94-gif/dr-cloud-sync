@@ -54,3 +54,12 @@ def test_other_runtime_family_is_closed_and_code_grounded():
     assert "'provider_exhaustiveness_inferred':False" in body
     assert "'rpo_projection_authorized':False" in body
     assert "'imported_at_used_as_business_progress':False" in body
+
+
+def test_other_runtime_success_requires_confirmed_unknown_execution_failure():
+    body=text()
+    assert "assert d['evidence']['latest_run_present'] is True" in body
+    assert "assert d['evidence']['latest_run_failed'] is True" in body
+    assert "assert d['evidence']['latest_run_diagnostic_present'] is True" in body
+    assert "assert d['evidence']['execution_unknown_confirmed'] is True" in body
+    assert "assert d['evidence']['other_runtime_family'] not in {'PRIOR_KNOWN_FAMILY','MISSING'}" in body
