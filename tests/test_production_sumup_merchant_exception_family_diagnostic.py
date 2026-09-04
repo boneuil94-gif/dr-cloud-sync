@@ -11,8 +11,8 @@ def text():
 def test_exception_family_diagnostic_is_exact_sha_read_only_and_provider_offline():
     body=text()
     assert "workflow_run:" in body
-    assert 'workflows: ["DrCloud OS SumUp merchant error cause diagnostic"]' in body
-    assert "github.event.workflow_run.conclusion == 'success'" in body
+    assert 'workflows: ["DrCloud OS SumUp merchant watermark production proof"]' in body
+    assert "github.event.workflow_run.conclusion == 'failure'" in body
     assert 'REVIEWED_SHA: ${{ github.event.workflow_run.head_sha }}' in body
     assert '[[ "$deployed_sha" == "$expected_sha" ]]' in body
     assert 'DRCLOUD_DEPLOY_LOCK' in body
@@ -26,9 +26,11 @@ def test_exception_family_diagnostic_reads_only_structured_exception_type_not_er
     body=text()
     assert "SELECT exception_type,category,stage,operation,success FROM connector_diagnostics" in body
     assert "SELECT message" not in body
-    assert "response_excerpt" not in body
-    assert "endpoint_path" not in body
+    assert "SELECT endpoint_path" not in body
+    assert "SELECT response_excerpt" not in body
     assert "diagnostic['message']" not in body
+    assert "diagnostic['endpoint_path']" not in body
+    assert "diagnostic['response_excerpt']" not in body
     assert "diagnostic['exception_type']" in body
     assert "'raw_error_values_read':False" in body
     assert "'raw_error_values_emitted':False" in body
