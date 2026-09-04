@@ -175,10 +175,15 @@ jobs:
           assert d['provider_exhaustiveness_inferred'] is False
           assert d['rpo_projection_authorized'] is False
           assert d['imported_at_used_as_business_progress'] is False
+          assert d['evidence']['latest_run_present'] is True
+          assert d['evidence']['latest_run_failed'] is True
+          assert d['evidence']['latest_run_diagnostic_present'] is True
+          assert d['evidence']['execution_unknown_confirmed'] is True
           assert d['evidence']['other_runtime_family'] in {
               'TRANSPORT_PROTOCOL_RUNTIME','TLS_SOCKET_RUNTIME','SQLITE_API_RUNTIME','PYTHON_CODE_RUNTIME',
-              'SUMUP_DOMAIN_RUNTIME','SCHEMA_RUNTIME','PRIOR_KNOWN_FAMILY','UNCLASSIFIED_OTHER','MISSING'
+              'SUMUP_DOMAIN_RUNTIME','SCHEMA_RUNTIME','UNCLASSIFIED_OTHER'
           }
+          assert d['evidence']['other_runtime_family'] not in {'PRIOR_KNOWN_FAMILY','MISSING'}
           assert d['safety']=={
               'database_read_only':True,'provider_network_calls':False,'external_provider_auth':'NONE',
               'provider_mutations':False,'raw_error_values_read':False,'raw_error_values_emitted':False,
